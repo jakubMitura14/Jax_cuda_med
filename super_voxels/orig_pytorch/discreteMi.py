@@ -44,3 +44,15 @@ def get_joint_matrix(self):
     if not hasattr(self, "_p_i_j"):
         raise RuntimeError()
     return self._p_i_j.detach().cpu().numpy()
+
+
+_PretrainEpocherMixin and SemiSupervisedEpocher# seem to be central to the algorithm
+
+# Used Transformation
+scale=rr.UniformParameter(0.8, 1.3),
+rotation=rr.UniformParameter(-45, 45),
+translation=rr.UniformParameter(-0.1, 0.1),
+degree=True,
+interpolation_mode="nearest",
+rt.Mirror(dims=rr.DiscreteParameter([0, 1]), p_sample=0.9, grad=True)
+intensity_transform=rt.GammaCorrection(gamma=rr.UniformParameter(0.5, 2), grad=True)

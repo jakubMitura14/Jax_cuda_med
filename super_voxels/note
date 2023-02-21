@@ -8,6 +8,14 @@ main code repo
 https://github.com/jizongFox/Contrast-You
 
 
-klj
 
 Elastic deformation may be done via enlarging or making smaller some supervoxels and use mesh grid to make it work
+
+
+
+Plan:
+1) get sobel filtered version of the original image
+2) define data loading including augmentations on slices in order to make the contrastive learning possible
+3) for contrastive learning we need also to keep the information which are positive and which are negative pairs
+4) we want to increase similarity between positive pairs and decrese between negative similarity criterion is basically mutual information
+5) optimise and visualize
