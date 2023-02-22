@@ -62,6 +62,10 @@ RUN python3 -m  pip install \
     tensorly==0.8.0
 RUN python3 -m  pip install numpyro[cuda] -f https://storage.googleapis.com/jax-releases/Jax_cuda_med_releases.html
     
+
+RUN git clone https://github.com/ml-for-gp/jaxgptoolbox.git ${HOME}/externalRepos/jaxgptoolbox
+
+
 # RUN python3 -m  pip install visu3d==1.4.0    
 # RUN python3 -m  pip install  ffcv
 
