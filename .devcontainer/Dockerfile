@@ -58,7 +58,8 @@ RUN python3 -m  pip install \
     ml-collections==0.1.1 \
     #https://stackoverflow.com/questions/63938552/how-to-run-tensorboard-in-vscode
     tensorboard-plugin-profile \
-    jax-smi==1.0.2
+    jax-smi==1.0.2 \
+    tensorly==0.8.0
 RUN python3 -m  pip install numpyro[cuda] -f https://storage.googleapis.com/jax-releases/Jax_cuda_med_releases.html
     
 # RUN python3 -m  pip install visu3d==1.4.0    

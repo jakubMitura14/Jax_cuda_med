@@ -24,6 +24,8 @@ class RedundancyCriterion(nn.Module, LossClass[Tensor]):
         p_i_j = p_i_j.view(k, k)
         self._p_i_j = p_i_j
         target = ((self.onehot_label(k=k, device=p_i_j.device) / k) * self.alpha + p_i_j * (1 - self.alpha))
+        #seem that we are summing over one axis and then repeat this sums to get desired dimensions
+        
         p_i = p_i_j.sum(dim=1).view(k, 1).expand(k, k)  # p_i should be the mean of the x_out
         p_j = p_i_j.sum(dim=0).view(1, k).expand(k, k)  # but should be same, symmetric
         constrained = (-p_i_j * (- self.lamda * torch.log(p_j + self._eps)

@@ -37,6 +37,7 @@ import shutil
 from jax_smi import initialise_tracking
 
 
+
 #just removing to reduce memory usage of tensorboard logs
 shutil.rmtree('/workspaces/Jax_cuda_med/data/tensor_board')
 os.makedirs("/workspaces/Jax_cuda_med/data/tensor_board")
