@@ -1,14 +1,13 @@
 FROM nvcr.io/nvdlfwea/jax/jax:23.01-py3
 
-
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         software-properties-common \
         build-essential \
         curl \
-        git \
-        ffmpeg \
-        libjpeg-turbo8 
+        git
+        # ffmpeg \
+        # libjpeg-turbo8 
 
 
 # RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
@@ -23,8 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN python3 -m  pip  install torch torchvision torchaudio torch-geometric --extra-index-url https://download.pytorch.org/whl/cpu
 
-# RUN python3 -m pip install jaxlib --upgrade
-# RUN python3 -m pip install jax --upgrade
+# # RUN python3 -m pip install jaxlib --upgrade
+# # RUN python3 -m pip install jax --upgrade
 
 RUN python3 -m  pip install \
     numba==0.56.4+1.g772622d0d\
@@ -60,14 +59,19 @@ RUN python3 -m  pip install \
     tensorboard-plugin-profile \
     jax-smi==1.0.2 \
     tensorly==0.8.0
-RUN python3 -m  pip install numpyro[cuda] -f https://storage.googleapis.com/jax-releases/Jax_cuda_med_releases.html
-    
-
-RUN git clone https://github.com/ml-for-gp/jaxgptoolbox.git ${HOME}/externalRepos/jaxgptoolbox
 
 
-# RUN python3 -m  pip install visu3d==1.4.0    
-# RUN python3 -m  pip install  ffcv
+RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \
+    cd ${HOME}/externalRepos/numPyro && \
+    pip install -e .[dev] 
+# install jax/jaxlib first for CUDA support
+
+
+# RUN python3 -m  pip install cython-pocketfft
+
+#RUN python3 -m  pip install numpyro[cuda]==0.11.0 -f https://storage.googleapis.com/jax-releases/Jax_cuda_med_releases.html
+
+
 
 # RUN python3 -m  pip install monai-weekly
 
@@ -103,7 +107,7 @@ RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so /usr/local/l
 RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so.1 /usr/local/lib/libANNlib-5.0.so.1
 
 RUN ldconfig
-RUN apt-get install -q -y vim nano 
+# RUN apt-get install -q -y vim nano 
 
 #install go for jax memory profiling
 
