@@ -1,1 +1,3 @@
 data/
+super_voxels/VAE/results/
+super_voxels/VAE/__pycache__/simple_flax_vae.cpython-38.pyc

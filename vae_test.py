@@ -38,10 +38,15 @@ from jax_smi import initialise_tracking
 import super_voxels.VAE.simple_flax_vae as simple_flax_vae
 import toolz
 from jax.config import config
+import SimpleITK as sitk
 config.update("jax_debug_nans", True)
 config.update("jax_disable_jit", True)
 
 prng = jax.random.PRNGKey(42)
+resPath="/workspaces/Jax_cuda_med/super_voxels/VAE/results"
+
+shutil.rmtree(resPath)
+os.makedirs(resPath)
 
 
 cfg = config_dict.ConfigDict()
@@ -91,9 +96,13 @@ def train_step(state, batch, z_rng):
 
 
 @jax.jit
-def eval(params, currImage, z, z_rng):
+def eval(params, currImage, z, z_rng,outputImageFileName,indx):
   def eval_model(vae):
     recon_images, mean, logvar = vae(currImage, z_rng)
+    if(indx<2):
+      image = sitk.GetImageFromArray(jnp.swapaxes(recon_images[0,0,:,:,:],0,2))
+
+      sitk.WriteImage(image, outputImageFileName)
     # generate_images = vae.generate(z)
     # generate_images = generate_images.reshape(-1, 28, 28, 1)
     metrics = simple_flax_vae.compute_metrics(recon_images, currImage, mean, logvar)
@@ -105,19 +114,32 @@ num_epochs=10
 steps_per_epoch=2
 dataset= get_spleen_data()
 dataset= list(map( lambda tupl: tupl[0], dataset))
+# batchSize = 5
+# dataset=toolz.itertoolz.partition(batchSize,dataset)
+# dataset= list(map(lambda batch: jnp.concatenate(list(batch),axis=0),dataset))
+cached_subj_train =dataset[0:7]
+cached_subj_test =dataset[8:9]
 
-cached_subj_train =dataset[0:35]
-cached_subj_test =dataset[35:40]
 print(f"dataset len = {len(dataset)} ")
 z = random.normal(z_key, (64, cfg.latents))
+
+# train_step_vmap=jax.vmap(train_step,in_axes=(None,0,None),out_axes=(0))
 
 for epoch in range(num_epochs):
   for batch in cached_subj_train:
     rng, key, eval_rng = random.split(keyb,3)
     state = train_step(state, batch, key)
+  #if(epoch%10==0)
+  resPath_epoch=resPath+f"/{epoch}"
+  os.makedirs(resPath_epoch)
 
-  metrics = list(map(lambda image: eval(state.params, image, z, eval_rng),cached_subj_test))
+  def eval_loc(tupl):
+    indx,image=tupl
+    return eval(state.params, image, z, eval_rng,(resPath_epoch+f"/{indx}.nii.gz"),indx)
+
+  metrics = list(map(eval_loc ,enumerate(cached_subj_test)))
   bce_loss,kld_loss,losss=list(toolz.sandbox.core.unzip(metrics))
+
   # vae_utils.save_image(
   #     comparison, f'results/reconstruction_{epoch}.png', nrow=8)
   # vae_utils.save_image(sample, f'results/sample_{epoch}.png', nrow=8)
