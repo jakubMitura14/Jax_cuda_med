@@ -1,3 +1,8 @@
+https://dmol.pub/dl/VAE.html
+IMPORTANT!!! for deterministic decoder calculating kl divergence seem to be useless
+VAE with deterministic decoder 
+https://arxiv.org/abs/2003.02174
+
 
 jax geometry processing
 https://github.com/ml-for-gp/jaxgptoolbox
@@ -8,3 +13,24 @@ https://github.com/duennbart/masterthesis_VAE
 
 quantify how confident it is in its predictions
 https://www.marktechpost.com/2023/02/18/mit-researchers-have-developed-a-new-technique-that-can-enable-a-machine-learning-model-to-quantify-how-confident-it-is-in-its-predictions/
+
+simple ball rendering in jax (show_slice)
+https://colab.research.google.com/github/google-research/self-organising-systems/blob/master/notebooks/jax_raycast.ipynb#scrollTo=T4qykcQt8w4S
+
+formulas for simple shapes 
+https://iquilezles.org/articles/distfunctions/
+
+
+
+Plan rendering
+1)we establish what shapes are not intersecting 
+https://www.researchgate.net/figure/Three-advanced-applications-using-OTT-JAX-left-regularized-W-p-p-iso-barycenter-of_fig1_358232405
+2) we render simple shapes and after voxelization
+https://github.com/sunset1995/DirectVoxGO
+https://towardsdatascience.com/how-to-voxelize-meshes-and-point-clouds-in-python-ca94d403f81d
+https://github.com/naruya/VaxNeRFhttps://blog.evjang.com/2019/11/jaxpt.html
+
+tutorials
+https://wandb.ai/wandb/nerf-jax/reports/Implementing-NeRF-in-JAX--VmlldzoxODA2NDk2#rendering-the-scene
+https://dmol.pub/dl/VAE.html
+3) we fill them from samples     of gaussians with learned parameters

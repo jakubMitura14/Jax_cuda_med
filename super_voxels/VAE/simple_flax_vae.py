@@ -23,66 +23,127 @@ import numpy as np
 import optax
 import tensorflow as tf
 import tensorflow_datasets as tfds
-
-import utils as vae_utils
+from flax import linen as nn
+import numpy as np
+from typing import Any, Callable, Optional, Tuple, Type, List
+from jax import lax, random, numpy as jnp
+import einops
+import jax 
+from flax.linen import partitioning as nn_partitioning
+import jax
+from einops import rearrange
+from einops import einsum
+import ml_collections
 
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_float(
-    'learning_rate', default=1e-3,
-    help=('The learning rate for the Adam optimizer.')
-)
-
-flags.DEFINE_integer(
-    'batch_size', default=128,
-    help=('Batch size for training.')
-)
-
-flags.DEFINE_integer(
-    'num_epochs', default=30,
-    help=('Number of training epochs.')
-)
-
-flags.DEFINE_integer(
-    'latents', default=20,
-    help=('Number of latent variables.')
-)
 
 
 class Encoder(nn.Module):
-  latents: int
-
-  @nn.compact
-  def __call__(self, x):
-    x = nn.Dense(500, name='fc1')(x)
-    x = nn.relu(x)
-    mean_x = nn.Dense(self.latents, name='fc2_mean')(x)
-    logvar_x = nn.Dense(self.latents, name='fc2_logvar')(x)
-    return mean_x, logvar_x
-
-
-class Decoder(nn.Module):
+  cfg: ml_collections.config_dict.config_dict.ConfigDict
 
   @nn.compact
   def __call__(self, z):
-    z = nn.Dense(500, name='fc1')(z)
-    z = nn.relu(z)
-    z = nn.Dense(784, name='fc2')(z)
+    b=self.cfg.img_size[0]
+    c=self.cfg.img_size[1]
+    w=self.cfg.img_size[2]
+    h=self.cfg.img_size[3]
+    d=self.cfg.img_size[4]
+    z=einops.rearrange(z,'b c w h d-> b w h d c', b=b,c=c,w=w,h=h,d=d)
+
+    z = nn.Conv(
+                features=self.cfg.features,
+                kernel_size=(3, 3,3),
+                strides=(2, 2,2),
+                # param_dtype=jax.numpy.float16,                
+                )(z)
+    z = nn.gelu(z)
+    z = nn.Conv(
+                features=self.cfg.features,
+                kernel_size=(3, 3,3),
+                strides=(2, 2,2),
+                # param_dtype=jax.numpy.float16,
+                )(z)
+    z = nn.gelu(z)
+    z = nn.Conv(
+                features=self.cfg.features,
+                kernel_size=(3, 3,3),
+                strides=(2, 2,2),
+                # param_dtype=jax.numpy.float16,                
+                )(z)
+    z = nn.gelu(z)
+    z = nn.Conv(
+                features=self.cfg.features,
+                kernel_size=(3, 3,3),
+                strides=(2, 2,2),
+                # param_dtype=jax.numpy.float16,                
+                )(z)
+    z = nn.gelu(z)
+    z= jnp.ravel(z)
+    z= nn.Dense(self.cfg.latents, name='flatten')(z)
+    # std = jax.nn.softplus(reshaped[:, 1:])
+    # mu = reshaped[:, 0:1]
+    mean_x = nn.Dense(self.cfg.latents, name='fc2_mean')(z)
+    logvar_x = nn.Dense(self.cfg.latents, name='fc2_logvar')(z)
+    logvar_x=jax.nn.softplus(logvar_x)
+    return mean_x, logvar_x
+
+
+
+
+class Decoder(nn.Module):
+  cfg: ml_collections.config_dict.config_dict.ConfigDict
+  @nn.compact
+  def __call__(self, z):
+    conv_num=4
+    b=self.cfg.img_size[0]
+    c=self.cfg.img_size[1]
+    w=self.cfg.img_size[2]//(2*conv_num)
+    h=self.cfg.img_size[3]//(2*conv_num)
+    d=self.cfg.img_size[4]//(2*conv_num)
+
+    z = nn.Dense(b*c*w*h*d)(z)
+    z = nn.gelu(z)
+    z=einops.rearrange(z,'(b c w h d) ->b w h d c', b=b,c=c,w=w,h=h,d=d)
+    z = nn.ConvTranspose(
+                features=self.cfg.features,
+                kernel_size=(3, 3,3),
+                strides=(2, 2,2),
+                # param_dtype=jax.numpy.float16,                
+                )(z)
+    z = nn.gelu(z)
+    z = nn.ConvTranspose(
+                features=self.cfg.features,
+                kernel_size=(3, 3,3),
+                strides=(2, 2,2),
+                # param_dtype=jax.numpy.float16,
+                )(z)
+    z = nn.gelu(z)
+    z = nn.ConvTranspose(
+                features=1,
+                kernel_size=(3, 3,3),
+                strides=(2, 2,2),
+                # param_dtype=jax.numpy.float16,                
+                )(z)
+          
+    z=einops.rearrange(z,'b w h d c ->b c w h d')
+
     return z
 
 
 class VAE(nn.Module):
-  latents: int = 20
+  cfg: ml_collections.config_dict.config_dict.ConfigDict
 
   def setup(self):
-    self.encoder = Encoder(self.latents)
-    self.decoder = Decoder()
+    self.encoder = Encoder(self.cfg)
+    self.decoder = Decoder(self.cfg)
 
   def __call__(self, x, z_rng):
     mean, logvar = self.encoder(x)
     z = reparameterize(z_rng, mean, logvar)
     recon_x = self.decoder(z)
+
     return recon_x, mean, logvar
 
   def generate(self, z):
@@ -90,6 +151,9 @@ class VAE(nn.Module):
 
 
 def reparameterize(rng, mean, logvar):
+  """
+  reparematrization trick
+  """
   std = jnp.exp(0.5 * logvar)
   eps = random.normal(rng, logvar.shape)
   return mean + eps * std
@@ -107,17 +171,20 @@ def binary_cross_entropy_with_logits(logits, labels):
 
 
 def compute_metrics(recon_x, x, mean, logvar):
+
+  # print(f"recon_x {recon_x.shape} x {x.shape} ")
   bce_loss = binary_cross_entropy_with_logits(recon_x, x).mean()
   kld_loss = kl_divergence(mean, logvar).mean()
-  return {
-      'bce': bce_loss,
-      'kld': kld_loss,
-      'loss': bce_loss + kld_loss
-  }
+  return bce_loss,kld_loss,bce_loss + kld_loss
+  # return {
+  #     'bce': bce_loss,
+  #     'kld': kld_loss,
+  #     'loss': bce_loss + kld_loss
+  # }
 
 
-def model():
-  return VAE(latents=FLAGS.latents)
+def model(cfg):
+  return VAE(cfg)
 
 
 @jax.jit

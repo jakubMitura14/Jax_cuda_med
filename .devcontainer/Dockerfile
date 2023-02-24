@@ -58,7 +58,8 @@ RUN python3 -m  pip install \
     #https://stackoverflow.com/questions/63938552/how-to-run-tensorboard-in-vscode
     tensorboard-plugin-profile \
     jax-smi==1.0.2 \
-    tensorly==0.8.0
+    tensorly==0.8.0 \
+    tqdm==4.64.1
 
 
 RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \
