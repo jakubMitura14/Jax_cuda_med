@@ -21,6 +21,9 @@ formulas for simple shapes
 https://iquilezles.org/articles/distfunctions/
 
 
+Texture
+After research it seems that stationary 3d wavelet transform seem to be most promising in meeting the goal as it is invertible 3d and translation invariant
+
 
 Plan rendering
 1)we establish what shapes are not intersecting 

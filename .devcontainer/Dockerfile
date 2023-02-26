@@ -5,9 +5,86 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         software-properties-common \
         build-essential \
         curl \
-        git
-        # ffmpeg \
-        # libjpeg-turbo8 
+        git \
+        libomp-dev \
+        ffmpeg \
+        libjpeg-turbo8 \
+        libblas-dev \
+        liblapack-dev \
+        gfortran \
+        libblosc-dev \
+        libbrotli-dev \ 
+        bzip2 \
+        libc-ares-dev \
+        libcfitsio-dev \
+        dbus \
+        expat \
+        fontconfig \
+        fonttools \
+        freetype \
+        libicu-dev \
+        libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio \
+        giflib-tools \
+        libjpeg-dev \
+        liblcms2-dev \
+        liblerc-dev \
+        libaec-dev \
+        libblas-dev \
+        libcblas-dev \
+        libcurl-dev \
+        libdeflate-tools \
+        libedit-dev \
+        libev-dev \
+        libffi-dev \
+        libgcc-7-dev \
+        libgfortran4 \
+        libnghttp2-dev \
+        libpng-dev \
+        zlib1g-dev \
+        libssh2-1-dev \
+        libstdc++6 \
+        libtiff-dev \
+        uuid-dev \
+        libwebp-dev \
+        libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev libxcb-shape0-dev libxcb-xkb-dev \
+        libxml2-dev \
+        libzopfli-dev \
+        lz4 \
+        intel-mkl \
+        libncurses5-dev libncursesw5-dev \
+        openjpeg-tools \
+        libssl-dev \ 
+        qt5-default \
+        libreadline-dev \
+        sqlite3 \
+        python3-tk \
+        xorg \
+        openbox \
+        xz-utils \
+        python-yaml \
+        zlib1g-dev \
+        zstd
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#brunsli , charls igl jxrlib ld_impl_linux-64   - libgfortran-ng=7.5.0 libwebp-base llvm-openmp   - pcre=8.45
+
+
 
 
 # RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
@@ -59,7 +136,67 @@ RUN python3 -m  pip install \
     tensorboard-plugin-profile \
     jax-smi==1.0.2 \
     tensorly==0.8.0 \
-    tqdm==4.64.1
+    tqdm==4.64.1 \
+    kymatio==0.3.0 \
+    jaxwt \
+    matplotlib
+
+
+RUN python3 -m  pip install \
+    absl-py==1.0.0 \
+    cloudpickle==2.0.0 \
+    cycler==0.11.0 \
+    cytoolz==0.11.0 \
+    dask-core==2021.10.0 \
+    fsspec==2022.1.0 \
+    imagecodecs==2021.8.26 \
+    imageio==2.9.0 \
+    intel-openmp==2021.4.0 \
+    kiwisolver==1.3.1 \
+    krb5==1.19.2 \
+    locket==0.2.1 \
+    mkl-service==2.4.0 \
+    mkl_fft==1.3.1 \
+    mkl_random==1.2.2 \
+    munkres==1.1.4 \
+    networkx==2.6.3 \
+    olefile==0.46 \
+    opt_einsum==3.3.0 \
+    packaging==21.3 \
+    partd==1.2.0 \
+    pillow==8.4.0 \
+    polyscope==1.3.0 \
+    pyparsing==3.0.4 \
+    pyqt==5.9.2 \
+    dateutil \
+    flatbuffers \
+    abi \
+    pywavelets==1.1.1 \
+    pyyaml==6.0 \
+    scikit-image==0.18.3 \
+    scipy==1.7.3 \
+    setuptools==58.0.4 \
+    sip==4.19.13 \
+    six==1.16.0 \
+    snappy==1.1.8 \
+    tifffile==2021.7.2 \
+    tornado==6.1 \
+    typing_extensions==4.0.1 \
+    tzdata==2021e \
+    wheel==0.37.1 \
+    tornado==6.1
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \

@@ -110,7 +110,7 @@ def eval(params, currImage, z, z_rng,outputImageFileName,indx):
 
   return nn.apply(eval_model, jax_vae)({'params': params})
 
-num_epochs=10
+num_epochs=100
 steps_per_epoch=2
 dataset= get_spleen_data()
 dataset= list(map( lambda tupl: tupl[0], dataset))
@@ -129,24 +129,25 @@ for epoch in range(num_epochs):
   for batch in cached_subj_train:
     rng, key, eval_rng = random.split(keyb,3)
     state = train_step(state, batch, key)
-  #if(epoch%10==0)
-  resPath_epoch=resPath+f"/{epoch}"
-  os.makedirs(resPath_epoch)
+  print(f"epoch {epoch}")
+  if(epoch%10==0):
+    resPath_epoch=resPath+f"/{epoch}"
+    os.makedirs(resPath_epoch)
 
-  def eval_loc(tupl):
-    indx,image=tupl
-    return eval(state.params, image, z, eval_rng,(resPath_epoch+f"/{indx}.nii.gz"),indx)
+    def eval_loc(tupl):
+      indx,image=tupl
+      return eval(state.params, image, z, eval_rng,(resPath_epoch+f"/{indx}.nii.gz"),indx)
 
-  metrics = list(map(eval_loc ,enumerate(cached_subj_test)))
-  bce_loss,kld_loss,losss=list(toolz.sandbox.core.unzip(metrics))
+    metrics = list(map(eval_loc ,enumerate(cached_subj_test)))
+    bce_loss,kld_loss,losss=list(toolz.sandbox.core.unzip(metrics))
 
   # vae_utils.save_image(
   #     comparison, f'results/reconstruction_{epoch}.png', nrow=8)
   # vae_utils.save_image(sample, f'results/sample_{epoch}.png', nrow=8)
 
-  print('eval epoch: {}, loss: {:.4f}, BCE: {:.4f}, KLD: {:.4f}'.format(
-      epoch + 1, np.mean(list(losss)), np.mean(list(bce_loss)),np.mean(list(kld_loss))
-  ))
+    print('eval epoch: {}, loss: {:.4f}, BCE: {:.4f}, KLD: {:.4f}'.format(
+        epoch + 1, np.mean(list(losss)), np.mean(list(bce_loss)),np.mean(list(kld_loss))
+    ))
 
 
 
