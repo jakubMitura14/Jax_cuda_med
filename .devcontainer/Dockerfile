@@ -21,17 +21,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         expat \
         fontconfig \
         fonttools \
-        freetype \
+        # freetype \
         libicu-dev \
         libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio \
         giflib-tools \
         libjpeg-dev \
         liblcms2-dev \
-        liblerc-dev \
+        # liblerc-dev \
         libaec-dev \
         libblas-dev \
-        libcblas-dev \
-        libcurl-dev \
+        # libcblas-dev \
+        # libcurl-dev \
         libdeflate-tools \
         libedit-dev \
         libev-dev \
@@ -52,7 +52,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         lz4 \
         intel-mkl \
         libncurses5-dev libncursesw5-dev \
-        openjpeg-tools \
+        #openjpeg-tools \
         libssl-dev \ 
         qt5-default \
         libreadline-dev \
@@ -115,11 +115,11 @@ RUN python3 -m  pip install \
     dask==2022.11.1 \
     nibabel==5.0.0\
     # intensity-normalization[ants] \
-    # warp-lang \
+    warp-lang \
     report_guided_annotation==0.2.7\
-    # ott-jax \ 
-    # evojax[extra] \
-    # jraph \
+    ott-jax \ 
+    evojax[extra] \
+    jraph \
     flax==0.6.3 \
     toolz==0.12.0\
     ipyparallel==8.4.1\
@@ -142,50 +142,48 @@ RUN python3 -m  pip install \
     matplotlib
 
 
-RUN python3 -m  pip install \
-    absl-py==1.0.0 \
-    cloudpickle==2.0.0 \
-    cycler==0.11.0 \
-    cytoolz==0.11.0 \
-    dask-core==2021.10.0 \
-    fsspec==2022.1.0 \
-    imagecodecs==2021.8.26 \
-    imageio==2.9.0 \
-    intel-openmp==2021.4.0 \
-    kiwisolver==1.3.1 \
-    krb5==1.19.2 \
-    locket==0.2.1 \
-    mkl-service==2.4.0 \
-    mkl_fft==1.3.1 \
-    mkl_random==1.2.2 \
-    munkres==1.1.4 \
-    networkx==2.6.3 \
-    olefile==0.46 \
-    opt_einsum==3.3.0 \
-    packaging==21.3 \
-    partd==1.2.0 \
-    pillow==8.4.0 \
-    polyscope==1.3.0 \
-    pyparsing==3.0.4 \
-    pyqt==5.9.2 \
-    dateutil \
-    flatbuffers \
-    abi \
-    pywavelets==1.1.1 \
-    pyyaml==6.0 \
-    scikit-image==0.18.3 \
-    scipy==1.7.3 \
-    setuptools==58.0.4 \
-    sip==4.19.13 \
-    six==1.16.0 \
-    snappy==1.1.8 \
-    tifffile==2021.7.2 \
-    tornado==6.1 \
-    typing_extensions==4.0.1 \
-    tzdata==2021e \
-    wheel==0.37.1 \
-    tornado==6.1
-
+# RUN python3 -m  pip install \
+#     absl-py==1.0.0 \
+#     cloudpickle==2.0.0 \
+#     cycler==0.11.0 \
+#     cytoolz==0.11.0 \
+#     # dask-core==2021.10.0 \
+#     fsspec==2022.1.0 \
+#     imagecodecs==2021.8.26 \
+#     imageio==2.9.0 \
+#     intel-openmp==2021.4.0 \
+#     kiwisolver==1.3.1 \
+#     # krb5==1.19.2 \
+#     locket==0.2.1 \
+#     mkl-service==2.4.0 \
+#     mkl_fft==1.3.1 \
+#     mkl_random==1.2.2 \
+#     munkres==1.1.4 \
+#     networkx==2.6.3 \
+#     olefile==0.46 \
+#     opt_einsum==3.3.0 \
+#     packaging==21.3 \
+#     partd==1.2.0 \
+#     pillow==8.4.0 \
+#     polyscope==1.3.0 \
+#     pyparsing==3.0.4 \
+#     # pyqt==5.9.2 \
+#     # dateutil \
+#     flatbuffers \
+#     # abi \
+#     pywavelets==1.1.1 \
+#     pyyaml==6.0 \
+#     scikit-image==0.18.3 \
+#     scipy==1.7.3 \
+#     setuptools==58.0.4 \
+#     # sip==4.19.13 \
+#     six==1.16.0 \
+#     # snappy==1.1.8 \
+#     tifffile==2021.7.2 \
+#     tornado==6.1 \
+#     typing_extensions==4.0.1
+#     # tzdata==2021e \
+#     # wheel==0.37.1 
 
 
 

@@ -37,3 +37,18 @@ tutorials
 https://wandb.ai/wandb/nerf-jax/reports/Implementing-NeRF-in-JAX--VmlldzoxODA2NDk2#rendering-the-scene
 https://dmol.pub/dl/VAE.html
 3) we fill them from samples     of gaussians with learned parameters
+
+
+
+Plan implicit soft shapes
+idea in general is to have a function that takes a point coordinates and output the value
+so we have stored for each supervoxel a center, a voxel characteristic (for now just simple gaussian)
+and set of vectors in diffrent directions basically in polar coordinates
+next given a point coordinates in the image we can look at a location value for this point of each supervoxel
+so we will take the voctor from the center of the analyzed supervoxel and look for the dot products of this vector with the stored vectors in the supervoxel publish_display_data
+we than take either sum or max dot product as the score we than take into account wheather the query vecotr is shorter or longer than stored one
+so if it is shorter we give high value if it is not small  
+we will have a score for each supervoxel that will mark basically are the coordinates in the shape or not
+next we will softmax or sth like that to exaggerate the influence of best fit 
+lastly we will multiply by the output values of the gaussians - hence all the supervoxels becouse of the low scores should not contribute significantly 
+and the single one should
