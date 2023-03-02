@@ -51,6 +51,8 @@ from flax.core import freeze, unfreeze
 from flax import linen as nn
 import chex
 import ml_collections
+from jax_smi import initialise_tracking
+initialise_tracking()
 
 
 def norm(v, axis=-1, keepdims=False, eps=0.0):
@@ -205,30 +207,43 @@ cfg.eps=1e-20 #for numerical stability
 
 cfg.to_pow=110# rendering hyperparameter controling exactness and differentiability
 cfg.pow=5# rendering hyperparameter controling exactness and differentiability
-cfg.input_shape=(30,30,30)
+cfg.input_shape=(150,150,150)
 
 
 
 # value_params=jnp.arange(len(supervoxel_centers))
 image = jnp.zeros(cfg.input_shape)
 indicies= einops.rearrange(jnp.indices(image.shape),'c x y z->(x y z) c')
+#dividing into batches
+indicies = einops.rearrange(indicies,'(b v) c-> b v c', v=135000)#TODO calculate batch size
 
+# indicies=indicies[0:10,:]
 
 query_point= jnp.array([2.0,2.0,2.0])
 # super_vox_model=super_voxels_analyze(cfg)
 
-vmapped_super_vox_model = nn.vmap(
+vmapped_super_vox_model = nn.jit(nn.vmap(
     super_voxels_analyze,
     in_axes=0, out_axes=0,
     variable_axes={'params': 0},
-    split_rngs={'params': False})(cfg)
+    split_rngs={'params': False}))(cfg)
 
+
+https://flax.readthedocs.io/en/latest/guides/ensembling.html
 
 aa=vmapped_super_vox_model.init(jax.random.PRNGKey(0),indicies)#query_point
+# aa= jax.jit(aa)
+tic_loop = time.perf_counter()
 # print(f"aaaa {aa}")
-zz=vmapped_super_vox_model.apply(aa,indicies)
+zz= vmapped_super_vox_model.apply(aa,indicies)
+x = random.uniform(random.PRNGKey(0), (1000, 1000))
+jnp.dot(x, x).block_until_ready() 
+toc_loop = time.perf_counter()
+print(f"loop {toc_loop - tic_loop:0.4f} seconds")
+
+
 # print(f"zzz {zz[0]}")
-image_res=jnp.reshape(zz[0],cfg.input_shape)
+image_res = jnp.reshape(zz[0],cfg.input_shape)
 image_res = sitk.GetImageFromArray(image_res)
 sitk.WriteImage(image_res,"/workspaces/Jax_cuda_med/data/explore/cube.nii.gz")
 
