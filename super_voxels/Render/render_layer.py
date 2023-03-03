@@ -52,7 +52,9 @@ from flax import linen as nn
 import chex
 import ml_collections
 from jax_smi import initialise_tracking
-initialise_tracking()
+from flax.training import train_state  
+from flax import jax_utils  
+
 
 
 def norm(v, axis=-1, keepdims=False, eps=0.0):
@@ -74,7 +76,7 @@ def get_initial_points_around(r):
     r - a float that is controlling the initial shape size if it would be a sphere it would be a radius
     """
     res= list(set(itertools.combinations([-r,0.0,r,-r,0.0,r,-r,0.0,r],3)))
-    return jnp.array( list(filter(lambda points: not (points[0]==0.0 and points[1]==0.0 and points[0]==0.0)  ,res)))
+    return jnp.array( list(filter(lambda points: not (points[0]==0.0 and points[1]==0.0 and points[0]==0.0)  ,res))).astype(float)
      
 
 
@@ -92,6 +94,8 @@ def get_corrected_dist(query_point_normalized,around,eps,pow=3):
     cosine_similarity_multi=jax.vmap(partial(optax.cosine_similarity, epsilon=eps),(0,None))
     angle_similarity= jax.nn.softmax(jnp.power(((cosine_similarity_multi(around,query_point_normalized))+1),pow))
     dists = jnp.sqrt(jnp.sum(jnp.power(around,2),axis=1))
+    # print(f"query_point_normalized {query_point_normalized.shape} dists {dists.shape} angle_similarity {angle_similarity.shape} around {around.shape}")
+
     corrected_dist= jnp.sum(dists*angle_similarity)#try also max
     return corrected_dist
 
@@ -131,23 +135,81 @@ def get_value_for_point(param_s_vox, value_param,query_point,cfg ):
     res= value_param*soft_is_in_shape
     return res
 
-# def get_initial_supervoxel_centers(shapee,r):
-#     """
-#     return the initial centers and relative verticies of supervoxels 
-#     verticies has location relative to its center
-#     shape is (v p c) - v - super voxel p - point c - coordinate of the point
-#     """
-#     xx,yy,zz=list(map(lambda index :jnp.arange(r,shapee[index]-r,r),[0,1,2]))
-#     centers=list(map(lambda x:list(map( lambda y: list(map(lambda z: jnp.array([x,y,z])    
-#                         ,zz))
-#                     ,yy))            
-#                 ,xx ))
-#     centers= list(itertools.chain(*centers))
-#     centers= list(itertools.chain(*centers))
-#     centers=jnp.array(centers)
-#     centers=einops.rearrange(centers,'v c-> v 1 c')
-#     return centers
+def get_in_shape_to_compute(indicies,cfg):
+    """
+    We need to calculate the computational plan - we get the devices number 
+            - which need to define our first axis by jax.local_device_count() 
+    we supply the max per gpu num - so we will have the xmap correctly established
+    so we have 
+    pmap - fisrs axis = number of devices
+    scan - just to match the data and other constraints
+    vmap - with number equal or smaller to supplied max per device number     
+    """
+    max_per_device=cfg.max_per_device
+    start_index=cfg.start_index
+    index_increment=cfg.index_increment
 
+    padding_value=-5
+    padding=((padding_value, padding_value),(padding_value,padding_value))
+
+    n_gpu=jax.local_device_count() 
+    n_points= indicies.shape[0]
+    gpu_times_max_per_gpu=n_gpu*max_per_device
+    remainderr= np.remainder(n_points,n_gpu)
+    remainder_big= np.remainder(n_points,gpu_times_max_per_gpu)
+    # in case we do not need to scan just pmap and vmap
+    if(gpu_times_max_per_gpu>=n_points):
+        #now we need to check is it divisible by n_gpu if yes nothing need to be done if not 
+        #we need to pad it
+        if(remainderr!=0):
+            indicies= jnp.pad(indicies, ((0, remainderr), (0, 0)), 'constant', constant_values=padding)
+        return einops.rearrange(indicies,'(g p) c->g 1 p c',g=n_gpu)
+    #now for case we need scanning we need to calculate the optimal padding plan 
+    else:
+        #first maybe we are lucky and all is divisible
+        if(remainder_big==0):
+            return einops.rearrange(indicies,'(g s p) c->g s p c',g=n_gpu,p=max_per_device)
+        #if padding is needed we need to make an effort and calculate it
+        else:
+            #now we will first go to the closest number divisible by n_gpu up from n_points from max_per_device
+            n_points=n_points+remainderr
+            max_per_device=max_per_device+np.remainder(max_per_device,n_gpu)
+            max_per_device=max_per_device*n_gpu
+            #now we will go with stepping up in n_point and stepping down from max_per_device and check for
+            #for a way to get the divisible outcome with as small steps as possible
+            index=start_index
+            old_index=0
+            while(True):
+                # for the case that we can not find the solution we leave possibility to increase search space
+                index=index+index_increment
+                arranges=jnp.arange(old_index,index,n_gpu)
+                old_index=index
+                lenn=len(arranges)
+                n_points_arr=arranges+n_points
+                max_per_device_arr=max_per_device-arranges
+                ind_matrix=jnp.repeat(jnp.reshape(n_points_arr,(1,lenn)),lenn,axis=0 )
+                scan_matrix=jnp.transpose(jnp.repeat(jnp.reshape(max_per_device_arr,(1,lenn)),lenn ,axis=0))
+
+                # we get it into a matrix get a remainders 
+                remainder_matrix= jnp.remainder(ind_matrix,scan_matrix)
+                # #we look for entry with zeros and return its indicies
+                remm=jnp.asarray(remainder_matrix==0).nonzero()
+                zero_ind_array=jnp.stack(remm,axis=1)
+                if(zero_ind_array.shape[0]>0):
+                    #now we look for the entry with smallest number of padding steps that meets our criteria
+                    min_index=jnp.argmin(jnp.sum(zero_ind_array,axis=1))
+                    #on the basis of calculated values we add padding to indicies and set scanning axis correctly
+                    to_pad=n_points_arr[zero_ind_array[min_index,1]]
+                    scan_axis_num=max_per_device_arr[zero_ind_array[min_index,0]]
+                    # to_pad=n_points_arr[zero_ind_array[min_index,1]]
+                    # scan_axis_num=max_per_device_arr[zero_ind_array[min_index,0]]
+                    divv=to_pad/scan_axis_num
+                    # print(f"divv {divv} zero_ind_array {zero_ind_array[min_index,:]}  to_pad {to_pad}  scan_axis_num {scan_axis_num} multi {scan_axis_num*n_gpu}")
+                    indicies= jnp.pad(indicies, ((0,to_pad-n_points), (0, 0)), 'constant', constant_values=padding)
+                    # print(f"scan_axis_num {scan_axis_num} indicies {indicies.shape} n_gpu {n_gpu}")
+                    # print(f"indicies {indicies.shape[0]}  calculated {indicies.shape[0]/(scan_axis_num)}  ")
+                    # return einops.rearrange(indicies,'(g p) c->g s p c',g=n_gpu,s=scan_axis_num)
+                    return einops.rearrange(indicies,'(g s p) c->g s p c',g=n_gpu,p=int(scan_axis_num/n_gpu))
 
 def get_initial_supervoxel_shape_param(shapee,r):
     """
@@ -170,82 +232,202 @@ def get_initial_supervoxel_shape_param(shapee,r):
     shape_param=jnp.concatenate([centers,verticies_multi], axis=1)
     return shape_param
 
-
-
 class super_voxels_analyze(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
 
     def get_shape_params(self,rng,dummy):
         return get_initial_supervoxel_shape_param(self.cfg.input_shape,self.cfg.r)
     def get_value_params(self,rng,super_voxel_num):
-        return jnp.arange(super_voxel_num) 
+        return jnp.arange(super_voxel_num).astype(float)
     
-    def for_scan(self,carry_pair, param_pair):
+    def for_scan(self,query_point, param_pair):
        shape_param_singe,value_param_single = param_pair
-       carry,query_point =carry_pair
-       res=get_value_for_point(shape_param_singe, value_param_single,query_point,self.cfg)        
-    #    print(f"ress {res}")
-    #    res=res+carry
-       return (res+carry,query_point),None#res
+       #we need to check wheather we have positive values negative values indicate that it is just a padding
+       res=get_value_for_point(shape_param_singe, value_param_single,query_point,self.cfg)
+       return query_point,res#res
 
-    @nn.compact
-    def __call__(self, query_point):
+    def to_call(self, query_point):
         shape_param = self.param('shape_param_single_s_vox',
                             self.get_shape_params,())
         value_param = self.param('value_param_single_s_vox',
                             self.get_value_params,(shape_param.shape[0]))
         
-        scanned_a, scanned_b = lax.scan(self.for_scan, (0.0,query_point), (shape_param, value_param))
+        scanned_b = lax.scan(self.for_scan, query_point, (shape_param, value_param))[1]
+        return jnp.sum(jnp.ravel(scanned_b))
+    # def to_call_when_none(self, query_point):
+    #     return jnp.array([0.0])
 
-        return scanned_a
+
+    @nn.compact
+    def __call__(self,query_point):
+        # print(f"query_pointtttt {query_point}")
+        #we need to verify that we do not deal with a padding points
+        # return lax.select(query_point[0]>-1, self.to_call(query_point), self.to_call_when_none(query_point))
+        res= lax.select(query_point[0]>-1, self.to_call(query_point), 0.0)
+
+        return res
+
+"""
+first function transformation we vmap over all points given to this point 
+the maximum number of points is controlled via hyperparameter and is controlling
+gpu memory usage
+"""
+vmapped_super_vox_model = nn.vmap(
+    super_voxels_analyze,
+    in_axes=0, out_axes=0,
+    variable_axes={'params': 0},
+    split_rngs={'params': True})
 
 
+"""
+second transformation needed if we will not be able to squeeze all of the points computations
+on a GPU memory we will scan over batches and each batch will be vmapped as shown above
+"""
+def get_vmapped_scanned_super_vox_model(cfg):
+
+    return nn.vmap(
+    vmapped_super_vox_model,
+    in_axes=0, out_axes=0,
+    variable_axes={'params': 0},
+    split_rngs={'params': True})
+
+    # return nn.remat_scan(nn.Dense, lengths=(1,cfg.final_shape[0]))
+
+
+    # return nn.scan(
+    #             vmapped_super_vox_model,
+    #             in_axes=0, out_axes=0
+    #             ,length=cfg.final_shape[1]
+    #             # ,variable_broadcast={'params': 0}
+    #             ,variable_axes={'params': 0}
+    #             ,split_rngs={'params': True}
+    #             )
+
+
+
+@functools.partial(jax.pmap,static_broadcasted_argnums=1, axis_name='ensemble')#,static_broadcasted_argnums=(2)
+def create_train_state(rng,cfg:ml_collections.config_dict.FrozenConfigDict):
+    """
+    create a training state
+    """
+    model = get_vmapped_scanned_super_vox_model(cfg)(cfg)
+    # dummy_image=jnp.ones((cfg.final_shape[1],cfg.final_shape[2],cfg.final_shape[3]))
+    dummy_image=jnp.ones((cfg.final_shape))
+    params = model.init(rng, dummy_image)['params']
+    # dummy_image=jnp.ones((cfg.final_shape[1],cfg.final_shape[2],cfg.final_shape[3]))
+    # print(f"dummy_image {dummy_image.shape}")
+    # model.init(rng,dummy_image )#['params']
+    # print(f" got paramse in train state")
+    tx = optax.adamw(learning_rate=0.00001)
+    return train_state.TrainState.create(
+        apply_fn=model.apply, params=params, tx=tx)
+
+
+@functools.partial(jax.pmap, axis_name='ensemble',static_broadcasted_argnums=0)#,static_broadcasted_argnums=(2)
+def apply_model(cfg,state, indicies,orig_image):
+    """
+    get a loss and return both output and gradients required for model update
+    """
+    def loss_fn(params):
+        values = get_vmapped_scanned_super_vox_model(cfg)(cfg).apply({'params': params}, indicies)
+        orig_flat=jnp.ravel(orig_image)
+
+        loss = optax.l2_loss(jnp.ravel(values)[0:orig_flat.shape[0]],orig_flat).mean()
+        return loss, values
+
+    grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+    (loss, values), grads = grad_fn(state.params)
+
+    return grads, loss, values
+
+@jax.pmap
+def update_model(state, grads):
+  """
+  on the basis of calculated gradients and using given optimizer 
+  will update parameters
+  """
+  return state.apply_gradients(grads=grads)
+
+def train_epoch(state, indicies,orig_image, rng):
+    #replicate needed for multi gpu training
+    indicies_repl = jax_utils.replicate(indicies)
+    orig_image_repl = jax_utils.replicate(orig_image)
+
+    grads, loss, values = apply_model(cfg,state, indicies_repl, orig_image_repl)
+    state = update_model(state, grads)
+    #unreplicating needed for multi gpu training
+    epoch_loss=jax_utils.unreplicate(loss)
+    values=jax_utils.unreplicate(values)
+
+    return state, epoch_loss, values
+
+
+
+
+from jax.config import config
+# config.update("jax_disable_jit", True)
+initialise_tracking()
 
 cfg = ml_collections.config_dict.ConfigDict()
 cfg.r=4.5# size of super voxel
 cfg.eps=1e-20 #for numerical stability
-
 cfg.to_pow=110# rendering hyperparameter controling exactness and differentiability
 cfg.pow=5# rendering hyperparameter controling exactness and differentiability
-cfg.input_shape=(150,150,150)
-
+cfg.input_shape=(40,40,40)
+cfg.max_per_device= 10000#1000000 # indicates how many points at once can be vmapped to be processed in the GPU to avoid out of memory errors
+#two variables controlling the search space of optimal padding strategy the first number 
+# is controlling how much gpu memory will be used, second haw fast it will jump (the faster the less optimal the padding)
+cfg.start_index=50000
+cfg.index_increment=1000
 
 
 # value_params=jnp.arange(len(supervoxel_centers))
-image = jnp.zeros(cfg.input_shape)
+image = jnp.ones(cfg.input_shape)
 indicies= einops.rearrange(jnp.indices(image.shape),'c x y z->(x y z) c')
-#dividing into batches
-indicies = einops.rearrange(indicies,'(b v) c-> b v c', v=135000)#TODO calculate batch size
+orig_indicies_len=indicies.shape[0]
 
-# indicies=indicies[0:10,:]
+indicies=get_in_shape_to_compute(indicies,cfg)
+indicies= einops.rearrange(indicies,'g s p c->(g s) p c')
 
-query_point= jnp.array([2.0,2.0,2.0])
+print(f"get compute shape {indicies.shape}")
 # super_vox_model=super_voxels_analyze(cfg)
-
-vmapped_super_vox_model = nn.jit(nn.vmap(
-    super_voxels_analyze,
-    in_axes=0, out_axes=0,
-    variable_axes={'params': 0},
-    split_rngs={'params': False}))(cfg)
-
-
-https://flax.readthedocs.io/en/latest/guides/ensembling.html
-
-aa=vmapped_super_vox_model.init(jax.random.PRNGKey(0),indicies)#query_point
-# aa= jax.jit(aa)
-tic_loop = time.perf_counter()
-# print(f"aaaa {aa}")
-zz= vmapped_super_vox_model.apply(aa,indicies)
-x = random.uniform(random.PRNGKey(0), (1000, 1000))
-jnp.dot(x, x).block_until_ready() 
-toc_loop = time.perf_counter()
-print(f"loop {toc_loop - tic_loop:0.4f} seconds")
+rng = jax.random.PRNGKey(42)
+rng,rng_new = jax.random.split(rng)
+# rng_a,rng_b,rng_c=jax.random.split(rng,split=3)
+rng_2=jax.random.split(rng,num=jax.local_device_count() )
+cfg.final_shape=indicies.shape
 
 
-# print(f"zzz {zz[0]}")
-image_res = jnp.reshape(zz[0],cfg.input_shape)
-image_res = sitk.GetImageFromArray(image_res)
-sitk.WriteImage(image_res,"/workspaces/Jax_cuda_med/data/explore/cube.nii.gz")
+cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
+
+state=create_train_state(rng_2,cfg)
+state, epoch_loss, values=train_epoch(state, indicies,image, rng_new)
+print(f"epoch_loss {epoch_loss}")
+
+
+
+# https://flax.readthedocs.io/en/latest/guides/ensembling.html
+
+# aa=vmapped_super_vox_model.init(jax.random.PRNGKey(0),indicies)#query_point
+# # aa= jax.jit(aa)
+# tic_loop = time.perf_counter()
+# # print(f"aaaa {aa}")
+# zz= vmapped_super_vox_model.apply(aa,indicies)
+# x = random.uniform(random.PRNGKey(0), (1000, 1000))
+# jnp.dot(x, x).block_until_ready() 
+# toc_loop = time.perf_counter()
+# print(f"loop {toc_loop - tic_loop:0.4f} seconds")
+
+
+# # print(f"zzz {zz[0]}")
+# image_res = jnp.reshape(zz[0],cfg.input_shape)
+# image_res = sitk.GetImageFromArray(image_res)
+# sitk.WriteImage(image_res,"/workspaces/Jax_cuda_med/data/explore/cube.nii.gz")
+
+
+
+
+
 
 
 # layer.init(query_point)

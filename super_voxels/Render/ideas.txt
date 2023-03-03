@@ -1,0 +1,9 @@
+Pixel wise loss in main function in the end just sum
+
+We can in each iteration make sure that the verticies that are shared by 2 are in given run updated only by single parameter update
+it may be tricky - additionally we need to make sure that those coordinates will be set to the lastly updated coordinates in all verticies
+maybe other but possibly less efficient way is to update positions each time as a center for all coordinates proposed by all updates
+this could be potentially done by sth like half edge mesh - so storing data what is adjacent in each direction ...
+
+additionally loss could be increased when a) variance is very small - so for example outside the body
+                                          b) points of a single supervoxels are not spreadout - they should maximize the relative distance between themselves
