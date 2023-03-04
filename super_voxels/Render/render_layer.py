@@ -369,7 +369,7 @@ from jax.config import config
 initialise_tracking()
 
 cfg = ml_collections.config_dict.ConfigDict()
-cfg.r=4.5# size of super voxel
+cfg.r=14.5# size of super voxel
 cfg.eps=1e-20 #for numerical stability
 cfg.to_pow=110# rendering hyperparameter controling exactness and differentiability
 cfg.pow=5# rendering hyperparameter controling exactness and differentiability

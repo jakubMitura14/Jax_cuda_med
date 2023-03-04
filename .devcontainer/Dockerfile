@@ -313,3 +313,6 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda-12.0/NsightSystems-cli-2022.5.1/target-linux
 # RUN apt-get update
 # RUN apt install -y lsb-release wget software-properties-common gnupg
 # RUN bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
+
+#   git config --global user.email "jakub.mitura@gmail.com"
+#   git config --global user.name "Jakub Mitura"
