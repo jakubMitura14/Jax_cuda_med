@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+from jax import lax, random, numpy as jnp
 
 # from six.moves import range
 
@@ -81,7 +82,7 @@ class Transform3d(object):
         .. codeauthor:: Nick Kingsbury, Cambridge University, July 1999.
 
         """
-        X = np.atleast_3d(asfarray(X))
+        X = jnp.atleast_3d(asfarray(X))
 
         # If biort has 6 elements instead of 4, then it's a modified
         # rotationally symmetric wavelet
@@ -205,7 +206,7 @@ class Transform3d(object):
                 if Yh[-level - 2] is not None:
                     prev_shape = Yh[-level - 2].shape
                 else:
-                    prev_shape = np.array(Yh[-level - 1].shape) * 2
+                    prev_shape = jnp.array(Yh[-level - 1].shape) * 2
 
                 Yl = _level2_ifm(
                     Yl, Yh[-level - 1], g0a, g0b, g1a, g1b, self.ext_mode, prev_shape
@@ -216,25 +217,25 @@ class Transform3d(object):
 
 def _level1_xfm(X, h0o, h1o, ext_mode):
     """Perform level 1 of the 3d transform."""
-    # Check shape of input according to ext_mode. Note that shape of X is
+    # Check shape of ijnput according to ext_mode. Note that shape of X is
     # double original input in each direction.
-    if ext_mode == 4 and np.any(np.fmod(X.shape, 2) != 0):
+    if ext_mode == 4 and jnp.any(jnp.fmod(jnp.array(X.shape), 2) != 0):
         raise ValueError(
-            "Input shape should be a multiple of 2 in each direction when self.ext_mode == 4"
+            "Ijnput shape should be a multiple of 2 in each direction when self.ext_mode == 4"
         )
-    elif ext_mode == 8 and np.any(np.fmod(X.shape, 4) != 0):
+    elif ext_mode == 8 and jnp.any(jnp.fmod(jnp.array(X.shape), 4) != 0):
         raise ValueError(
             "Input shape should be a multiple of 4 in each direction when self.ext_mode == 8"
         )
 
     # Create work area
-    work_shape = np.asanyarray(X.shape) * 2
+    work_shape = jnp.array(X.shape) * 2
 
     # We need one extra row per octant if filter length is even
     if h0o.shape[0] % 2 == 0:
         work_shape += 2
 
-    work = np.zeros(work_shape, dtype=X.dtype)
+    work = jnp.zeros(work_shape, dtype=X.dtype)
 
     # Form some useful slices
     s0a = slice(None, work.shape[0] >> 1)
@@ -251,7 +252,7 @@ def _level1_xfm(X, h0o, h1o, ext_mode):
     x1b = slice(work.shape[1] >> 1, (work.shape[1] >> 1) + X.shape[1])
     x2b = slice(work.shape[2] >> 1, (work.shape[2] >> 1) + X.shape[2])
 
-    # Assign input
+    # Assign ijnput
     if h0o.shape[0] % 2 == 0:
         work[: X.shape[0], : X.shape[1], : X.shape[2]] = X
 
@@ -261,7 +262,7 @@ def _level1_xfm(X, h0o, h1o, ext_mode):
         work[: X.shape[0], : X.shape[1], X.shape[2]] = X[:, :, -1]
         work[X.shape[0], X.shape[1], X.shape[2]] = X[-1, -1, -1]
     else:
-        work[s0a, s1a, s2a] = X
+        work = work.at[s0a, s1a, s2a].set(X)
 
     # Loop over 2nd dimension extracting 2D slice from first and 3rd dimensions
     for f in range(work.shape[1] >> 1):
@@ -270,25 +271,25 @@ def _level1_xfm(X, h0o, h1o, ext_mode):
         # Do odd top-level filters on 3rd dim. The order here is important
         # since the second filtering will modify the elements of y as well
         # since y is merely a view onto work.
-        work[s0a, f, s2b] = colfilter(y, h1o).T
-        work[s0a, f, s2a] = colfilter(y, h0o).T
+        work = work.at[s0a, f, s2b].set(colfilter(y, h1o).T)
+        work = work.at[s0a, f, s2a].set(colfilter(y, h0o).T)
 
     # Loop over 3rd dimension extracting 2D slice from first and 2nd dimensions
     for f in range(work.shape[2]):
         # Do odd top-level filters on rows.
         y1 = work[x0a, x1a, f].T
-        y2 = np.vstack((colfilter(y1, h0o), colfilter(y1, h1o))).T
+        y2 = jnp.vstack((colfilter(y1, h0o), colfilter(y1, h1o))).T
 
         # Do odd top-level filters on columns.
-        work[s0a, :, f] = colfilter(y2, h0o)
-        work[s0b, :, f] = colfilter(y2, h1o)
+        work.at[s0a, :, f].set(colfilter(y2, h0o))
+        work.at[s0b, :, f].set(colfilter(y2, h1o))
         # if f==2:
         # work[:,:,work.shape[2]+1]=1 #to throw an error so we can inspect y in the unit test
 
     # Return appropriate slices of output
     return (
         work[s0a, s1a, s2a],  # LLL
-        np.concatenate(
+        jnp.concatenate(
             (
                 cube2c(work[x0a, x1b, x2a]),  # HLL
                 cube2c(work[x0b, x1a, x2a]),  # LHL
@@ -305,18 +306,18 @@ def _level1_xfm(X, h0o, h1o, ext_mode):
 
 def _level1_xfm_no_highpass(X, h0o, h1o, ext_mode):
     """Perform level 1 of the 3d transform discarding highpass subbands."""
-    # Check shape of input according to ext_mode. Note that shape of X is
+    # Check shape of ijnput according to ext_mode. Note that shape of X is
     # double original input in each direction.
-    if ext_mode == 4 and np.any(np.fmod(X.shape, 2) != 0):
+    if ext_mode == 4 and jnp.any(jnp.fmod(X.shape, 2) != 0):
         raise ValueError(
-            "Input shape should be a multiple of 2 in each direction when self.ext_mode == 4"
+            "Ijnput shape should be a multiple of 2 in each direction when self.ext_mode == 4"
         )
-    elif ext_mode == 8 and np.any(np.fmod(X.shape, 4) != 0):
+    elif ext_mode == 8 and jnp.any(jnp.fmod(X.shape, 4) != 0):
         raise ValueError(
             "Input shape should be a multiple of 4 in each direction when self.ext_mode == 8"
         )
 
-    out = np.zeros_like(X)
+    out = jnp.zeros_like(X)
 
     # Loop over 2nd dimension extracting 2D slice from first and 3rd dimensions
     for f in range(X.shape[1]):
@@ -337,22 +338,22 @@ def _level2_xfm(X, h0a, h0b, h1a, h1b, ext_mode):
 
     if ext_mode == 4:
         if X.shape[0] % 4 != 0:
-            X = np.concatenate((X[[0], :, :], X, X[[-1], :, :]), 0)
+            X = jnp.concatenate((X[[0], :, :], X, X[[-1], :, :]), 0)
         if X.shape[1] % 4 != 0:
-            X = np.concatenate((X[:, [0], :], X, X[:, [-1], :]), 1)
+            X = jnp.concatenate((X[:, [0], :], X, X[:, [-1], :]), 1)
         if X.shape[2] % 4 != 0:
-            X = np.concatenate((X[:, :, [0]], X, X[:, :, [-1]]), 2)
+            X = jnp.concatenate((X[:, :, [0]], X, X[:, :, [-1]]), 2)
     elif ext_mode == 8:
         if X.shape[0] % 8 != 0:
-            X = np.concatenate((X[(0, 0), :, :], X, X[(-1, -1), :, :]), 0)
+            X = jnp.concatenate((X[(0, 0), :, :], X, X[(-1, -1), :, :]), 0)
         if X.shape[1] % 8 != 0:
-            X = np.concatenate((X[:, (0, 0), :], X, X[:, (-1, -1), :]), 1)
+            X = jnp.concatenate((X[:, (0, 0), :], X, X[:, (-1, -1), :]), 1)
         if X.shape[2] % 8 != 0:
-            X = np.concatenate((X[:, :, (0, 0)], X, X[:, :, (-1, -1)]), 2)
+            X = jnp.concatenate((X[:, :, (0, 0)], X, X[:, :, (-1, -1)]), 2)
 
     # Create work area
-    work_shape = np.asanyarray(X.shape)
-    work = np.zeros(work_shape, dtype=X.dtype)
+    work_shape = jnp.array(X.shape)
+    work = jnp.zeros(work_shape, dtype=X.dtype)
 
     # Form some useful slices
     s0a = slice(None, work.shape[0] >> 1)
@@ -371,23 +372,23 @@ def _level2_xfm(X, h0a, h0b, h1a, h1b, ext_mode):
         y = work[:, f, :].T.copy()
 
         # Do even Qshift filters on 3rd dim.
-        work[:, f, s2b] = coldfilt(y, h1b, h1a).T
-        work[:, f, s2a] = coldfilt(y, h0b, h0a).T
+        work=work.at[:, f, s2b].set(coldfilt(y, h1b, h1a).T)
+        work=work.at[:, f, s2a].set(coldfilt(y, h0b, h0a).T)
 
     # Loop over 3rd dimension extracting 2D slice from first and 2nd dimensions
     for f in range(work.shape[2]):
         # Do even Qshift filters on rows.
         y1 = work[:, :, f].T
-        y2 = np.vstack((coldfilt(y1, h0b, h0a), coldfilt(y1, h1b, h1a))).T
+        y2 = jnp.vstack((coldfilt(y1, h0b, h0a), coldfilt(y1, h1b, h1a))).T
 
         # Do even Qshift filters on columns.
-        work[s0a, :, f] = coldfilt(y2, h0b, h0a)
-        work[s0b, :, f] = coldfilt(y2, h1b, h1a)
+        work=work.at[s0a, :, f].set(coldfilt(y2, h0b, h0a))
+        work=work.at[s0b, :, f].set(coldfilt(y2, h1b, h1a))
 
     # Return appropriate slices of output
     return (
         work[s0a, s1a, s2a],  # LLL
-        np.concatenate(
+        jnp.concatenate(
             (
                 cube2c(work[s0a, s1b, s2a]),  # HLL
                 cube2c(work[s0b, s1a, s2a]),  # LHL
@@ -407,10 +408,10 @@ def _level1_ifm(Yl, Yh, g0o, g1o):
     Perform level 1 of the inverse 3d transform.
     """
     # Create work area
-    work = np.zeros(np.asanyarray(Yl.shape) * 2, dtype=Yl.dtype)
+    work = jnp.zeros(jnp.array(Yl.shape) * 2, dtype=Yl.dtype)
 
     # Work out shape of output
-    Xshape = np.asanyarray(work.shape) >> 1
+    Xshape = jnp.array(work.shape) >> 1
     if g0o.shape[0] % 2 == 0:
         # if we have an even length filter, we need to shrink the output by 1
         # to compensate for the addition of an extra row/column/slice in
@@ -433,26 +434,26 @@ def _level1_ifm(Yl, Yh, g0o, g1o):
     x2b = slice(work.shape[2] >> 1, (work.shape[2] >> 1) + Xshape[2])
 
     # Assign regions of work area
-    work[s0a, s1a, s2a] = Yl
-    work[x0a, x1b, x2a] = c2cube(Yh[:, :, :, 0:4])
-    work[x0b, x1a, x2a] = c2cube(Yh[:, :, :, 4:8])
-    work[x0b, x1b, x2a] = c2cube(Yh[:, :, :, 8:12])
-    work[x0a, x1a, x2b] = c2cube(Yh[:, :, :, 12:16])
-    work[x0a, x1b, x2b] = c2cube(Yh[:, :, :, 16:20])
-    work[x0b, x1a, x2b] = c2cube(Yh[:, :, :, 20:24])
-    work[x0b, x1b, x2b] = c2cube(Yh[:, :, :, 24:28])
+    work=work.at[s0a, s1a, s2a].set(Yl)
+    work=work.at[x0a, x1b, x2a].set(c2cube(Yh[:, :, :, 0:4]))
+    work=work.at[x0b, x1a, x2a].set(c2cube(Yh[:, :, :, 4:8]))
+    work=work.at[x0b, x1b, x2a].set(c2cube(Yh[:, :, :, 8:12]))
+    work=work.at[x0a, x1a, x2b].set(c2cube(Yh[:, :, :, 12:16]))
+    work=work.at[x0a, x1b, x2b].set(c2cube(Yh[:, :, :, 16:20]))
+    work=work.at[x0b, x1a, x2b].set(c2cube(Yh[:, :, :, 20:24]))
+    work= work.at[x0b, x1b, x2b].set(c2cube(Yh[:, :, :, 24:28]))
 
     for f in range(work.shape[2]):
         # Do odd top-level filters on rows.
         y = colfilter(work[:, x1a, f].T, g0o) + colfilter(work[:, x1b, f].T, g1o)
 
         # Do odd top-level filters on columns.
-        work[s0a, s1a, f] = colfilter(y[:, x0a].T, g0o) + colfilter(y[:, x0b].T, g1o)
+        work=work.at[s0a, s1a, f].set(colfilter(y[:, x0a].T, g0o) + colfilter(y[:, x0b].T, g1o))
 
     for f in range(work.shape[1] >> 1):
         # Do odd top-level filters on 3rd dim.
         y = work[s0a, f, :].T
-        work[s0a, f, s2a] = (colfilter(y[x2a, :], g0o) + colfilter(y[x2b, :], g1o)).T
+        work=work.at[s0a, f, s2a].set((colfilter(y[x2a, :], g0o) + colfilter(y[x2b, :], g1o)).T)
 
     if g0o.shape[0] % 2 == 0:
         return work[
@@ -468,15 +469,15 @@ def _level1_ifm_no_highpass(Yl, g0o, g1o):
 
     """
     # Create work area
-    output = np.zeros_like(Yl)
+    output = jnp.zeros_like(Yl)
 
     for f in range(Yl.shape[2]):
         y = colfilter(Yl[:, :, f].T, g0o)
-        output[:, :, f] = colfilter(y.T, g0o)
+        output=output.at[:, :, f].set(colfilter(y.T, g0o))
 
     for f in range(Yl.shape[1]):
         y = output[:, f, :].T.copy()
-        output[:, f, :] = einops.rearrange(colfilter(y, g0o),'a b -> b a')
+        output.at[:, f, :].set(einops.rearrange(colfilter(y, g0o), "a b -> b a"))
 
     return output
 
@@ -484,7 +485,7 @@ def _level1_ifm_no_highpass(Yl, g0o, g1o):
 def _level2_ifm(Yl, Yh, g0a, g0b, g1a, g1b, ext_mode, prev_level_size):
     """Perform level 2 or greater of the 3d inverse transform."""
     # Create work area
-    work = np.zeros(np.asanyarray(Yl.shape) * 2, dtype=Yl.dtype)
+    work = jnp.zeros(jnp.array(Yl.shape) * 2, dtype=Yl.dtype)
 
     # Form some useful slices
     s0a = slice(None, work.shape[0] >> 1)
@@ -495,14 +496,14 @@ def _level2_ifm(Yl, Yh, g0a, g0b, g1a, g1b, ext_mode, prev_level_size):
     s2b = slice(work.shape[2] >> 1, None)
 
     # Assign regions of work area
-    work[s0a, s1a, s2a] = Yl
-    work[s0a, s1b, s2a] = c2cube(Yh[:, :, :, 0:4])
-    work[s0b, s1a, s2a] = c2cube(Yh[:, :, :, 4:8])
-    work[s0b, s1b, s2a] = c2cube(Yh[:, :, :, 8:12])
-    work[s0a, s1a, s2b] = c2cube(Yh[:, :, :, 12:16])
-    work[s0a, s1b, s2b] = c2cube(Yh[:, :, :, 16:20])
-    work[s0b, s1a, s2b] = c2cube(Yh[:, :, :, 20:24])
-    work[s0b, s1b, s2b] = c2cube(Yh[:, :, :, 24:28])
+    work=work.at[s0a, s1a, s2a].set(Yl)
+    work=work.at[s0a, s1b, s2a].set(c2cube(Yh[:, :, :, 0:4]))
+    work=work.at[s0b, s1a, s2a].set(c2cube(Yh[:, :, :, 4:8]))
+    work=work.at[s0b, s1b, s2a].set(c2cube(Yh[:, :, :, 8:12]))
+    work=work.at[s0a, s1a, s2b].set(c2cube(Yh[:, :, :, 12:16]))
+    work=work.at[s0a, s1b, s2b].set(c2cube(Yh[:, :, :, 16:20]))
+    work=work.at[s0b, s1a, s2b].set(c2cube(Yh[:, :, :, 20:24]))
+    work=work.at[s0b, s1b, s2b].set(c2cube(Yh[:, :, :, 24:28]))
 
     for f in range(work.shape[2]):
         # Do even Qshift filters on rows.
@@ -511,14 +512,14 @@ def _level2_ifm(Yl, Yh, g0a, g0b, g1a, g1b, ext_mode, prev_level_size):
         )
 
         # Do even Qshift filters on columns.
-        work[:, :, f] = colifilt(y[:, s0a].T, g0b, g0a) + colifilt(
+        work=work.at[:, :, f].set(colifilt(y[:, s0a].T, g0b, g0a) + colifilt(
             y[:, s0b].T, g1b, g1a
-        )
+        ))
 
     for f in range(work.shape[1]):
         # Do even Qshift filters on 3rd dim.
         y = work[:, f, :].T
-        work[:, f, :] = (
+        work=work.at[:, f, :].set(
             colifilt(y[s2a, :], g0b, g0a) + colifilt(y[s2b, :], g1b, g1a)
         ).T
 
@@ -527,8 +528,8 @@ def _level2_ifm(Yl, Yh, g0a, g0b, g1a, g1b, ext_mode, prev_level_size):
     # the previous level. If NO, then we have to remove the appended row /
     # column / frame from the previous level DTCWT coefs.
 
-    prev_level_size = np.asarray(prev_level_size)
-    curr_level_size = np.asarray(Yh.shape)
+    prev_level_size = jnp.asarray(prev_level_size)
+    curr_level_size = jnp.asarray(Yh.shape)
 
     if ext_mode == 4:
         if curr_level_size[0] * 2 != prev_level_size[0]:
@@ -575,7 +576,7 @@ def cube2c(y):
     """
 
     # TODO: check this scaling
-    j2 = 0.5 * np.array([1, 1j])
+    j2 = 0.5 * jnp.array([1, 1j])
 
     # This is taken from:
     # Efficient Registration of Nonrigid 3-D Bodies, Huizhong Chen, and Nick Kingsbury, 2012
@@ -599,12 +600,12 @@ def cube2c(y):
 
     # j2[2]=1 #to throw an error
     # Form the 2 subbands in z.
-    z = np.concatenate(
+    z = jnp.concatenate(
         (
-            p[:, :, :, np.newaxis],
-            q[:, :, :, np.newaxis],
-            r[:, :, :, np.newaxis],
-            s[:, :, :, np.newaxis],
+            p[:, :, :, jnp.newaxis],
+            q[:, :, :, jnp.newaxis],
+            r[:, :, :, jnp.newaxis],
+            s[:, :, :, jnp.newaxis],
         ),
         axis=3,
     )
@@ -638,7 +639,7 @@ def c2cube(z):
     rr, ri = r.real, r.imag  # C,G
     sr, si = s.real, s.imag  # D,H
 
-    y = np.zeros(np.asanyarray(z.shape[:3]) * 2, dtype=z.real.dtype)
+    y = jnp.zeros(jnp.array(z.shape[:3]) * 2, dtype=z.real.dtype)
 
     y[0::2, 0::2, 0::2] = pr + qr + rr + sr
     y[1::2, 0::2, 1::2] = -pr - qr + rr + sr
