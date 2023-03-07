@@ -97,8 +97,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 
 
-RUN python3 -m  pip  install torch torchvision torchaudio torch-geometric --extra-index-url https://download.pytorch.org/whl/cpu
-
+# RUN python3 -m  pip  install torch torchvision torchaudio torch-geometric --extra-index-url https://download.pytorch.org/whl/cpu
+# RUN python3 -m  pip  install torch torchvision torchaudio torch-geometric --extra-index-url https://download.pytorch.org/whl/cpu
+RUN python3 -m pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu118
 # # RUN python3 -m pip install jaxlib --upgrade
 # # RUN python3 -m pip install jax --upgrade
 
@@ -139,7 +140,8 @@ RUN python3 -m  pip install \
     tqdm==4.64.1 \
     kymatio==0.3.0 \
     jaxwt \
-    matplotlib
+    matplotlib \
+    PyWavelets==1.4.1 
 
 
 # RUN python3 -m  pip install \
@@ -209,7 +211,7 @@ RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numP
 
 
 
-# RUN python3 -m  pip install monai-weekly
+RUN python3 -m  pip install monai-weekly
 
 
 # RUN python3 -m pip uninstall -y horovod
@@ -271,6 +273,10 @@ RUN apt install graphviz
 RUN go install github.com/google/pprof@latest
 ENV XLA_PYTHON_CLIENT_MEM_FRACTION=0.87
 RUN apt install nautilus -y
+
+RUN git config --global user.email "jakub.mitura@gmail.com"
+RUN git config --global user.name "Jakub Mitura"
+
 #ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 #/usr/local/cuda/lib64
 #/usr/local/cuda/extras/CUPTI
@@ -314,5 +320,3 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda-12.0/NsightSystems-cli-2022.5.1/target-linux
 # RUN apt install -y lsb-release wget software-properties-common gnupg
 # RUN bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
 
-#   git config --global user.email "jakub.mitura@gmail.com"
-#   git config --global user.name "Jakub Mitura"

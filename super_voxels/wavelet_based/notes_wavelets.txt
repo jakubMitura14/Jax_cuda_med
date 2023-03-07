@@ -1,0 +1,23 @@
+wavelets done as just tensor product are highy dependent on shift
+they also easily loose dirrectionality
+
+shoft invariance can be generally acquired through stationary wavelet transform
+and directionality can be better captured by complex wavelet transform 
+https://en.wikipedia.org/wiki/Complex_wavelet_transform
+https://en.wikipedia.org/wiki/Wavelet_for_multidimensional_signals_analysis
+
+
+4d wavelets 
+https://arxiv.org/pdf/2103.15674.pdf
+https://github.com/tommheik/dualtree4
+
+
+dual tree complex wavelet transform
+the implementation seem to be in numpy and python 
+https://github.com/rjw57/dtcwt
+
+check weather there is no recursion there
+
+on the basis of this https://eeweb.engineering.nyu.edu/iselesni/pubs/CWT_Tutorial.pdf
+it seems that until there are no edges the fourier is ok - Hovewer I suppose that
+small vessels would count as edges ...

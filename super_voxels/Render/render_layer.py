@@ -55,7 +55,8 @@ from jax_smi import initialise_tracking
 from flax.training import train_state  
 from flax import jax_utils  
 
-
+cpus = jax.devices("cpu")
+gpus = jax.devices("gpu")
 
 def norm(v, axis=-1, keepdims=False, eps=0.0):
   return jnp.sqrt((v*v).sum(axis, keepdims=keepdims).clip(eps))
@@ -67,7 +68,6 @@ def standardize_to_sum_1(v, axis=-1, eps=1e-20):
   # print(f"a {a}")
   return a/jnp.sum(jnp.ravel(a))
 
-
 def get_initial_points_around(r):
     """
     given center point will give set of points that will create a verticies of shape around this point
@@ -78,8 +78,6 @@ def get_initial_points_around(r):
     res= list(set(itertools.combinations([-r,0.0,r,-r,0.0,r,-r,0.0,r],3)))
     return jnp.array( list(filter(lambda points: not (points[0]==0.0 and points[1]==0.0 and points[0]==0.0)  ,res))).astype(float)
      
-
-
 def get_corrected_dist(query_point_normalized,around,eps,pow=3):
     """
     our goal is to get the information how distant in a query point direction it can be to be still within shape
@@ -94,7 +92,7 @@ def get_corrected_dist(query_point_normalized,around,eps,pow=3):
     cosine_similarity_multi=jax.vmap(partial(optax.cosine_similarity, epsilon=eps),(0,None))
     angle_similarity= jax.nn.softmax(jnp.power(((cosine_similarity_multi(around,query_point_normalized))+1),pow))
     dists = jnp.sqrt(jnp.sum(jnp.power(around,2),axis=1))
-    # print(f"query_point_normalized {query_point_normalized.shape} dists {dists.shape} angle_similarity {angle_similarity.shape} around {around.shape}")
+    print(f"query_point_normalized {query_point_normalized.shape} dists {dists.shape} angle_similarity {angle_similarity.shape} around {around.shape}")
 
     corrected_dist= jnp.sum(dists*angle_similarity)#try also max
     return corrected_dist
@@ -108,7 +106,6 @@ def soft_less(max_cube,curr,to_pow=90):
     diff_a =  jnp.power(to_pow,(max_cube-curr))# if it is positive we are inside if negative outside
     diff_b =  jnp.power(to_pow,(curr-max_cube))# if it is positive we are outside if negative inside
     return (diff_a/(diff_a+diff_b))
-
 
 def get_value_for_point(param_s_vox, value_param,query_point,cfg ):
     """
@@ -275,7 +272,7 @@ gpu memory usage
 vmapped_super_vox_model = nn.vmap(
     super_voxels_analyze,
     in_axes=0, out_axes=0,
-    variable_axes={'params': 0},
+    variable_axes={'params': None},
     split_rngs={'params': True})
 
 
@@ -288,16 +285,20 @@ def get_vmapped_scanned_super_vox_model(cfg):
     return nn.vmap(
     vmapped_super_vox_model,
     in_axes=0, out_axes=0,
-    variable_axes={'params': 0},
+    variable_axes={'params': None},
     split_rngs={'params': True})
 
-    # return nn.remat_scan(nn.Dense, lengths=(1,cfg.final_shape[0]))
+    # return nn.remat_scan(vmapped_super_vox_model
+    #                      ,lengths=(1,cfg.final_shape[0])
+    #                      , variable_broadcast=False
+    #                     #  ,variable_broadcast={'params': None}
+    #                      )
 
 
     # return nn.scan(
     #             vmapped_super_vox_model,
     #             in_axes=0, out_axes=0
-    #             ,length=cfg.final_shape[1]
+    #             ,length=cfg.final_shape[0]
     #             # ,variable_broadcast={'params': 0}
     #             ,variable_axes={'params': 0}
     #             ,split_rngs={'params': True}
@@ -314,11 +315,16 @@ def create_train_state(rng,cfg:ml_collections.config_dict.FrozenConfigDict):
     # dummy_image=jnp.ones((cfg.final_shape[1],cfg.final_shape[2],cfg.final_shape[3]))
     dummy_image=jnp.ones((cfg.final_shape))
     params = model.init(rng, dummy_image)['params']
+    param_count = sum(x.size for x in jax.tree_leaves(params))
+    print(f"parameter num {param_count}")
     # dummy_image=jnp.ones((cfg.final_shape[1],cfg.final_shape[2],cfg.final_shape[3]))
     # print(f"dummy_image {dummy_image.shape}")
     # model.init(rng,dummy_image )#['params']
     # print(f" got paramse in train state")
-    tx = optax.adamw(learning_rate=0.00001)
+    tx = optax.chain(
+    optax.clip_by_global_norm(1.5),  # Clip gradients at norm 1.5
+    optax.adamw(learning_rate=0.00000001))
+    # tx = optax.adamw(learning_rate=0.00001)
     return train_state.TrainState.create(
         apply_fn=model.apply, params=params, tx=tx)
 
@@ -332,7 +338,7 @@ def apply_model(cfg,state, indicies,orig_image):
         values = get_vmapped_scanned_super_vox_model(cfg)(cfg).apply({'params': params}, indicies)
         orig_flat=jnp.ravel(orig_image)
 
-        loss = optax.l2_loss(jnp.ravel(values)[0:orig_flat.shape[0]],orig_flat).mean()
+        loss = optax.l2_loss(jax.nn.sigmoid(jnp.ravel(values)[0:orig_flat.shape[0]]),orig_flat).mean()
         return loss, values
 
     grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
@@ -369,12 +375,12 @@ from jax.config import config
 initialise_tracking()
 
 cfg = ml_collections.config_dict.ConfigDict()
-cfg.r=14.5# size of super voxel
+cfg.r=4.5# size of super voxel
 cfg.eps=1e-20 #for numerical stability
 cfg.to_pow=110# rendering hyperparameter controling exactness and differentiability
 cfg.pow=5# rendering hyperparameter controling exactness and differentiability
 cfg.input_shape=(40,40,40)
-cfg.max_per_device= 10000#1000000 # indicates how many points at once can be vmapped to be processed in the GPU to avoid out of memory errors
+cfg.max_per_device= 100000#1000000 # indicates how many points at once can be vmapped to be processed in the GPU to avoid out of memory errors
 #two variables controlling the search space of optimal padding strategy the first number 
 # is controlling how much gpu memory will be used, second haw fast it will jump (the faster the less optimal the padding)
 cfg.start_index=50000
@@ -401,8 +407,11 @@ cfg.final_shape=indicies.shape
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
 state=create_train_state(rng_2,cfg)
-state, epoch_loss, values=train_epoch(state, indicies,image, rng_new)
-print(f"epoch_loss {epoch_loss}")
+
+num_epochs=5
+for epoch in range(1, num_epochs + 1):
+    state, epoch_loss, values=train_epoch(state, indicies,image, rng_new)
+    print(f"epoch_loss {epoch_loss}")
 
 
 
