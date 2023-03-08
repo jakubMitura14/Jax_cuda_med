@@ -23,17 +23,9 @@ class Transform3d(object):
 
     def __init__(self, biort=DEFAULT_BIORT, qshift=DEFAULT_QSHIFT, ext_mode=4):
         # Load bi-orthogonal wavelets
-        try:
-            self.biort = _biort(biort)
-        except TypeError:
-            self.biort = biort
-
+        self.biort = _biort(biort)
         # Load quarter sample shift wavelets
-        try:
-            self.qshift = _qshift(qshift)
-        except TypeError:
-            self.qshift = qshift
-
+        self.qshift = _qshift(qshift)
         self.ext_mode = ext_mode
 
     def forward(self, X, nlevels=3, include_scale=False, discard_level_1=False):
@@ -81,35 +73,11 @@ class Transform3d(object):
         .. codeauthor:: Nick Kingsbury, Cambridge University, July 1999.
 
         """
-        X = np.atleast_3d(asfarray(X))
-
-        # If biort has 6 elements instead of 4, then it's a modified
-        # rotationally symmetric wavelet
-        # FIXME: there's probably a nicer way to do this
-        if len(self.biort) == 4:
-            h0o, g0o, h1o, g1o = self.biort
-        elif len(self.biort) == 6:
-            h0o, g0o, h1o, g1o, h2o, g2o = self.biort
-        else:
-            raise ValueError("Biort wavelet must have 6 or 4 components.")
-        # If qshift has 12 elements instead of 8, then it's a modified
-        # rotationally symmetric wavelet
-        # FIXME: there's probably a nicer way to do this
-        if len(self.qshift) == 8:
-            h0a, h0b, g0a, g0b, h1a, h1b, g1a, g1b = self.qshift
-        elif len(self.qshift) == 12:
-            h0a, h0b, g0a, g0b, h1a, h1b, g1a, g1b, h2a, h2b = self.qshift[:10]
-        else:
-            raise ValueError("Qshift wavelet must have 12 or 8 components.")
-
-        # Check value of ext_mode. TODO: this should really be an enum :S
-        if self.ext_mode != 4 and self.ext_mode != 8:
-            raise ValueError("ext_mode must be one of 4 or 8")
+        h0o, g0o, h1o, g1o = self.biort
+        h0a, h0b, g0a, g0b, h1a, h1b, g1a, g1b = self.qshift
 
         Yl = X
-        Yh = [
-            None,
-        ] * nlevels
+        Yh = [None, ] * nlevels
 
         if include_scale:
             # this is only required if the user specifies a third output component.
@@ -215,6 +183,83 @@ class Transform3d(object):
 
 
 def _level1_xfm(X, h0o, h1o, ext_mode):
+    """Perform level 1 of the 3d transform."""
+    # Create work area
+    work_shape = np.array(X.shape) * 2
+
+    # We need one extra row per octant if filter length is even
+    if h0o.shape[0] % 2 == 0:
+        work_shape += 2
+
+    work = np.zeros(work_shape, dtype=X.dtype)
+
+    # Form some useful slices
+    s0a = slice(None, work.shape[0] >> 1)
+    s1a = slice(None, work.shape[1] >> 1)
+    s2a = slice(None, work.shape[2] >> 1)
+    s0b = slice(work.shape[0] >> 1, None)
+    s1b = slice(work.shape[1] >> 1, None)
+    s2b = slice(work.shape[2] >> 1, None)
+
+    x0a = slice(None, X.shape[0])
+    x1a = slice(None, X.shape[1])
+    x2a = slice(None, X.shape[2])
+    x0b = slice(work.shape[0] >> 1, (work.shape[0] >> 1) + X.shape[0])
+    x1b = slice(work.shape[1] >> 1, (work.shape[1] >> 1) + X.shape[1])
+    x2b = slice(work.shape[2] >> 1, (work.shape[2] >> 1) + X.shape[2])
+
+    # Assign input
+    if h0o.shape[0] % 2 == 0:
+        work[: X.shape[0], : X.shape[1], : X.shape[2]] = X
+
+        # Copy last rows/cols/slices
+        work[X.shape[0], : X.shape[1], : X.shape[2]] = X[-1, :, :]
+        work[: X.shape[0], X.shape[1], : X.shape[2]] = X[:, -1, :]
+        work[: X.shape[0], : X.shape[1], X.shape[2]] = X[:, :, -1]
+        work[X.shape[0], X.shape[1], X.shape[2]] = X[-1, -1, -1]
+    else:
+        work[s0a, s1a, s2a] = X
+
+    # Loop over 2nd dimension extracting 2D slice from first and 3rd dimensions
+    for f in range(work.shape[1] >> 1):
+        # extract slice
+        y = work[s0a, f, x2a].T
+        # Do odd top-level filters on 3rd dim. The order here is important
+        # since the second filtering will modify the elements of y as well
+        # since y is merely a view onto work.
+        work[s0a, f, s2b] = colfilter(y, h1o).T
+        work[s0a, f, s2a] = colfilter(y, h0o).T
+
+    # Loop over 3rd dimension extracting 2D slice from first and 2nd dimensions
+    for f in range(work.shape[2]):
+        # Do odd top-level filters on rows.
+        y1 = work[x0a, x1a, f].T
+        y2 = np.vstack((colfilter(y1, h0o), colfilter(y1, h1o))).T
+
+        # Do odd top-level filters on columns.
+        work[s0a, :, f] = colfilter(y2, h0o)
+        work[s0b, :, f] = colfilter(y2, h1o)
+        # if f==2:
+        # work[:,:,work.shape[2]+1]=1 #to throw an error so we can inspect y in the unit test
+
+    # Return appropriate slices of output
+    return (
+        work[s0a, s1a, s2a],  # LLL
+        np.concatenate(
+            (
+                cube2c(work[x0a, x1b, x2a]),  # HLL
+                cube2c(work[x0b, x1a, x2a]),  # LHL
+                cube2c(work[x0b, x1b, x2a]),  # HHL
+                cube2c(work[x0a, x1a, x2b]),  # LLH
+                cube2c(work[x0a, x1b, x2b]),  # HLH
+                cube2c(work[x0b, x1a, x2b]),  # LHH
+                cube2c(work[x0b, x1b, x2b]),  # HHH
+            ),
+            axis=3,
+        ),
+    )
+
+def _level1_xfm_old(X, h0o, h1o, ext_mode):
     """Perform level 1 of the 3d transform."""
     # Check shape of input according to ext_mode. Note that shape of X is
     # double original input in each direction.

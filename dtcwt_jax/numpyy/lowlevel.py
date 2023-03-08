@@ -7,10 +7,10 @@ __all__ = [
 ]
 
 import numpy as np
+from jax import lax, random, numpy as jnp
 
 # from six.moves import range
 from dtcwt_jax.utils import (
-    as_column_vector,
     asfarray,
     appropriate_complex_type_for,
     reflect,
@@ -77,7 +77,7 @@ def colfilter(X, h):
 
     # Interpret all inputs as arrays
     X = asfarray(X)
-    h = as_column_vector(h)
+    h = jnp.atleast_2d(h)
 
     r, c = X.shape
     m = h.shape[0]
@@ -147,10 +147,10 @@ def coldfilt(X, ha, hb):
 
     # Select odd and even samples from ha and hb. Note that due to 0-indexing
     # 'odd' and 'even' are not perhaps what you might expect them to be.
-    hao = as_column_vector(ha[0:m:2])
-    hae = as_column_vector(ha[1:m:2])
-    hbo = as_column_vector(hb[0:m:2])
-    hbe = as_column_vector(hb[1:m:2])
+    hao = jnp.atleast_2d(ha[0:m:2])
+    hae = jnp.atleast_2d(ha[1:m:2])
+    hbo = jnp.atleast_2d(hb[0:m:2])
+    hbe = jnp.atleast_2d(hb[1:m:2])
     t = np.arange(5, r + 2 * m - 2, 4)
     r2 = r // 2
     Y = np.zeros((r2, c), dtype=X.dtype)
@@ -238,10 +238,10 @@ def colifilt(X, ha, hb):
 
         # Select odd and even samples from ha and hb. Note that due to 0-indexing
         # 'odd' and 'even' are not perhaps what you might expect them to be.
-        hao = as_column_vector(ha[0:m:2])
-        hae = as_column_vector(ha[1:m:2])
-        hbo = as_column_vector(hb[0:m:2])
-        hbe = as_column_vector(hb[1:m:2])
+        hao = jnp.atleast_2d(ha[0:m:2])
+        hae = jnp.atleast_2d(ha[1:m:2])
+        hbo = jnp.atleast_2d(hb[0:m:2])
+        hbe = jnp.atleast_2d(hb[1:m:2])
 
         s = np.arange(0, r * 2, 4)
 
@@ -265,10 +265,10 @@ def colifilt(X, ha, hb):
 
         # Select odd and even samples from ha and hb. Note that due to 0-indexing
         # 'odd' and 'even' are not perhaps what you might expect them to be.
-        hao = as_column_vector(ha[0:m:2])
-        hae = as_column_vector(ha[1:m:2])
-        hbo = as_column_vector(hb[0:m:2])
-        hbe = as_column_vector(hb[1:m:2])
+        hao = jnp.atleast_2d(ha[0:m:2])
+        hae = jnp.atleast_2d(ha[1:m:2])
+        hbo = jnp.atleast_2d(hb[0:m:2])
+        hbe = jnp.atleast_2d(hb[1:m:2])
 
         s = np.arange(0, r * 2, 4)
 

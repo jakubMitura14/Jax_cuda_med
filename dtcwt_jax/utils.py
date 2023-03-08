@@ -146,7 +146,10 @@ def as_column_vector(v):
     """Return *v* as a column vector with shape (N,1)."""
     v = jnp.atleast_2d(v)
     if v.shape[0] == 1:
+        print(f"v.shape[0] {v.shape[0]}")
+
         return v.T
+
     else:
         return v
 

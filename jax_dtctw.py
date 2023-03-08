@@ -28,7 +28,7 @@ import h5py
 GRID_SIZE = 64
 SPHERE_RAD = int(0.45 * GRID_SIZE) + 0.5
 import jax
-jax.config.update('jax_platform_name', 'cpu')
+# jax.config.update('jax_platform_name', 'cpu')
 
 
 from testUtils.spleenTest import get_spleen_data
