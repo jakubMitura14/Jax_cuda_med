@@ -7,3 +7,18 @@ this could be potentially done by sth like half edge mesh - so storing data what
 
 additionally loss could be increased when a) variance is very small - so for example outside the body
                                           b) points of a single supervoxels are not spreadout - they should maximize the relative distance between themselves
+
+
+differentiable round 
+https://stackoverflow.com/questions/46596636/differentiable-round-function-in-tensorflow
+
+so when we use SNIC as preprocessing we can then potentially with polygonization
+get nice representation 
+
+so in order to simplify the interpolation part - and batch a bit supervoxels
+we can first calculate the distance of calculated center to closest point on a GRID
+look at differentiable round above
+
+
+improved SNIC
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8788486/

@@ -66,27 +66,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zstd
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#brunsli , charls igl jxrlib ld_impl_linux-64   - libgfortran-ng=7.5.0 libwebp-base llvm-openmp   - pcre=8.45
-
-
-
-
 # RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
 # RUN mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
 # RUN wget https://developer.download.nvidia.com/compute/cuda/12.0.1/local_installers/cuda-repo-ubuntu2004-12-0-local_12.0.1-525.85.12-1_amd64.deb
@@ -141,8 +120,11 @@ RUN python3 -m  pip install \
     kymatio==0.3.0 \
     jaxwt \
     matplotlib \
-    PyWavelets==1.4.1 
-
+    PyWavelets==1.4.1 \
+    Pillow==9.4.0 \
+    scikit-image==0.20.0 \
+    imageio==2.26.0 \
+    jax-cosmo==0.1.0
 
 # RUN python3 -m  pip install \
 #     absl-py==1.0.0 \

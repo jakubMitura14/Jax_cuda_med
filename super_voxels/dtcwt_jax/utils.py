@@ -142,17 +142,6 @@ def appropriate_complex_type_for(X):
     return jnp.complex128
 
 
-def as_column_vector(v):
-    """Return *v* as a column vector with shape (N,1)."""
-    v = jnp.atleast_2d(v)
-    if v.shape[0] == 1:
-        print(f"v.shape[0] {v.shape[0]}")
-
-        return v.T
-
-    else:
-        return v
-
 
 def reflect(x, minx, maxx):
     """Reflect the values in matrix *x* about the scalar values *minx* and
@@ -168,7 +157,12 @@ def reflect(x, minx, maxx):
     x = jnp.array(x)
     rng = maxx - minx
     rng_by_2 = 2 * rng
-    mod = jnp.fmod(x - minx, rng_by_2)
+    # mod = jnp.fmod(x - minx, rng_by_2)
+    xx=x - minx
+    a=rng_by_2
+    #differentiable fmod from https://discuss.pytorch.org/t/fmod-or-remainder-runtimeerror-the-derivative-for-other-is-not-implemented/64276/4
+    mod =( a / jnp.pi )*jnp.arctan( jnp.tan( jnp.pi* ( xx / a - 0.5 ) ) ) + a / 2
+
     normed_mod = jnp.where(mod < 0, mod + rng_by_2, mod)
     out = jnp.where(normed_mod >= rng, rng_by_2 - normed_mod, normed_mod) + minx
     return jnp.array(out, dtype=x.dtype)

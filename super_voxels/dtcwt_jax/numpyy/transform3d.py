@@ -76,6 +76,7 @@ class Transform3d(object):
         h0o, g0o, h1o, g1o = self.biort
         h0a, h0b, g0a, g0b, h1a, h1b, g1a, g1b = self.qshift
 
+        print(f"h0o {h0o.shape} h1o {h1o.shape}  h0a {h0a.shape} h0b {h0b.shape} h1a {h1a.shape}  h1b {h1b.shape} ")
         Yl = X
         Yh = [None, ] * nlevels
 
