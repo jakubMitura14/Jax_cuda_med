@@ -31,10 +31,12 @@ from super_voxels.SIN.SIN_jax.Sin_jax_model import SpixelNet
 # jax.config.update('jax_platform_name', 'cpu')
 
 
-f = h5py.File('/workspaces/Jax_cuda_med/data/hdf5_loc/mytestfile.hdf5', 'r+')
-sample_3d_ct=f["spleen/pat_0/image"][:,:,32:64,32:64,32:64]
-# cached_subj =get_spleen_data()[0]
-# sample_3d_ct=jnp.array(cached_subj[0][0,0,32:64,32:64,32:64])
+# f = h5py.File('/workspaces/Jax_cuda_med/data/hdf5_loc/mytestfile.hdf5', 'r+')
+# sample_3d_ct=f["spleen/pat_0/image"][:,:,32:64,32:64,32:64]
+
+sample_3d_ct= np.random.rand(1,1,32,32,32)
+sample_3d_ct= jnp.array(sample_3d_ct)
+
 cfg = config_dict.ConfigDict()
 prng = jax.random.PRNGKey(42)
 input=jnp.zeros_like(sample_3d_ct)
@@ -42,4 +44,9 @@ input=jnp.zeros_like(sample_3d_ct)
 model = SpixelNet(cfg)
 params = model.init(prng, input) # initialize parameters by passing a template image
 aaa=model.apply(params, sample_3d_ct)
-print(f"aaa {aaa.shape}")
+print(f"aaa prob0_v {aaa[0].shape} prob0_h {aaa[1].shape}")
+# prob0_v, prob0_h, prob1_v, prob1_h, prob2_v, prob2_h, prob3_v, prob3_h = model(input_gpu)
+
+
+# fast_loss = compute_labxy_loss(prob0_v, prob0_h, prob1_v, prob1_h, prob2_v, prob2_h, prob3_v, prob3_h,
+#                                                     label_gpu)
