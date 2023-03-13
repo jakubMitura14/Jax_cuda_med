@@ -21,3 +21,7 @@ check weather there is no recursion there
 on the basis of this https://eeweb.engineering.nyu.edu/iselesni/pubs/CWT_Tutorial.pdf
 it seems that until there are no edges the fourier is ok - Hovewer I suppose that
 small vessels would count as edges ...
+
+
+A Comparative Analysis Among Dual Tree Complex Wavelet and Other Wavelet Transforms Based on Image Compression | SpringerLink
+https://link.springer.com/chapter/10.1007/978-3-319-63312-1_50

@@ -1,0 +1,30 @@
+idea is to first convolve the image - maybe good also to try biffer receptive fields ... 
+    so we will get the smaller but deeper representation
+Next we create the indicies of the superpixel by just jnp.arange -> reshape so 3 dim structure is the same as 
+    one created by the strided convolutions above
+We will also have an access to original labels - we can downsample it to the chosen shape using jax image resize 
+    with nearest neighbour interpolation        
+Next we design decoder - decoder will gradually deconvolve along each of the 3 axis in succession
+    so we can imagine it as cutting the image into planes in one axis at a time, an adding new plane between old ones
+In order to define loss function idea here is that we have some gold standard label for segmentation
+    and we just check weather newly interpolated strip should be the same as neihbouring voxels in closest plains
+    we need to sequentially check the condition for both sides so both surrounding planes
+    In order to get a better guidence in a model we can supply loss function at each step of interpolation using appropriatale resized label
+    If a model will decide that a voxel in newly created plane is the same as in one or both of old neighbouring planes and is correct we are good if not not
+    Obviously we usually do not have segmentations for all voxels - but it is not required here luckily - in order
+        to add some more granurality here we can think about additional loss relative to sobel filter and contrastive loss terms in respect to for example rotation and affine deformation
+        so voxel assignemnets should not change under those transformations...
+
+As this mechanism start from well defined grid and each deconvolution will add up to the maximum radius of the super voxel we can then define the supervoxel tokens
+    we will do it by taking the cibe of the radius of maximum supervoxel sicze around each grid center point - we now have to specify all voxels that are 
+    in this particular supervoxel - so we need differentiable equality function - that can be basically done by gaussian with small variance and mean equal the integer
+    that is albelling the analyzyed supervoxel - than we multiply by it - as all of the other numbers will be close to 0 practically only required supervoxel will remain
+    so we will be able to relatively easily calculate some statistics - like mean - will be sum of remaining voxels divided by sum of indicator function ...            
+
+It will be alsoo usefull to perform some pretraining with SLIC as gold standard - as it will provide dense labels, and after loss function will drop to given quantity switch
+    to gold standard labels for fine tuning
+
+It would be also probably good idea to incorporate unet type architecture here
+
+As a futere steps we can try to learne wavelet of fourier representations of the supervoxels - recombine them ina an image and check the L2 norm with the original image
+    

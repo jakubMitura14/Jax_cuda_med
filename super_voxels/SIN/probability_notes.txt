@@ -1,0 +1,13 @@
+ Map-guided Hyperspectral Image Superpixel Segmentation 
+ https://www.google.com/url?sa=t&source=web&rct=j&url=https://arxiv.org/abs/1701.01745&ved=2ahUKEwips8y71dP9AhXL6CoKHW_WBSgQFnoECBEQAQ&usg=AOvVaw2SnuOBrAnBOHUfFf9lGyq-
+ 
+ Bayesian Adaptive Superpixel Segmentation
+https://www.google.com/url?sa=t&source=web&rct=j&url=https://www.csd.uoc.gr/~hy471/papers/Bayesian_Adaptive_Superpixel_Segmentation_ICCV_2019.pdf&ved=2ahUKEwips8y71dP9AhXL6CoKHW_WBSgQFnoECB8QAQ&usg=AOvVaw1DUO3AZEH8sFT9vN_v4kta
+
+Image clustering algorithm using superpixel segmentation
+https://www.google.com/url?sa=t&source=web&rct=j&url=https://ietresearch.onlinelibrary.wiley.com/doi/pdf/10.1049/iet-ipr.2020.0402&ved=2ahUKEwiIstHN1dP9AhUGqIsKHYniB2c4ChAWegQICBAB&usg=AOvVaw00RaXN7HxMWgVEq9Jachgi
+ 
+
+ good tutorial 
+ https://ericmjl.github.io/dl-workshop/04-gaussian-clustering/03-dirichlet-process-clustering.html
+ 

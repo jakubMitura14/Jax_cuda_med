@@ -21,6 +21,7 @@ import optax
 from flax.training import train_state  # Useful dataclass to keep train state
 from torch.utils.data import DataLoader
 import h5py
+import SimpleITK as sitk
 
 # f = h5py.File('/workspaces/Jax_cuda_med/data/hdf5_loc/mytestfile.hdf5', 'w')
 
@@ -39,14 +40,9 @@ import h5py
 # seg  = slic.Execute(denoised_img)
 
 
-# slic = sitk.SLICImageFilter()
-# slic.SetMaximumNumberOfIterations(self.slic_max_num_of_iterations)
-# slic.SetSuperGridSize(self.slic_super_grid_size)
-# slic.SetSpatialProximityWeight(self.slic_spatial_prox_weight)
-# slic.SetEnforceConnectivity(self.slic_enforce_connectivity)
-# slic.SetInitializationPerturbation(self.slic_initialization_perturbation)
-# seg = slic.Execute(denoised_img)
 
+
+spacing = (2.5,2.5,2.5)
 
 def get_spleen_data():
     f = h5py.File('/workspaces/Jax_cuda_med/data/hdf5_loc/mytestfile.hdf5', 'r+')
@@ -60,26 +56,23 @@ def get_spleen_data():
             glob.glob(os.path.join(data_dir, "imagesTr", "*.nii.gz")))
         train_labels = sorted(
             glob.glob(os.path.join(data_dir, "labelsTr", "*.nii.gz")))
-        data_dicts = [
-            {"image": image_name, "label": label_name}
-            for image_name, label_name in zip(train_images, train_labels)
-        ]
+
 
         rang=list(range(0,len(train_images)))
-        subjects_list=list(map(lambda index:tio.Subject(image=tio.ScalarImage(train_images[index],),label=tio.LabelMap(train_labels[index])),rang ))
+        subjects_list=list(map(lambda index:tio.Subject(image=tio.ScalarImage(train_images[index],),label=tio.LabelMap(train_labels[index]),imagePath=train_images[index]),rang ))
         # subjects_list_train=subjects_list[:-9]
         # subjects_list_val=subjects_list[-9:]
 
         transforms = [
             tio.RescaleIntensity(out_min_max=(0, 1)),
-            tio.Resample((2.5,2.5,2.5)),
+            tio.Resample(spacing),
             tio.transforms.CropOrPad((256,256,128)),
         ]
         transform = tio.Compose(transforms)
         subjects_dataset = tio.SubjectsDataset(subjects_list, transform=transform)
 
         cached_subj=[]
-        training_loader = DataLoader(subjects_dataset, batch_size=1, num_workers=8)
+        training_loader = DataLoader(subjects_dataset, batch_size=1, num_workers=12)
         index =-1
         for subject in training_loader :
             index=index+1
@@ -90,6 +83,24 @@ def get_spleen_data():
             # print(f"image shape {image.shape}")
             f.create_dataset(f"spleen/pat_{index}/image",data= image)
             f.create_dataset(f"spleen/pat_{index}/label",data= label)
+            #### saving SLIC for some later pretraining
+            slic = sitk.SLICImageFilter()
+            # slic.SetMaximumNumberOfIterations(300)
+            slic.SetEnforceConnectivity(True)
+            image_sitk_nda=einops.rearrange(image,'bb cc a b c -> (bb cc c) b a')
+            image_sitk = sitk.GetImageFromArray(image_sitk_nda)
+            image_sitk.SetSpacing(spacing)
+
+            rescalFilt=sitk.RescaleIntensityImageFilter()
+            rescalFilt.SetOutputMaximum(1000)
+            rescalFilt.SetOutputMinimum(0)
+            image_sitk=rescalFilt.Execute(image_sitk)
+
+            image_sitk=sitk.Cast(image_sitk, sitk.sitkInt64)
+            slic_seg = slic.Execute(image_sitk)
+            nda = sitk.GetArrayFromImage(slic_seg)
+            nda=einops.rearrange(nda,'a b c -> c b a')
+            f.create_dataset(f"spleen/pat_{index}/slic",data= nda)
     #given we already have a dataset
     else:
         print("data loaded from hdf5")  
@@ -98,7 +109,7 @@ def get_spleen_data():
     spleenG= f["spleen"]
     # print(f"pat_groups {pat_groups}")
     grr=list(map( lambda groupp:spleenG[groupp] ,pat_groups))
-    cached_subj=list(map( lambda groupp:(groupp["image"][:,:,:,:], groupp["label"][:,:,:,:]) ,grr))
+    cached_subj=list(map( lambda groupp:(groupp["image"][:,:,:,:], groupp["label"][:,:,:,:],groupp["slic"][:,:,:]) ,grr))
 
     f.close()
 
