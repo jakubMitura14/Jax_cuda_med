@@ -28,3 +28,5 @@ It would be also probably good idea to incorporate unet type architecture here
 
 As a futere steps we can try to learne wavelet of fourier representations of the supervoxels - recombine them ina an image and check the L2 norm with the original image
     
+Also I suppose It may be good idea to descripe the texture as a combination of fourier
+and some fractal/fractals    

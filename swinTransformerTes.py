@@ -111,7 +111,7 @@ tic_loop = time.perf_counter()
 for epoch in range(1, cfg.total_steps):
     dicee=0
     f_ll=0
-    for image,label in cached_subj :
+    for image,label,slic in cached_subj :
         # image=subject['image'][tio.DATA].numpy()
         # label=subject['label'][tio.DATA].numpy()
         # print(f"#### {jnp.sum(label)} ")

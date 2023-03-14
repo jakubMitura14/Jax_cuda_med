@@ -1,4 +1,4 @@
-FROM nvcr.io/nvdlfwea/jax/jax:23.01-py3
+FROM nvcr.io/nvdlfwea/jax/jax:23.02-py3
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -100,7 +100,7 @@ RUN python3 -m  pip install \
     ott-jax \ 
     evojax[extra] \
     jraph \
-    flax==0.6.3 \
+    flax==0.6.7 \
     toolz==0.12.0\
     ipyparallel==8.4.1\
     optuna==3.1.0\
@@ -184,6 +184,13 @@ RUN python3 -m  pip install \
 RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \
     cd ${HOME}/externalRepos/numPyro && \
     pip install -e .[dev] 
+
+RUN git https://github.com/flpgrz/fractal-jax.git ${HOME}/externalRepos/fractal_jax && \
+    cd ${HOME}/externalRepos/fractal_jax && \
+    pip install .
+
+https://github.com/flpgrz/fractal-jax.git
+
 # install jax/jaxlib first for CUDA support
 
 

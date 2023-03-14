@@ -21,7 +21,8 @@ from torch.utils.data import DataLoader
 import jax.profiler
 import ml_collections
 from ml_collections import config_dict
-from model_sin_jax_utils import *
+# from Jax_cuda_med.super_voxels.SIN.SIN_jax.model_sin_jax_utils import *
+from .model_sin_jax_utils import *
 
 
 
@@ -37,20 +38,20 @@ class SpixelNet(nn.Module):
         x=einops.rearrange(x,'b c w h d-> b w h d c')
         
         out5=nn.Sequential([
-            Conv_trio(channels=16)
-            ,Conv_trio(channels=16,strides=(2,2,2))
+            Conv_trio(self.cfg,channels=8)
+            ,Conv_trio(self.cfg,channels=8,strides=(2,2,2))
             # ,Conv_trio(channels=32,strides=(2,2,2))     
             ])(x)
         # grid of
         b, w, h, d, c=out5.shape 
-        shapp = (w,h,d)
+        shapp = (b,w,h,d)
         grid=jnp.arange(1,np.product(np.array(shapp))+1)
-        grid=jnp.reshape(grid,shapp)
+        grid=jnp.reshape(grid,shapp).astype(jnp.float32)
 
+        deconv_multi,grid,loss=De_conv_3_dim(self.cfg,8)(out5,label,grid)
+        print(f"final  {grid.shape} loss {loss}")
 
-        deconv_multi,grid,loss=De_conv_3_dim(64)(x,label,grid)
-
-        return loss
+        return loss,grid
 
         # now we need to deconvolve a plane at a time and each time check weather 
         # the simmilarity to the neighbouring voxels is as should be
