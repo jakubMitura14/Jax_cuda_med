@@ -124,8 +124,8 @@ RUN python3 -m  pip install \
     Pillow==9.4.0 \
     scikit-image==0.20.0 \
     imageio==2.26.0 \
-    jax-cosmo==0.1.0
-
+    jax-cosmo==0.1.0 \
+    more-itertools
 # RUN python3 -m  pip install \
 #     absl-py==1.0.0 \
 #     cloudpickle==2.0.0 \
@@ -185,11 +185,12 @@ RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numP
     cd ${HOME}/externalRepos/numPyro && \
     pip install -e .[dev] 
 
-RUN git https://github.com/flpgrz/fractal-jax.git ${HOME}/externalRepos/fractal_jax && \
-    cd ${HOME}/externalRepos/fractal_jax && \
-    pip install .
+RUN git clone https://github.com/flpgrz/fractal-jax.git ${HOME}/externalRepos/fractal_jax 
 
-https://github.com/flpgrz/fractal-jax.git
+# RUN git clone https://github.com/flpgrz/fractal-jax.git ${HOME}/externalRepos/fractal_jax && \
+#     cd ${HOME}/externalRepos/fractal_jax/fractal-jax && \
+#     pip install -e .
+
 
 # install jax/jaxlib first for CUDA support
 
@@ -272,40 +273,3 @@ RUN git config --global user.name "Jakub Mitura"
 
 # ENV LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH
 ENV LD_LIBRARY_PATH=/usr/local/cuda-12.0/NsightSystems-cli-2022.5.1/target-linux-x64:$LD_LIBRARY_PATH
-
-#/usr/local/cuda-12.0/lib64/
-
-# find ~/ -type f -name "libcupti.so"
-
-# find . -type f -name "libcupti.so"
-
-# ENV cudnn_version=8.6.0.163
-# ENV cuda_version=cuda11.6
-# libcupti.so.11.8
-# /usr/local/cuda/extras/CUPTI/lib64
-
-# RUN apt-get install libcudnn8_8.6.0.163-1+cuda11.6
-# RUN apt-get install libcudnn8-dev_8.6.0.163-1+cuda11.6
-# RUN apt-get install libcudnn8=${cudnn_version}-1+${cuda_version}
-# RUN apt-get install libcudnn8-dev=${cudnn_version}-1+${cuda_version}
-
-# # install python3-pip
-# RUN apt update && apt install python3-pip -y
-
-# RUN pip install "jax[cuda]" -f https://storage.googleapis.com/jax-releases/Jax_cuda_med_releases.html
-
-#FROM nvdlfwea/jax/jax
-
-# RUN apt update && apt install python3-pip -y
-# RUN git clone --recursive https://github.com/uber/horovod.git
-# RUN cd horovod \
-#     python setup.py clean \
-#     python setup.py bdist_wheel
-# ENV HOROVOD_WITH_PYTORCH=1
-
-# RUN python3 -m  pip install horovod==0.26.1
-# RUN apt install -y build-essential
-# RUN apt-get update
-# RUN apt install -y lsb-release wget software-properties-common gnupg
-# RUN bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
-

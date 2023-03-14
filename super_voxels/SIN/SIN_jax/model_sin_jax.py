@@ -40,6 +40,8 @@ class SpixelNet(nn.Module):
         out5=nn.Sequential([
             Conv_trio(self.cfg,channels=8)
             ,Conv_trio(self.cfg,channels=8,strides=(2,2,2))
+            ,Conv_trio(self.cfg,channels=16,strides=(2,2,2))
+            ,Conv_trio(self.cfg,channels=32,strides=(2,2,2))
             # ,Conv_trio(channels=32,strides=(2,2,2))     
             ])(x)
         # grid of
@@ -48,7 +50,9 @@ class SpixelNet(nn.Module):
         res_grid=jnp.arange(1,np.product(np.array(shapp))+1)
         res_grid=jnp.reshape(res_grid,shapp).astype(jnp.float32)
 
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,8)(out5,label,res_grid)
+        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,32)(out5,label,res_grid)
+        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,16)(deconv_multi,label,res_grid)
+        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,8)(deconv_multi,label,res_grid)
 
         return loss,res_grid
 

@@ -99,7 +99,7 @@ def get_spleen_data():
             image_sitk=sitk.Cast(image_sitk, sitk.sitkInt64)
             slic_seg = slic.Execute(image_sitk)
             nda = sitk.GetArrayFromImage(slic_seg)
-            nda=einops.rearrange(nda,'a b c -> c b a')
+            nda=einops.rearrange(nda,'a b c -> 1 c b a')
             f.create_dataset(f"spleen/pat_{index}/slic",data= nda)
     #given we already have a dataset
     else:
@@ -109,7 +109,7 @@ def get_spleen_data():
     spleenG= f["spleen"]
     # print(f"pat_groups {pat_groups}")
     grr=list(map( lambda groupp:spleenG[groupp] ,pat_groups))
-    cached_subj=list(map( lambda groupp:(groupp["image"][:,:,:,:], groupp["label"][:,:,:,:],groupp["slic"][:,:,:]) ,grr))
+    cached_subj=list(map( lambda groupp:(groupp["image"][:,:,:,:], groupp["label"][:,:,:,:],groupp["slic"][:,:,:,:]) ,grr))
 
     f.close()
 

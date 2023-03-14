@@ -37,11 +37,21 @@ import augmentations.simpleTransforms
 from augmentations.simpleTransforms import main_augment
 from testUtils.spleenTest import get_spleen_data
 from jax.config import config
+from skimage.segmentation import mark_boundaries
+import cv2
+import functools
 # from torch.utils.tensorboard import SummaryWriter
 # import torchvision.transforms.functional as F
 # import torchvision
-
+import flax.jax_utils as jax_utils
 import tensorflow as tf
+from jax_smi import initialise_tracking
+import ml_collections
+
+
+
+
+
 
 config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
@@ -51,12 +61,20 @@ config.update("jax_debug_nans", True)
 cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
-cfg.img_size = (1,1,256,256,128)
-cfg.label_size = (1,256,256,128)
+cfg.batch_size=2
+cfg.img_size = (cfg.batch_size,1,256,256,128)
+cfg.label_size = (cfg.batch_size,256,256,128)
 
-cfg.total_steps=14
+cfg.total_steps=2
+
+cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
 ##### tensor board
+#just removing to reduce memory usage of tensorboard logs
+shutil.rmtree('/workspaces/Jax_cuda_med/data/tensor_board')
+os.makedirs("/workspaces/Jax_cuda_med/data/tensor_board")
+initialise_tracking()
+
 logdir="/workspaces/Jax_cuda_med/data/tensor_board"
 plt.rcParams["savefig.bbox"] = 'tight'
 file_writer = tf.summary.create_file_writer(logdir)
@@ -66,26 +84,25 @@ file_writer = tf.summary.create_file_writer(logdir)
 #### usefull objects
 prng = jax.random.PRNGKey(42)
 model = SpixelNet(cfg)
-
+rng_2=jax.random.split(prng,num=jax.local_device_count() )
 # params = model.init(prng, input,input_b) # initialize parameters by passing a template image
 
 
 
-
-def create_train_state():
+@functools.partial(jax.pmap,static_broadcasted_argnums=1, axis_name='ensemble')#,static_broadcasted_argnums=(2)
+def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
   """Creates initial `TrainState`."""
   input=jnp.ones(cfg.img_size)
   input_label=jnp.ones(cfg.label_size)
-  params = model.init(prng, input,input_label)['params'] # initialize parameters by passing a template image
+  params = model.init(rng_2, input,input_label)['params'] # initialize parameters by passing a template image
   tx=get_optimiser(cfg)
   return train_state.TrainState.create(
       apply_fn=model.apply, params=params, tx=tx)
 
 
-state = create_train_state()
+state = create_train_state(rng_2,cfg)
 
-
-@jax.jit
+@functools.partial(jax.pmap, axis_name='ensemble')
 def train_step(state, image,label):
   print(f"labellll {label.shape}")
   """Train for a single step."""
@@ -104,9 +121,19 @@ def train_step(state, image,label):
   return state,pair
 
 
-cached_subj =get_spleen_data()[0:9]
+cached_subj =get_spleen_data()[0:16]
 # toc_s=time.perf_counter()
 # print(f"loading {toc_s - tic_s:0.4f} seconds")
+
+
+import more_itertools
+import toolz
+
+cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
+cached_subj=list(map(toolz.sandbox.core.unzip,cached_subj ))
+cached_subj=list(map(lambda inn: list(map(list,inn)),cached_subj ))
+# len(unipped[0][0][0])
+cached_subj=list(map(lambda inn: list(map(np.concatenate,inn)),cached_subj ))
 
 
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
@@ -119,19 +146,44 @@ cached_subj =get_spleen_data()[0:9]
 # tic_loop = time.perf_counter()
 
 
+    # batch_images = jax_utils.replicate(train_ds['image'][perm, ...])
+    # batch_labels = jax_utils.replicate(train_ds['label'][perm, ...])
+    # grads, loss, accuracy = apply_model(state, batch_images, batch_labels)
+    # state = update_model(state, grads)
+    # epoch_loss.append(jax_utils.unreplicate(loss))
+    # epoch_accuracy.append(jax_utils.unreplicate(accuracy))
+
+
 for epoch in range(1, cfg.total_steps):
     losss=0
-    for image,label,slic in cached_subj :
+    for index,dat in enumerate(cached_subj) :
+        batch_images,label,batch_labels=dat# here batch_labels is slic
+        batch_images = jax_utils.replicate(batch_images)
+        batch_labels = jax_utils.replicate(batch_labels)
         # image=subject['image'][tio.DATA].numpy()
         # label=subject['label'][tio.DATA].numpy()
         # print(f"#### {jnp.sum(label)} ")
-        slic= einops.rearrange(slic,'w h d->1 w h d')
-        state,pair=train_step(state, image,slic) 
-        losss,grid_res=pair
-        aaa=einops.rearrange(grid_res[0,:,:,32],'a b-> 1 a b 1')
-        print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
-        with file_writer.as_default():
-          tf.summary.image(f"images {epoch}", np.array(aaa), step=0)
+        # slic= einops.rearrange(slic,'w h d->1 w h d')
+        
+        state,pair=train_step(state, batch_images,batch_labels) 
+
+        losss,grid_res=jax_utils.unreplicate(pair)
+        tf.summary.scalar("train loss", losss)
+        #saving only with index one
+        if(index==0):
+          slicee=32
+
+          aaa=einops.rearrange(grid_res[0,:,:,slicee],'a b-> 1 a b 1')
+          print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
+          grid_image=np.rot90(np.array(aaa[0,:,:,0]))
+          image_to_disp=np.rot90(np.array(batch_images[0,0,:,:,slicee]))
+          print(f"grid_image {grid_image.shape}  image_to_disp {image_to_disp.shape}")
+          with_boundaries=mark_boundaries(image_to_disp, np.round(grid_image).astype(int) )
+          with_boundaries= np.array(with_boundaries)
+          with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
+          print(f"with_boundaries {with_boundaries.shape}")
+          with file_writer.as_default():
+            tf.summary.image(f"images {epoch}",with_boundaries , step=0)
 
         # im_grid = torchvision.utils.make_grid(np.array(grid))
         # tb.add_image(f"images {epoch}", im_grid)
