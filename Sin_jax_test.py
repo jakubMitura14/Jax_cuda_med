@@ -61,11 +61,11 @@ config.update("jax_debug_nans", True)
 cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
-cfg.batch_size=2
+cfg.batch_size=4
 cfg.img_size = (cfg.batch_size,1,256,256,128)
 cfg.label_size = (cfg.batch_size,256,256,128)
 
-cfg.total_steps=2
+cfg.total_steps=30
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -114,14 +114,13 @@ def train_step(state, image,label):
     # return loss,grid 
   grad_fn = jax.grad(loss_fn, has_aux=True)
   grads, pair = grad_fn(state.params)
-
-
-
+  losss,grid_res=pair
+  
   state = state.apply_gradients(grads=grads)
-  return state,pair
+  return state,(jax.lax.pmean(losss, axis_name='ensemble'), grid_res )
 
 
-cached_subj =get_spleen_data()[0:16]
+cached_subj =get_spleen_data()[0:44]
 # toc_s=time.perf_counter()
 # print(f"loading {toc_s - tic_s:0.4f} seconds")
 
@@ -157,8 +156,8 @@ cached_subj=list(map(lambda inn: list(map(np.concatenate,inn)),cached_subj ))
 for epoch in range(1, cfg.total_steps):
     losss=0
     for index,dat in enumerate(cached_subj) :
-        batch_images,label,batch_labels=dat# here batch_labels is slic
-        batch_images = jax_utils.replicate(batch_images)
+        batch_images_prim,label,batch_labels=dat# here batch_labels is slic
+        batch_images = jax_utils.replicate(batch_images_prim)
         batch_labels = jax_utils.replicate(batch_labels)
         # image=subject['image'][tio.DATA].numpy()
         # label=subject['label'][tio.DATA].numpy()
@@ -168,7 +167,9 @@ for epoch in range(1, cfg.total_steps):
         state,pair=train_step(state, batch_images,batch_labels) 
 
         losss,grid_res=jax_utils.unreplicate(pair)
-        tf.summary.scalar("train loss", losss)
+
+        with file_writer.as_default():
+          tf.summary.scalar(f"train loss epoch {epoch}", losss, step=index)
         #saving only with index one
         if(index==0):
           slicee=32
@@ -176,7 +177,7 @@ for epoch in range(1, cfg.total_steps):
           aaa=einops.rearrange(grid_res[0,:,:,slicee],'a b-> 1 a b 1')
           print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
           grid_image=np.rot90(np.array(aaa[0,:,:,0]))
-          image_to_disp=np.rot90(np.array(batch_images[0,0,:,:,slicee]))
+          image_to_disp=np.rot90(np.array(batch_images_prim[0,0,:,:,slicee]))
           print(f"grid_image {grid_image.shape}  image_to_disp {image_to_disp.shape}")
           with_boundaries=mark_boundaries(image_to_disp, np.round(grid_image).astype(int) )
           with_boundaries= np.array(with_boundaries)
