@@ -37,22 +37,16 @@ import augmentations.simpleTransforms
 from augmentations.simpleTransforms import main_augment
 from testUtils.spleenTest import get_spleen_data
 from jax.config import config
-# config.update("jax_debug_nans", True)
+# from torch.utils.tensorboard import SummaryWriter
+# import torchvision.transforms.functional as F
+# import torchvision
+
+import tensorflow as tf
+
+config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
+# config.update('jax_platform_name', 'cpu')
 
-
-# jax.config.update('jax_platform_name', 'cpu')
-
-
-# f = h5py.File('/workspaces/Jax_cuda_med/data/hdf5_loc/mytestfile.hdf5', 'r+')
-
-# sample_3d_ct=f["spleen/pat_0/image"][:,:,32:64,32:64,32:64]
-
-
-# sample_3d_ct= np.random.rand(1,1,32,32,32)
-# sample_3d_ct= jnp.array(sample_3d_ct)
-
-# sample_3d_label= jnp.ones((1,32,32,32))
 
 cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
@@ -60,13 +54,17 @@ cfg = config_dict.ConfigDict()
 cfg.img_size = (1,1,256,256,128)
 cfg.label_size = (1,256,256,128)
 
-cfg.total_steps=3
+cfg.total_steps=14
+
+##### tensor board
+logdir="/workspaces/Jax_cuda_med/data/tensor_board"
+plt.rcParams["savefig.bbox"] = 'tight'
+file_writer = tf.summary.create_file_writer(logdir)
+
+
+
+#### usefull objects
 prng = jax.random.PRNGKey(42)
-# input=jnp.zeros_like(sample_3d_ct)
-# input_b=jnp.ones_like(sample_3d_label)
-
-
-
 model = SpixelNet(cfg)
 
 # params = model.init(prng, input,input_b) # initialize parameters by passing a template image
@@ -92,17 +90,21 @@ def train_step(state, image,label):
   print(f"labellll {label.shape}")
   """Train for a single step."""
   def loss_fn(params):
-    return state.apply_fn({'params': params}, image,label)
+    loss,grid_res=state.apply_fn({'params': params}, image,label)
+    return loss,(loss.copy(),grid_res)
     # loss,grid = state.apply_fn({'params': params}, image,label)
     # print(f"loss {loss} ")
     # return loss,grid 
   grad_fn = jax.grad(loss_fn, has_aux=True)
-  grads, grid = grad_fn(state.params)
+  grads, pair = grad_fn(state.params)
+
+
+
   state = state.apply_gradients(grads=grads)
-  return state,grid
+  return state,pair
 
 
-cached_subj =get_spleen_data()[0:3]
+cached_subj =get_spleen_data()[0:9]
 # toc_s=time.perf_counter()
 # print(f"loading {toc_s - tic_s:0.4f} seconds")
 
@@ -124,11 +126,18 @@ for epoch in range(1, cfg.total_steps):
         # label=subject['label'][tio.DATA].numpy()
         # print(f"#### {jnp.sum(label)} ")
         slic= einops.rearrange(slic,'w h d->1 w h d')
-        state,grid=train_step(state, image,slic) 
+        state,pair=train_step(state, image,slic) 
+        losss,grid_res=pair
+        aaa=einops.rearrange(grid_res[0,:,:,32],'a b-> 1 a b 1')
+        print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
+        with file_writer.as_default():
+          tf.summary.image(f"images {epoch}", np.array(aaa), step=0)
 
+        # im_grid = torchvision.utils.make_grid(np.array(grid))
+        # tb.add_image(f"images {epoch}", im_grid)
     # print(f"epoch {epoch} losss {losss} ")
 
-    
+# tb.close()    
     # print(image.shape)
 
 # x = random.uniform(random.PRNGKey(0), (1000, 1000))
@@ -142,3 +151,6 @@ for epoch in range(1, cfg.total_steps):
 # aaa=model.apply(params, sample_3d_ct,sample_3d_label)
 
 # print(f"aaa prob0_v {aaa[0].shape} prob0_h {aaa[1].shape}")
+# tensorboard dev upload --logdir \
+#     '/workspaces/Jax_cuda_med/data/tensor_board'
+

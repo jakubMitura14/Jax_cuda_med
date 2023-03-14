@@ -45,13 +45,12 @@ class SpixelNet(nn.Module):
         # grid of
         b, w, h, d, c=out5.shape 
         shapp = (b,w,h,d)
-        grid=jnp.arange(1,np.product(np.array(shapp))+1)
-        grid=jnp.reshape(grid,shapp).astype(jnp.float32)
+        res_grid=jnp.arange(1,np.product(np.array(shapp))+1)
+        res_grid=jnp.reshape(res_grid,shapp).astype(jnp.float32)
 
-        deconv_multi,grid,loss=De_conv_3_dim(self.cfg,8)(out5,label,grid)
-        print(f"final  {grid.shape} loss {loss}")
+        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,8)(out5,label,res_grid)
 
-        return loss,grid
+        return loss,res_grid
 
         # now we need to deconvolve a plane at a time and each time check weather 
         # the simmilarity to the neighbouring voxels is as should be
