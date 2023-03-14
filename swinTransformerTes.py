@@ -76,7 +76,7 @@ state = create_train_state()
 
 
 
-# @nn.jit
+@jax.jit
 def train_step(state, image,label,train):
   """Train for a single step."""
   def loss_fn(params):

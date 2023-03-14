@@ -109,7 +109,7 @@ def harder_diff_round(x):
 
 v_harder_diff_round=jax.vmap(harder_diff_round)
 
-def single_vect_grid_build(grid_vect,probs):
+def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray):
     """
     in probabilities vect we have the unnormalized probabilities that the current voxel is in the same 
     class as voxel up the axis and in other channel down the axis
@@ -124,11 +124,11 @@ def single_vect_grid_build(grid_vect,probs):
     """
     probs=probs.flatten()[1:-1].reshape(probs.shape[0]-1,2)
     probs=jnp.sum(probs,axis=1)
-    probs= jnp.pad(probs,(0,jnp.remainder(probs.shape[0],2 )))
+    probs= jnp.pad(probs,(0,1))
     probs=einops.rearrange(probs,'(a b)-> a b',b=2)
     probs=jnp.sum(probs,axis=1)# so we combined unnormalized probabilities from up layer looking down and current looking up
     
-    probs= jnp.pad(probs,(0,jnp.remainder(probs.shape[0],2 )))
+    # probs= jnp.pad(probs,(0,jnp.remainder(probs.shape[0],2 )))
     probs=einops.rearrange(probs,'(a b)-> a b',b=2)   
     probs= nn.softmax(probs,axis=1)
     probs = v_harder_diff_round(probs)

@@ -87,7 +87,7 @@ def create_train_state():
 state = create_train_state()
 
 
-@nn.jit
+@jax.jit
 def train_step(state, image,label):
   print(f"labellll {label.shape}")
   """Train for a single step."""
@@ -124,7 +124,6 @@ for epoch in range(1, cfg.total_steps):
         # label=subject['label'][tio.DATA].numpy()
         # print(f"#### {jnp.sum(label)} ")
         slic= einops.rearrange(slic,'w h d->1 w h d')
-        print(f"slic shape {slic.shape} state {type(state)}")
         state,grid=train_step(state, image,slic) 
 
     # print(f"epoch {epoch} losss {losss} ")
