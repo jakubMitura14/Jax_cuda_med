@@ -26,7 +26,7 @@ import h5py
 import jax
 from testUtils.spleenTest import get_spleen_data
 from ml_collections import config_dict
-from super_voxels.SIN.SIN_jax.model_sin_jax import SpixelNet
+from super_voxels.SIN.SIN_jax_2D.model_sin_jax_2D import SpixelNet
 from swinTransformer.optimasation import get_optimiser
 import swinTransformer.swin_transformer as swin_transformer
 from swinTransformer.swin_transformer import SwinTransformer
@@ -51,7 +51,7 @@ import ml_collections
 
 
 
-
+jax.numpy.set_printoptions(linewidth=400)
 
 config.update("jax_debug_nans", True)
 config.update("jax_disable_jit", True)
@@ -62,8 +62,8 @@ cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
 cfg.batch_size=1
-cfg.img_size = (cfg.batch_size,1,256,256,128)
-cfg.label_size = (cfg.batch_size,256,256,128)
+cfg.img_size = (cfg.batch_size,1,32,32)
+cfg.label_size = (cfg.batch_size,32,32)
 
 cfg.total_steps=2
 
@@ -135,7 +135,7 @@ import toolz
 cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
 cached_subj=list(map(toolz.sandbox.core.unzip,cached_subj ))
 cached_subj=list(map(lambda inn: list(map(list,inn)),cached_subj ))
-cached_subj=list(map(lambda inn: list(map(lambda aa: aa[:,:,64:-64,64:-64],inn)),cached_subj ))
+# cached_subj=list(map(lambda inn: list(map(lambda aa: aa[:,:,64:-64,64:-64,32],inn)),cached_subj ))
 # len(unipped[0][0][0])
 cached_subj=list(map(lambda inn: list(map(np.concatenate,inn)),cached_subj ))
 
@@ -163,6 +163,12 @@ for epoch in range(1, cfg.total_steps):
     
     for index,dat in enumerate(cached_subj) :
         batch_images,label,batch_labels=dat# here batch_labels is slic
+        print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} ")
+
+        batch_images=batch_images[:,:,112:-112,112:-112,32]
+        batch_labels=batch_labels[:,112:-112,112:-112,32]
+        print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} ")
+
         batch_images_prim=batch_images
         # batch_images_prim,label,batch_labels=dat# here batch_labels is slic
         # batch_images = jax_utils.replicate(batch_images_prim)
@@ -182,10 +188,10 @@ for epoch in range(1, cfg.total_steps):
         if(index==0):
           slicee=32
 
-          aaa=einops.rearrange(grid_res[0,:,:,slicee],'a b-> 1 a b 1')
+          aaa=einops.rearrange(grid_res[0,:,:],'a b-> 1 a b 1')
           print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
           grid_image=np.rot90(np.array(aaa[0,:,:,0]))
-          image_to_disp=np.rot90(np.array(batch_images_prim[0,0,:,:,slicee]))
+          image_to_disp=np.rot90(np.array(batch_images_prim[0,0,:,:]))
           with_boundaries=mark_boundaries(image_to_disp, np.round(grid_image).astype(int) )
           with_boundaries= np.array(with_boundaries)
           with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')

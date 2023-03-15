@@ -22,7 +22,7 @@ import jax.profiler
 import ml_collections
 from ml_collections import config_dict
 # from Jax_cuda_med.super_voxels.SIN.SIN_jax.model_sin_jax_utils import *
-from .model_sin_jax_utils import *
+from .model_sin_jax_utils_2D import *
 
 
 
@@ -35,28 +35,26 @@ class SpixelNet(nn.Module):
     @nn.compact
     def __call__(self, x: jnp.ndarray, label: jnp.ndarray) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
-        x=einops.rearrange(x,'b c w h d-> b w h d c')
+        x=einops.rearrange(x,'b c w h-> b w h c')
         
         out5=nn.Sequential([
             Conv_trio(self.cfg,channels=8)
-            ,Conv_trio(self.cfg,channels=8,strides=(2,2,2))
-            ,Conv_trio(self.cfg,channels=16,strides=(2,2,2))
-            ,Conv_trio(self.cfg,channels=32,strides=(2,2,2))
-            ,Conv_trio(self.cfg,channels=64,strides=(2,2,2))
-            ,Conv_trio(self.cfg,channels=128,strides=(2,2,2))
+            ,Conv_trio(self.cfg,channels=8,strides=(2,2))
+            ,Conv_trio(self.cfg,channels=16,strides=(2,2))
+            # ,Conv_trio(self.cfg,channels=32,strides=(2,2))
+
             # ,Conv_trio(channels=32,strides=(2,2,2))     
             ])(x)
         # grid of
-        b, w, h, d, c=out5.shape 
-        shapp = (b,w,h,d)
+        b, w, h,c=out5.shape 
+        shapp = (b,w,h)
         res_grid=jnp.arange(1,np.product(np.array(shapp))+1)
         res_grid=jnp.reshape(res_grid,shapp).astype(jnp.float32)
+        print(f"res_grid prim {res_grid}")
+        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(out5,label,res_grid)
+        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
+        # deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
 
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,128)(out5,label,res_grid)
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,64)(deconv_multi,label,res_grid)
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,32)(deconv_multi,label,res_grid)
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,16)(deconv_multi,label,res_grid)
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,8)(deconv_multi,label,res_grid)
 
         return loss,res_grid
 
