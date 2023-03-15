@@ -65,7 +65,7 @@ cfg.batch_size=1
 cfg.img_size = (cfg.batch_size,1,32,32)
 cfg.label_size = (cfg.batch_size,32,32)
 
-cfg.total_steps=2
+cfg.total_steps=8
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
