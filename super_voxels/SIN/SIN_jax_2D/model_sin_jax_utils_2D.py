@@ -141,12 +141,10 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray,dim_stride:
     #between two old ones so it has half more or half less than neighbour in given axis
     probs=jnp.multiply(probs,jnp.array([-1,1]))#using jnp broadcasting
     probs=jnp.sum(probs,axis=1) #get rid of zeros should have array of approximately jast +1 and -1
-    print(f" probs onlu + -0.5 {jnp.round(probs,1)}")
     #now we are adding new layer of the 
     res=grid_vect.at[:,dim_stride].set( (grid_vect[:,dim_stride]+0.5 ) +probs)
-    res = jnp.stack([grid_vect,res],axis=1)
-    res= res.flatten() # stacking and flattening to intertwine
-    print(f"final res {jnp.round(res,1)}")
+    res = einops.rearrange([grid_vect,res], 'b a p-> (a b) p ') # stacking and flattening to intertwine
+    # print(f"final res {jnp.round(res,1)}")
     return res
 
     # return grid_for_choice[0:-2]
@@ -244,6 +242,7 @@ class De_conv_with_loss_fun(nn.Module):
         bi_channel=jnp.moveaxis(bi_channel+1,self.dim_stride+1,1+1)
         lab_resized=jnp.moveaxis(lab_resized+1,self.dim_stride+1,1+1)
         grid=jnp.moveaxis(grid,self.dim_stride+1,1+1)
+
         # print(f" bbb  deconv_multi {deconv_multi.shape} bi_channel {bi_channel.shape} lab_resized {lab_resized.shape} grid {grid.shape}")
         return self.batched_operate_on_depth(deconv_multi,bi_channel,lab_resized,grid,self.dim_stride )
 
