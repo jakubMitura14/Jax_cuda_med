@@ -42,7 +42,7 @@ class Conv_trio(nn.Module):
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         x=nn.Conv(self.channels, kernel_size=(3,3),strides=self.strides)(x)
         x=nn.LayerNorm()(x)
-        return jax.nn.leaky_relu(x,negative_slope=0.1)
+        return jax.nn.gelu(x)
 
 
 class De_conv_not_sym(nn.Module):
@@ -71,7 +71,7 @@ class De_conv_not_sym(nn.Module):
     @nn.compact
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         x=self.convv(x)
-        return jax.nn.relu(x)
+        return jax.nn.gelu(x)
     
 
 
@@ -127,7 +127,7 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray):
     probs - 2 channel vector with probabilities of being in the same supervoxel up and down the vector
     """
     
-    print(f"prim  grid_vect {grid_vect}")
+    # print(f"prim probs {jnp.round(probs[0:8],1)}")
     probs=probs.flatten()[1:-1].reshape(probs.shape[0]-1,2)
     probs=jnp.sum(probs,axis=1)# so we combined unnormalized probabilities from up layer looking down and current looking up
     probs= jnp.pad(probs,(0,1),'constant', constant_values=(0.0,0.0))
@@ -136,22 +136,21 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray):
     # probs=jnp.sum(probs,axis=1)
     # probs=probs+0.000001 #for numerical stability
     probs=einops.rearrange(probs,'(a b)-> a b',b=2)   
+    # print(f"probs summed {jnp.round(probs[0:8],1)}")
+
     probs= nn.softmax(probs,axis=1)
     probs = v_harder_diff_round(probs)
 
-
-
-    # print(f"probs sums {jnp.unique(jnp.ravel(probs), size=15)}  ")
     probs=probs.flatten() #so now we have decidad to which voxel we are closer to this up or down
     #below we are preparing the choicesthat can be done up and down the axis ...
     grid_for_choice=jnp.stack([jnp.pad(grid_vect,(0,1),'edge'),jnp.pad(grid_vect,(1,0),'edge')],axis=1).flatten() 
     #TODO() instead of choice of a full number we should choose weather to add the diffrence between them or not
-    print(f"grid_for_choice {jnp.round(grid_for_choice)}")
+    # print(f"grid_for_choice {jnp.round(grid_for_choice)}")
 
     #here we have vector where half of the choices is supervoxel id and second half zeros
 
     res=jnp.multiply(probs,grid_for_choice[0:-2])
-    print(f"res {jnp.round(res)}")
+    # print(f"res {jnp.round(res)}")
 
     #we rearrange and sum to get rid out of zeros
     res=einops.rearrange(res,'(a b)-> a b',b=2)
@@ -163,7 +162,7 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray):
 
     res = jnp.stack([res,grid_vect],axis=1)
     res= res.flatten() # stacking and flattening to intertwine
-    print(f"final res {res}")
+    # print(f"final res {res}")
     return res
 
     # return grid_for_choice[0:-2]
@@ -217,7 +216,7 @@ class De_conv_with_loss_fun(nn.Module):
         #clip values and use the result as a mask so we will ignore all of the volume without any labels set
         # probably simple boolean operation will suffice to deal with it
         lab_along=self.v_v_compare_up_and_down(lab_resized).astype(jnp.float32)
-        print(f"bbbbi_channel {bi_channel.shape}  lab_along {lab_along.shape} lab_resized {lab_resized.shape}")
+        # print(f"bbbbi_channel {bi_channel.shape}  lab_along {lab_along.shape} lab_resized {lab_resized.shape}")
         # print(f"bi_channel {bi_channel.shape} deconv_multi {deconv_multi.shape} lab_resized {lab_resized.shape} lab_along {lab_along.shape} ")
         # chex.assert_equal_shape(lab_along,bi_channel)
         not_zeros=jnp.logical_not(jnp.equal(lab_resized,0))
