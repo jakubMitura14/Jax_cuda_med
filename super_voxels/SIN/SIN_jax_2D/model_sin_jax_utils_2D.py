@@ -142,7 +142,15 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray,dim_stride:
     probs=jnp.multiply(probs,jnp.array([-1,1]))#using jnp broadcasting
     probs=jnp.sum(probs,axis=1) #get rid of zeros should have array of approximately jast +1 and -1
     #now we are adding new layer of the 
+
     res=grid_vect.at[:,dim_stride].set( (grid_vect[:,dim_stride]+0.5 ) +probs)
+    
+    # grid_to_print_a=jnp.round(res[:,0])*1000
+    # grid_to_print_b=jnp.round(res[:,1])
+    # grid_to_print= jnp.stack([grid_to_print_a, grid_to_print_b], axis=-1)
+    # grid_to_print= jnp.sum(grid_to_print,axis=-1)
+    # print(f"res_to_print { jnp.round(grid_to_print).astype(int)}")
+    # print(f"res {res}")
     res = einops.rearrange([grid_vect,res], 'b a p-> (a b) p ') # stacking and flattening to intertwine
     # print(f"final res {jnp.round(res,1)}")
     return res
@@ -208,8 +216,13 @@ class De_conv_with_loss_fun(nn.Module):
         grid=self.v_v_single_vect_grid_build(grid,bi_channel,dim_stride)
         # print(f"post grid {jnp.min(grid)}")
 
-        # print(f"grid { jnp.round(grid).astype(int)}")
-        # print(f"grid shape {grid}")
+        grid_to_print_a=jnp.round(grid[:,:,0])*1000
+        grid_to_print_b=jnp.round(grid[:,:,1])
+        grid_to_print= jnp.stack([grid_to_print_a, grid_to_print_b], axis=-1)
+        grid_to_print= jnp.sum(grid_to_print,axis=-1)
+        print(f"grid_to_print { jnp.round(grid_to_print).astype(int)}")
+
+        # print(f"grid {jnp.round(grid,1)}")
         #we return with the original axes
         return jnp.moveaxis(deconv_multi,1,dim_stride),jnp.moveaxis(grid,1,dim_stride),loss
 
