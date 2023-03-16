@@ -47,10 +47,12 @@ class SpixelNet(nn.Module):
             ])(x)
         # grid of
         b, w, h,c=out5.shape 
-        shapp = (b,w,h)
-        res_grid=jnp.arange(1,np.product(np.array(shapp))+1)
-        res_grid=jnp.reshape(res_grid,shapp).astype(jnp.float32)
-        print(f"res_grid prim {res_grid}")
+
+        #creating grid where each supervoxel is described by 3 coordinates
+        res_grid=jnp.mgrid[1:w+1, 1:h+1].astype(jnp.float16)
+        res_grid=einops.rearrange(res_grid,'p x y-> x y p')
+        res_grid=einops.repeat(res_grid,'x y p-> b x y p', b=b)
+        
         deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(out5,label,res_grid)
         deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
         # deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)

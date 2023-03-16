@@ -113,7 +113,7 @@ def harder_diff_round(x):
 
 v_harder_diff_round=jax.vmap(harder_diff_round)
 
-def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray):
+def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray,dim_stride:int):
     """
     in probabilities vect we have the unnormalized probabilities that the current voxel is in the same 
     class as voxel up the axis and in other channel down the axis
@@ -131,38 +131,22 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray):
     probs=probs.flatten()[1:-1].reshape(probs.shape[0]-1,2)
     probs=jnp.sum(probs,axis=1)# so we combined unnormalized probabilities from up layer looking down and current looking up
     probs= jnp.pad(probs,(0,1),'constant', constant_values=(0.0,0.0))
-    # probs=einops.rearrange(probs,'(a b)-> a b',b=2)
-    # print(f"probs before sum {probs.shape}")
-    # probs=jnp.sum(probs,axis=1)
-    # probs=probs+0.000001 #for numerical stability
+    #so below we have an array where first channel tell about probability of getting back the axis
+    #and in a second probability of going forward in axis
     probs=einops.rearrange(probs,'(a b)-> a b',b=2)   
-    # print(f"probs summed {jnp.round(probs[0:8],1)}")
-
     probs= nn.softmax(probs,axis=1)
-    probs = v_harder_diff_round(probs)
-
-    probs=probs.flatten() #so now we have decidad to which voxel we are closer to this up or down
-    #below we are preparing the choicesthat can be done up and down the axis ...
-    grid_for_choice=jnp.stack([jnp.pad(grid_vect,(0,1),'edge'),jnp.pad(grid_vect,(1,0),'edge')],axis=1).flatten() 
-    #TODO() instead of choice of a full number we should choose weather to add the diffrence between them or not
-    # print(f"grid_for_choice {jnp.round(grid_for_choice)}")
-
-    #here we have vector where half of the choices is supervoxel id and second half zeros
-
-    res=jnp.multiply(probs,grid_for_choice[0:-2])
-    # print(f"res {jnp.round(res)}")
-
-    #we rearrange and sum to get rid out of zeros
-    res=einops.rearrange(res,'(a b)-> a b',b=2)
-    res=jnp.sum(res,axis=1)
-    # print(f"res  {jnp.round(res,2)} ")
-
-    # print(f" grid_vect {jnp.round(grid_vect).astype(int)} res {jnp.round(res,2).astype(int)} probs { jnp.round(probs,2).astype(int)}")    
-    # print(f" newwww {jnp.round(res,2).astype(int)} ")    
-
-    res = jnp.stack([res,grid_vect],axis=1)
+    probs = v_harder_diff_round(probs)*0.5
+    #now as first channel tell we should go back in axis - we will encode it as-0.5 (or 0 if not) 
+    #and +0.5 for the decision of getting forward in axis we will set 0.5 becouse we are putting new layer that is
+    #between two old ones so it has half more or half less than neighbour in given axis
+    probs=jnp.multiply(probs,jnp.array([-1,1]))#using jnp broadcasting
+    probs=jnp.sum(probs,axis=1) #get rid of zeros should have array of approximately jast +1 and -1
+    print(f" probs onlu + -0.5 {jnp.round(probs,1)}")
+    #now we are adding new layer of the 
+    res=grid_vect.at[:,dim_stride].set( (grid_vect[:,dim_stride]+0.5 ) +probs)
+    res = jnp.stack([grid_vect,res],axis=1)
     res= res.flatten() # stacking and flattening to intertwine
-    # print(f"final res {res}")
+    print(f"final res {jnp.round(res,1)}")
     return res
 
     # return grid_for_choice[0:-2]
@@ -200,11 +184,7 @@ class De_conv_with_loss_fun(nn.Module):
         also we are always vmapping along first two dimensions so dimension of intrest need to be third dim
         hence dim with index 2
         """
-        # deconv_multi=jnp.moveaxis(deconv_multi,dim_stride,1)
-        # bi_channel=jnp.moveaxis(bi_channel,dim_stride,1)
-        # lab_resized=jnp.moveaxis(lab_resized,dim_stride,1)
-        # grid=jnp.moveaxis(grid,dim_stride,1) 
-       
+      
         #now we need to establish in both direction along the axis of intrest 
         #is the label the same in resampled label
         #additionally as we have a lot of voxels that do not have any label assigned
@@ -215,19 +195,19 @@ class De_conv_with_loss_fun(nn.Module):
         #get away here with non differentiable function  as no parameters are involved an just
         #clip values and use the result as a mask so we will ignore all of the volume without any labels set
         # probably simple boolean operation will suffice to deal with it
-        lab_along=self.v_v_compare_up_and_down(lab_resized).astype(jnp.float32)
+        lab_along=self.v_v_compare_up_and_down(lab_resized)
         # print(f"bbbbi_channel {bi_channel.shape}  lab_along {lab_along.shape} lab_resized {lab_resized.shape}")
         # print(f"bi_channel {bi_channel.shape} deconv_multi {deconv_multi.shape} lab_resized {lab_resized.shape} lab_along {lab_along.shape} ")
         # chex.assert_equal_shape(lab_along,bi_channel)
         not_zeros=jnp.logical_not(jnp.equal(lab_resized,0))
-        not_zeros= jnp.stack([not_zeros,not_zeros],axis=-1).astype(jnp.float32)
+        not_zeros= jnp.stack([not_zeros,not_zeros],axis=-1).astype(jnp.float16)
         not_zeros=jnp.clip(not_zeros+0.00000001,0.0,1.0)
-        bi_chan_multi=jnp.multiply(bi_channel,not_zeros)
-        lab_along_multi=jnp.multiply(lab_along,not_zeros)
+        bi_chan_multi=jnp.multiply(bi_channel,not_zeros.astype(jnp.float32))
+        lab_along_multi=jnp.multiply(lab_along,not_zeros).astype(jnp.float16)
         loss=jnp.sum(jax.vmap(single_plane_loss)(bi_chan_multi,lab_along_multi))# we sum in order to put more emphasis on the areas we have labels
         #now we are creating the grid with voxel assignments based on bi_channel
         # print(f"pre grid {jnp.min(grid)}")
-        grid=self.v_v_single_vect_grid_build(grid,bi_channel)
+        grid=self.v_v_single_vect_grid_build(grid,bi_channel,dim_stride)
         # print(f"post grid {jnp.min(grid)}")
 
         # print(f"grid { jnp.round(grid).astype(int)}")
@@ -241,7 +221,7 @@ class De_conv_with_loss_fun(nn.Module):
 
         self.v_v_compare_up_and_down=jax.vmap(compare_up_and_down, in_axes=0, out_axes=0)
 
-        self.v_v_single_vect_grid_build=jax.vmap(single_vect_grid_build, in_axes=0, out_axes=0)
+        self.v_v_single_vect_grid_build=jax.vmap(single_vect_grid_build, in_axes=(0,0,None), out_axes=0)
         #batched version
         self.batched_operate_on_depth=jax.vmap(self.operate_on_depth, in_axes=(0,0,0,0,None) )
 
@@ -255,7 +235,7 @@ class De_conv_with_loss_fun(nn.Module):
         # and next voxel in the axis is of the same supervoxel
         bi_channel=nn.Conv(2, kernel_size=(3,3))(deconv_multi) #we do not use here softmax or sigmoid as it will be in loss
         # now we need to reshape the label to the same size as deconvolved image
-        lab_resized=jax.image.resize(label, (b,w,h), "nearest")
+        lab_resized=jax.image.resize(label, (b,w,h), "nearest").astype(jnp.float16)
         # print(f"aaaa bi_channel {bi_channel.shape} deconv_multi {deconv_multi.shape} lab_resized {lab_resized.shape} grid {grid.shape} ")
         
         # print(f" aaa  deconv_multi {deconv_multi.shape} bi_channel {bi_channel.shape} lab_resized {lab_resized.shape} grid {grid.shape}")
