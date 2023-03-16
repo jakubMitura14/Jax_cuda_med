@@ -82,7 +82,7 @@ def normpdf(x, mean, sd):
     return num/denom
 
 
-def single_plane_loss(prob_plane,label_plane):
+def losss(prob_plane,label_plane):
     """
     we will compare each plane in the axis the we did strided deconvolution
     as is important we have two channels here
@@ -126,38 +126,37 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray,dim_stride:
     grid_vect - vector with sopervoxel labels
     probs - 2 channel vector with probabilities of being in the same supervoxel up and down the vector
     """
-    
     # print(f"prim probs {jnp.round(probs[0:8],1)}")
-    probs=probs.flatten()[1:-1].reshape(probs.shape[0]-1,2)
+    probs=probs.flatten()[1:-3].reshape(probs.shape[0]-2,2)
     probs=jnp.sum(probs,axis=1)# so we combined unnormalized probabilities from up layer looking down and current looking up
-    probs= jnp.pad(probs,(0,1),'constant', constant_values=(0.0,0.0))
+    # probs= jnp.pad(probs,(0,1),'constant', constant_values=(0.0,0.0))
+    probs= jnp.pad(probs,(0,2),'constant', constant_values=(0.0,0.0))
     #so below we have an array where first channel tell about probability of getting back the axis
     #and in a second probability of going forward in axis
     probs=einops.rearrange(probs,'(a b)-> a b',b=2)   
     probs= nn.softmax(probs,axis=1)
-    probs = v_harder_diff_round(probs)*0.5
+    # probs = v_harder_diff_round(probs)*0.5
+    probs = jnp.round(probs)*0.5 #TODO(it is non differentiable !)
     #now as first channel tell we should go back in axis - we will encode it as-0.5 (or 0 if not) 
     #and +0.5 for the decision of getting forward in axis we will set 0.5 becouse we are putting new layer that is
     #between two old ones so it has half more or half less than neighbour in given axis
     probs=jnp.multiply(probs,jnp.array([-1,1]))#using jnp broadcasting
     probs=jnp.sum(probs,axis=1) #get rid of zeros should have array of approximately jast +1 and -1
-    #now we are adding new layer of the 
+    probs=probs.at[-1].set(-0.5)
+    #now we are adding new layer    
 
-    res=grid_vect.at[:,dim_stride].set( (grid_vect[:,dim_stride]+0.5 ) +probs)
+    res=grid_vect.at[:,dim_stride].set( (grid_vect[:,dim_stride]+0.5 ).astype(jnp.float32) +probs).astype(jnp.float16)
     
+
     # grid_to_print_a=jnp.round(res[:,0])*1000
     # grid_to_print_b=jnp.round(res[:,1])
     # grid_to_print= jnp.stack([grid_to_print_a, grid_to_print_b], axis=-1)
     # grid_to_print= jnp.sum(grid_to_print,axis=-1)
     # print(f"res_to_print { jnp.round(grid_to_print).astype(int)}")
+    print(f"res and half { jnp.max(jnp.round(res,2))}")
     # print(f"res {res}")
     res = einops.rearrange([grid_vect,res], 'b a p-> (a b) p ') # stacking and flattening to intertwine
-    # print(f"final res {jnp.round(res,1)}")
     return res
-
-    # return grid_for_choice[0:-2]
-    # return jnp.stack([grid_vect,grid_vect]).flatten()
-
 
 
 
@@ -210,21 +209,22 @@ class De_conv_with_loss_fun(nn.Module):
         not_zeros=jnp.clip(not_zeros+0.00000001,0.0,1.0)
         bi_chan_multi=jnp.multiply(bi_channel,not_zeros.astype(jnp.float32))
         lab_along_multi=jnp.multiply(lab_along,not_zeros).astype(jnp.float16)
-        loss=jnp.sum(jax.vmap(single_plane_loss)(bi_chan_multi,lab_along_multi))# we sum in order to put more emphasis on the areas we have labels
+        loss=losss(bi_chan_multi,lab_along_multi)
         #now we are creating the grid with voxel assignments based on bi_channel
         # print(f"pre grid {jnp.min(grid)}")
         grid=self.v_v_single_vect_grid_build(grid,bi_channel,dim_stride)
         # print(f"post grid {jnp.min(grid)}")
 
-        grid_to_print_a=jnp.round(grid[:,:,0])*1000
-        grid_to_print_b=jnp.round(grid[:,:,1])
-        grid_to_print= jnp.stack([grid_to_print_a, grid_to_print_b], axis=-1)
-        grid_to_print= jnp.sum(grid_to_print,axis=-1)
-        print(f"grid_to_print { jnp.round(grid_to_print).astype(int)}")
+        # grid_to_print_a=jnp.round(grid[:,:,0])*1000
+        # grid_to_print_b=jnp.round(grid[:,:,1])
+        # grid_to_print= grid_to_print_a+grid_to_print_b
+        # print(f"grid_to_print { jnp.round(grid_to_print).astype(int)}")
+        # print(f"grid_to_print_b { jnp.min(grid_to_print_b)} grid shape {grid.shape}  ")
 
         # print(f"grid {jnp.round(grid,1)}")
         #we return with the original axes
-        return jnp.moveaxis(deconv_multi,1,dim_stride),jnp.moveaxis(grid,1,dim_stride),loss
+        # return jnp.moveaxis(deconv_multi,1,dim_stride),jnp.moveaxis(grid,1,dim_stride),loss
+        return deconv_multi,grid,loss
 
 
 
