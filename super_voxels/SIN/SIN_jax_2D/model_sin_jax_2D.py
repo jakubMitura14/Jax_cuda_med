@@ -24,11 +24,6 @@ from ml_collections import config_dict
 # from Jax_cuda_med.super_voxels.SIN.SIN_jax.model_sin_jax_utils import *
 from .model_sin_jax_utils_2D import *
 
-
-
-
-
-
 class Render_from_grid(nn.Module):
     """
     given the grid of supervoxel data and original image

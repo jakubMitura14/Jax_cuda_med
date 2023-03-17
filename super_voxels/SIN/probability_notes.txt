@@ -11,3 +11,6 @@ https://www.google.com/url?sa=t&source=web&rct=j&url=https://ietresearch.onlinel
  good tutorial 
  https://ericmjl.github.io/dl-workshop/04-gaussian-clustering/03-dirichlet-process-clustering.html
  
+
+ Composing graphical models with neural networks for structured representations and fast inference
+https://www.cs.princeton.edu/~rpa/pubs/johnson2016svae.pdf
