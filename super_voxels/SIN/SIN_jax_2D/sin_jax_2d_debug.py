@@ -85,14 +85,21 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     rolled_probs=roll_in(probs,dim_stride,grid_shape)
 
 
+  
+    #adding as last in chosen dimension to have the same shape as original grid   
     rolled_probs= nn.softmax(rolled_probs,axis=-1)
     # probs = v_harder_diff_round(probs)*0.5
-    rolled_probs = jnp.round(rolled_probs)*0.5 #TODO(it is non differentiable !)    
+    rolled_probs = jnp.round(rolled_probs)*0.5 #TODO(it is non differentiable !)  
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
-    #adding as last in chosen dimension to have the same shape as original grid
-    rolled_probs = jnp.concatenate((rolled_probs,(jnp.zeros(tuple(probs_shape_list))+(-0.5))) ,axis= dim_stride )
+    rolled_probs = jnp.concatenate((rolled_probs,(jnp.zeros(tuple(probs_shape_list))+(0.5))) ,axis= dim_stride )
+
+    probs=jnp.multiply(probs,jnp.array([-1,1]))
+
+    print(f"rolled_probs {rolled_probs}")
 
     res_grid_new=res_grid.at[:,:,dim_stride].set((res_grid[:,:,dim_stride]+0.5)-rolled_probs)
+    print(f"res_grid_new {res_grid_new[:,:,dim_stride]}")
+
     #intertwining
     res= einops.rearrange([res_grid,res_grid_new],  rearrange_to_intertwine_einops ) 
     
