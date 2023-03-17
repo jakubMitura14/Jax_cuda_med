@@ -84,8 +84,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
  
     rolled_probs=roll_in(probs,dim_stride,grid_shape)
 
-
-  
     #adding as last in chosen dimension to have the same shape as original grid   
     rolled_probs= nn.softmax(rolled_probs,axis=-1)
     # probs = v_harder_diff_round(probs)*0.5
