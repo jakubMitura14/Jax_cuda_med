@@ -127,10 +127,10 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray,dim_stride:
     probs - 2 channel vector with probabilities of being in the same supervoxel up and down the vector
     """
     # print(f"prim probs {jnp.round(probs[0:8],1)}")
-    probs=probs.flatten()[1:-3].reshape(probs.shape[0]-2,2)
+    probs=probs.flatten()[1:-1].reshape(probs.shape[0]-1,2)
     probs=jnp.sum(probs,axis=1)# so we combined unnormalized probabilities from up layer looking down and current looking up
     # probs= jnp.pad(probs,(0,1),'constant', constant_values=(0.0,0.0))
-    probs= jnp.pad(probs,(0,2),'constant', constant_values=(0.0,0.0))
+    probs= jnp.pad(probs,(0,1),'constant', constant_values=(0.0,0.0))
     #so below we have an array where first channel tell about probability of getting back the axis
     #and in a second probability of going forward in axis
     probs=einops.rearrange(probs,'(a b)-> a b',b=2)   
@@ -147,7 +147,6 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray,dim_stride:
 
     res=grid_vect.at[:,dim_stride].set( (grid_vect[:,dim_stride]+0.5 ).astype(jnp.float32) +probs).astype(jnp.float16)
     
-
     # grid_to_print_a=jnp.round(res[:,0])*1000
     # grid_to_print_b=jnp.round(res[:,1])
     # grid_to_print= jnp.stack([grid_to_print_a, grid_to_print_b], axis=-1)
@@ -155,20 +154,21 @@ def single_vect_grid_build(grid_vect: jnp.ndarray,probs: jnp.ndarray,dim_stride:
     # print(f"res_to_print { jnp.round(grid_to_print).astype(int)}")
     print(f"res and half { jnp.max(jnp.round(res,2))}")
     # print(f"res {res}")
-    res = einops.rearrange([grid_vect,res], 'b a p-> (a b) p ') # stacking and flattening to intertwine
+    res = einops.rearrange([grid_vect,res], 'f g p-> (g f) p ') # stacking and flattening to intertwine
     return res
 
 
 
-def compare_up_and_down(vect):
+def compare_up_and_down(label: jnp.ndarray,dim_stride:int, image_shape):
     """
-    compares up and down the axis is the element up and down the same as current
+    compares up and down the axis is the element backward and forward the same as current
     then stacks resulting booleans
     """
-    res=jnp.stack([jnp.equal(vect[1:-1],vect[0:-2] )
-                   ,jnp.equal(vect[1:-1],vect[2:] )
-                ],axis=-1)
-    return jnp.pad(res,((1,1),(0,0)),'constant', constant_values=(0.0, 0.0))
+    dim_stride=dim_stride+1#we ignore batch dimension
+    main=label.take(indices=jnp.arange(1,image_shape[dim_stride]-1),axis=dim_stride)
+    back=label.take(indices=jnp.arange(0,image_shape[dim_stride]-2),axis=dim_stride)
+    forward=label.take(indices=jnp.arange(2,image_shape[dim_stride]),axis=dim_stride)
+    return jnp.stack([jnp.equal(main,back),jnp.equal(main,forward )],axis=-1)
 
 
 class De_conv_with_loss_fun(nn.Module):
@@ -183,7 +183,8 @@ class De_conv_with_loss_fun(nn.Module):
     
 
 
-    def operate_on_depth(self,deconv_multi: jnp.ndarray, bi_channel: jnp.ndarray, lab_resized: jnp.ndarray, grid: jnp.ndarray,dim_stride:int) -> jnp.ndarray:
+    def operate_on_depth(self,deconv_multi: jnp.ndarray, bi_channel: jnp.ndarray, lab_resized: jnp.ndarray
+                         , grid: jnp.ndarray,dim_stride:int,lab_resized_shape) -> jnp.ndarray:
         """
         for simplicity here we are assuming we always have unbatched 3 dim data that can have multiple channels
         also we are always vmapping along first two dimensions so dimension of intrest need to be third dim
@@ -200,7 +201,7 @@ class De_conv_with_loss_fun(nn.Module):
         #get away here with non differentiable function  as no parameters are involved an just
         #clip values and use the result as a mask so we will ignore all of the volume without any labels set
         # probably simple boolean operation will suffice to deal with it
-        lab_along=self.v_v_compare_up_and_down(lab_resized)
+        lab_along=compare_up_and_down(lab_resized,dim_stride,lab_resized_shape)
         # print(f"bbbbi_channel {bi_channel.shape}  lab_along {lab_along.shape} lab_resized {lab_resized.shape}")
         # print(f"bi_channel {bi_channel.shape} deconv_multi {deconv_multi.shape} lab_resized {lab_resized.shape} lab_along {lab_along.shape} ")
         # chex.assert_equal_shape(lab_along,bi_channel)
@@ -209,6 +210,7 @@ class De_conv_with_loss_fun(nn.Module):
         not_zeros=jnp.clip(not_zeros+0.00000001,0.0,1.0)
         bi_chan_multi=jnp.multiply(bi_channel,not_zeros.astype(jnp.float32))
         lab_along_multi=jnp.multiply(lab_along,not_zeros).astype(jnp.float16)
+
         loss=losss(bi_chan_multi,lab_along_multi)
         #now we are creating the grid with voxel assignments based on bi_channel
         # print(f"pre grid {jnp.min(grid)}")
@@ -230,9 +232,9 @@ class De_conv_with_loss_fun(nn.Module):
 
     def setup(self):
 
-        self.v_v_compare_up_and_down=jax.vmap(compare_up_and_down, in_axes=0, out_axes=0)
+        # self.v_v_compare_up_and_down=jax.vmap(compare_up_and_down, in_axes=0, out_axes=0)
 
-        self.v_v_single_vect_grid_build=jax.vmap(single_vect_grid_build, in_axes=(0,0,None), out_axes=0)
+        # self.v_v_single_vect_grid_build=jax.vmap(single_vect_grid_build, in_axes=(0,0,None), out_axes=0)
         #batched version
         self.batched_operate_on_depth=jax.vmap(self.operate_on_depth, in_axes=(0,0,0,0,None) )
 
@@ -247,17 +249,15 @@ class De_conv_with_loss_fun(nn.Module):
         bi_channel=nn.Conv(2, kernel_size=(3,3))(deconv_multi) #we do not use here softmax or sigmoid as it will be in loss
         # now we need to reshape the label to the same size as deconvolved image
         lab_resized=jax.image.resize(label, (b,w,h), "nearest").astype(jnp.float16)
-        # print(f"aaaa bi_channel {bi_channel.shape} deconv_multi {deconv_multi.shape} lab_resized {lab_resized.shape} grid {grid.shape} ")
         
-        # print(f" aaa  deconv_multi {deconv_multi.shape} bi_channel {bi_channel.shape} lab_resized {lab_resized.shape} grid {grid.shape}")
 
-        deconv_multi=jnp.moveaxis(deconv_multi+1,self.dim_stride+1,1+1)
-        bi_channel=jnp.moveaxis(bi_channel+1,self.dim_stride+1,1+1)
-        lab_resized=jnp.moveaxis(lab_resized+1,self.dim_stride+1,1+1)
-        grid=jnp.moveaxis(grid,self.dim_stride+1,1+1)
+        # deconv_multi=jnp.moveaxis(deconv_multi+1,self.dim_stride+1,1+1)
+        # bi_channel=jnp.moveaxis(bi_channel+1,self.dim_stride+1,1+1)
+        # lab_resized=jnp.moveaxis(lab_resized+1,self.dim_stride+1,1+1)
+        # grid=jnp.moveaxis(grid,self.dim_stride+1,1+1)
 
         # print(f" bbb  deconv_multi {deconv_multi.shape} bi_channel {bi_channel.shape} lab_resized {lab_resized.shape} grid {grid.shape}")
-        return self.batched_operate_on_depth(deconv_multi,bi_channel,lab_resized,grid,self.dim_stride )
+        return self.batched_operate_on_depth(deconv_multi,bi_channel,lab_resized,grid,self.dim_stride,(b,w,h) )
 
 
 
