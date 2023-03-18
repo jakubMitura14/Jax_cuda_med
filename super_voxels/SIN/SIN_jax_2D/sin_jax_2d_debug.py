@@ -60,7 +60,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
  
     # rolled_probs=roll_in(probs,dim_stride,grid_shape)
 
-    print(f"aa rolled_probs {jnp.round(rolled_probs,1)}")
     #adding as last in chosen dimension to have the same shape as original grid   
     rolled_probs= nn.softmax(rolled_probs,axis=-1)
     # probs = v_harder_diff_round(probs)*0.5
@@ -70,7 +69,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
 
     # rolled_probs = jnp.concatenate((rolled_probs,(jnp.zeros(tuple(probs_shape_list))+(0.5))) ,axis= dim_stride )
-    print(f"bb rolled_probs {jnp.round(rolled_probs,1)}")
 
 
 
@@ -103,7 +101,7 @@ def get_probs_from_shape(dim_stride,grid_shape):
     probs=jnp.stack([jnp.array(np.random.random(new_shape)),jnp.array(np.random.random(new_shape))],axis=-1).astype(jnp.float32)
     # probs=jnp.arange(1,np.product(list(new_shape))*2+1)
     # probs=probs.reshape((new_shape[0],new_shape[1],2))
-    return probs,new_shape
+    return jnp.round(probs,1),new_shape
     # print(res)
 
 print("grid _ h")
@@ -133,22 +131,34 @@ print( disp_to_pandas(*get_probs_from_shape(1,grid_shape)))
 
 # probs=einops.rearrange(probs,'(h c) w->h w c',c=2)
 # res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_intertwine_einops, recreate_channels_einops
-print("grid_build w")
-dim_stride=1
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
-rolled_w=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
-print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
-# print( pd.DataFrame(rolled_w))
+# print("grid_build w")
+# dim_stride=1
+# probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+# rolled_w=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
+# print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
+# # print( pd.DataFrame(rolled_w))
 
-print("grid_build h")
+# print("grid_build h")
+# dim_stride=0
+
+# probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+# rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,'f h w p-> (h f) w p ','(h c) w->h w c')
+
+# print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
+# # print( pd.DataFrame(rolled_h))
+
+print("grid_build both")
 dim_stride=0
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
 rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,'f h w p-> (h f) w p ','(h c) w->h w c')
-print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
-# print( pd.DataFrame(rolled_h))
 
+dim_stride=1
+grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+print(f"grid_shape {grid_shape} probs_shape {probs_shape}")
+rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
 
-
+print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
 
 
 
