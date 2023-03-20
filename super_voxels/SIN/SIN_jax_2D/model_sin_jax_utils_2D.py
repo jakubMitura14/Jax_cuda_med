@@ -73,6 +73,24 @@ class De_conv_not_sym(nn.Module):
         x=self.convv(x)
         return jax.nn.gelu(x)
     
+def masked_cross_entropy_loss(logits: jnp.ndarray,
+                       one_hot_labels: jnp.ndarray,
+                       mask: Optional[jnp.ndarray] = None) -> jnp.ndarray:
+  """
+  based on https://github.com/google-research/sam/blob/main/sam_jax/training_utils/flax_training.py
+  Returns the cross entropy loss between some logits and some labels.
+  Args:
+    logits: Output of the model.
+    one_hot_labels: One-hot encoded labels. Dimensions should match the logits.
+    mask: Mask to apply to the loss to ignore some samples (usually, the padding
+      of the batch). Array of ones and zeros.
+  Returns:
+    The cross entropy, averaged over the first dimension (samples).
+  """
+  log_softmax_logits = jax.nn.log_softmax(logits)
+#   mask = mask.reshape([logits.shape[0], 1])
+  loss = -jnp.sum(one_hot_labels * log_softmax_logits * mask) / mask.sum()
+  return jnp.nan_to_num(loss)  # Set to zero if there is no non-masked samples.    
 
 
 def normpdf(x, mean, sd):
@@ -95,7 +113,9 @@ def losss(prob_plane,label_plane):
     label_plane - 2 channel float plane about gold standard - first channel tell is voxel the same class 
         as up in axis , second down  
     """
-    return optax.sigmoid_binary_cross_entropy(prob_plane, label_plane)
+    
+    return masked_cross_entropy_loss(nn.sigmoid(prob_plane),label_plane,label_plane)
+    # return optax.sigmoid_binary_cross_entropy(prob_plane, label_plane)
 
 def diff_round(x):
     """
