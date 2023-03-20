@@ -75,7 +75,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
     # rolled_aaaaprobs=jnp.take(rolled_probs, indices=jnp.arange(0,probs_shape[dim_stride]-2),axis=dim_stride )
     end_prob=jnp.take(probs, indices=probs_shape[dim_stride]-1,axis=dim_stride )# retaking this last probability looking out
-    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]
+    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]*2
     rolled_probs = jnp.concatenate((rolled_probs,end_prob) ,axis= dim_stride )
 
     # probs_shape_list=list(probs_shape)
@@ -99,8 +99,14 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
 
     grid_forward= jnp.concatenate((grid_forward,to_end_grid) ,axis= dim_stride)
     #in order to reduce rounding error we will work on diffrences not the actual values
-    grid_proposition_diffs=jnp.stack([grid_back-grid_forward,grid_forward-grid_back],axis=-1)
+    # bellow correcting also the sign of the last in analyzed axis
+    diff_b=grid_forward-grid_back
+    
+    grid_proposition_diffs=jnp.stack([grid_back-grid_forward,diff_b],axis=-1)
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
+
+
+
     #get back the values of the decision as we subtracted and now add we wil get exactly the same
     # values for both entries example:
     # a=10
@@ -109,7 +115,17 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     # mask_b=np.multiply(np.array([a-b , b-a]),np.array([0,1]))
     # np.array([b,a])+mask_a will give 8,8
     # np.array([b,a])+mask_b will give 10,10
-    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_back,grid_forward],axis=-1))[:,:,0]
+    # hovewer this do not work for the last row - as this will also compare  to 0 
+    #for the last row we need to take entry 1 and multiply this tow by -1 to get positive number
+    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_back,grid_forward],axis=-1))[:,:,1]
+
+    print(f" grid_accepted_diffs {grid_accepted_diffs} grid_shape {grid_shape}")
+    
+    minus_ones=jnp.ones(tuple([grid_shape_list[0],grid_shape_list[1]]))-1
+    grid_shape_list[dim_stride]=grid_shape[dim_stride]-1
+    sign_correction= jnp.ones(tuple(grid_shape_list))
+    sign_correction = jnp.concatenate((sign_correction,minus_ones) ,axis= dim_stride )
+    grid_accepted_diffs=jnp.multiply(grid_accepted_diffs,sign_correction )
 
     # grid_shape_list=list(grid_shape)
     # grid_shape_list[dim_stride]=1
