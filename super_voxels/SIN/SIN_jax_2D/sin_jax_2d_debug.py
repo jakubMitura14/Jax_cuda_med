@@ -60,49 +60,47 @@ def roll_in(probs,dim_stride,probs_shape):
     probs=jnp.stack([probs_forward,probs_back],axis=-1)
     return probs
 
-def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_intertwine_einops, recreate_channels_einops):
+def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
+                ,rearrange_to_intertwine_einops, recreate_channels_einops):
     """
     we will dilatate the grid of the supervoxels ids (each id is 3 float 16) on the basis of the supplied probabilities
     and old undilatated grid voxels ids - additionally there is a problem
     big problems is that intepolation algorithm is deciding always weather to get a new voxel backward or forward in axis
     hence there is no single good solution 
-    we will just add the (0 0 0) voxel id to the end and use the probability of the last prob layer as probability of this (0 0 0)
-        voxel
+    we will just add the  voxel id to the end and use the probability of the last prob layer as probability of this new voxel
+    this id will be bigger than the max id present in original voxel grid
     """
     num_dims=2 #number of dimensions we are analyzing 2 in debugging 3 in final
     #rolling and summing the same information
     rolled_probs=roll_in(probs,dim_stride,probs_shape)
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
-    # rolled_aaaaprobs=jnp.take(rolled_probs, indices=jnp.arange(0,probs_shape[dim_stride]-2),axis=dim_stride )
-    end_prob=jnp.take(probs, indices=probs_shape[dim_stride]-1,axis=dim_stride )# retaking this last probability looking out
-    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]*2
+    # retaking this last probability looking out that was discarded in roll in
+    end_prob=jnp.take(probs, indices=probs_shape[dim_stride]-1,axis=dim_stride )
+    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]*2 #times 2 as it was not summed up
     rolled_probs = jnp.concatenate((rolled_probs,end_prob) ,axis= dim_stride )
-
-    # probs_shape_list=list(probs_shape)
-    # probs_shape_list[dim_stride]=1
-    # to_end=jnp.zeros(tuple(probs_shape_list))
-    # rolled_probs = jnp.concatenate((rolled_probs,to_end) ,axis= dim_stride )
-    rolled_probs=einops.rearrange(rolled_probs,recreate_channels_einops,c=2 )
- 
-    #adding as last in chosen dimension to have the same shape as original grid   
+    #rearranging two get last dim =2 so the softmax will make sense
+    rolled_probs=einops.rearrange(rolled_probs,recreate_channels_einops,c=2 ) 
     rolled_probs= nn.softmax(rolled_probs,axis=-1)
+    # making it as close to 0 and 1 as possible not hampering differentiability
+    # as all other results will lead to inconclusive grid id
+
     # probs = v_harder_diff_round(probs)*0.5
     rolled_probs = jnp.round(rolled_probs) #TODO(it is non differentiable !)  
 
+    # preparing the propositions to which the probabilities will be apply
+    # to choose weather we want the grid id forward or back the axis
     grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
     grid_back =jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
     #now we need also to add the last 
     grid_shape_list=list(grid_shape)
     grid_shape_list[dim_stride]=1
-    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))
-
-
+    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))+orig_grid_shape[dim_stride]+1
     grid_forward= jnp.concatenate((grid_forward,to_end_grid) ,axis= dim_stride)
+
     #in order to reduce rounding error we will work on diffrences not the actual values
     # bellow correcting also the sign of the last in analyzed axis
     diff_a=grid_back-grid_forward
     diff_b=grid_forward-grid_back
-    
     grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-1)
 
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
@@ -121,7 +119,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     grid_accepted_diffs=grid_accepted_diffs[:,:,1]
     
     res_grid_new=res_grid.at[:,:,dim_stride].set(grid_accepted_diffs)
-    # print(f" res_grid_new \n {disp_to_pandas(res_grid_new,(res_grid_new.shape[0],res_grid_new.shape[1]) )}")
 
     #intertwining
     res= einops.rearrange([res_grid,res_grid_new],  rearrange_to_intertwine_einops ) 
@@ -147,6 +144,7 @@ sh=(w,h)
 res_grid=jnp.mgrid[1:w//2+1, 1:h//2+1].astype(jnp.float16)
 res_grid=einops.rearrange(res_grid,'p x y-> x y p')
 res_grid=einops.repeat(res_grid,'x y p-> x y p')
+orig_grid_shape=res_grid.shape
 
 def get_probs_from_shape(dim_stride,grid_shape):
     new_shape=list(grid_shape)
@@ -205,7 +203,7 @@ print(disp_to_pandas(res_grid,grid_shape))
 print("grid_build both")
 dim_stride=0
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
-rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,'f h w p-> (h f) w p ','(h c) w->h w c')
+rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape,'f h w p-> (h f) w p ','(h c) w->h w c')
 
 print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
 
@@ -213,7 +211,7 @@ dim_stride=1
 grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
 
-rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
+rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
 
 print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
 
