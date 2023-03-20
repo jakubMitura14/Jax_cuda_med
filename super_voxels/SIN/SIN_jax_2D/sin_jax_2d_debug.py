@@ -75,7 +75,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
     # rolled_aaaaprobs=jnp.take(rolled_probs, indices=jnp.arange(0,probs_shape[dim_stride]-2),axis=dim_stride )
     end_prob=jnp.take(probs, indices=probs_shape[dim_stride]-1,axis=dim_stride )# retaking this last probability looking out
-    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]
+    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]*2
     rolled_probs = jnp.concatenate((rolled_probs,end_prob) ,axis= dim_stride )
 
     # probs_shape_list=list(probs_shape)
@@ -120,10 +120,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-1))
     grid_accepted_diffs=grid_accepted_diffs[:,:,1]
     
-
-
-
-
     res_grid_new=res_grid.at[:,:,dim_stride].set(grid_accepted_diffs)
     # print(f" res_grid_new \n {disp_to_pandas(res_grid_new,(res_grid_new.shape[0],res_grid_new.shape[1]) )}")
 
