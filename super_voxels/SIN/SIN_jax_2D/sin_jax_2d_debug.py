@@ -75,7 +75,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
     # rolled_aaaaprobs=jnp.take(rolled_probs, indices=jnp.arange(0,probs_shape[dim_stride]-2),axis=dim_stride )
     end_prob=jnp.take(probs, indices=probs_shape[dim_stride]-1,axis=dim_stride )# retaking this last probability looking out
-    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]*2
+    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]
     rolled_probs = jnp.concatenate((rolled_probs,end_prob) ,axis= dim_stride )
 
     # probs_shape_list=list(probs_shape)
@@ -100,9 +100,11 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     grid_forward= jnp.concatenate((grid_forward,to_end_grid) ,axis= dim_stride)
     #in order to reduce rounding error we will work on diffrences not the actual values
     # bellow correcting also the sign of the last in analyzed axis
+    diff_a=grid_back-grid_forward
     diff_b=grid_forward-grid_back
     
-    grid_proposition_diffs=jnp.stack([grid_back-grid_forward,diff_b],axis=-1)
+    grid_proposition_diffs=jnp.stack([diff_b,diff_a],axis=-1)
+
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
 
 
@@ -115,18 +117,20 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     # mask_b=np.multiply(np.array([a-b , b-a]),np.array([0,1]))
     # np.array([b,a])+mask_a will give 8,8
     # np.array([b,a])+mask_b will give 10,10
-    # hovewer this do not work for the last row - as this will also compare  to 0 
-    #for the last row we need to take entry 1 and multiply this tow by -1 to get positive number
-    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_back,grid_forward],axis=-1))[:,:,1]
-
-    print(f" grid_accepted_diffs {grid_accepted_diffs} grid_shape {grid_shape}")
     
-    minus_ones=jnp.ones(tuple([grid_shape_list[0],grid_shape_list[1]]))-1
-    grid_shape_list[dim_stride]=grid_shape[dim_stride]-1
-    sign_correction= jnp.ones(tuple(grid_shape_list))
-    sign_correction = jnp.concatenate((sign_correction,minus_ones) ,axis= dim_stride )
-    grid_accepted_diffs=jnp.multiply(grid_accepted_diffs,sign_correction )
+    print(f" grid_accepted_diffs \n {disp_to_pandas(grid_accepted_diffs,(grid_accepted_diffs.shape[0],grid_accepted_diffs.shape[1]) )}")
+    print(f" grid rest \n {disp_to_pandas(jnp.stack([grid_back,grid_forward],axis=-1),(jnp.stack([grid_back,grid_forward],axis=-1).shape[0],jnp.stack([grid_back,grid_forward],axis=-1).shape[1]) )}")
+    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_back,grid_forward],axis=-1))
+    grid_accepted_diffs=grid_accepted_diffs[:,:,1]
+    
+    # minus_ones=jnp.ones(tuple([grid_shape_list[0],grid_shape_list[1]]))-1
+    # grid_shape_list[dim_stride]=grid_shape[dim_stride]-1
+    # sign_correction= jnp.ones(tuple(grid_shape_list))
+    # sign_correction = jnp.concatenate((sign_correction,minus_ones) ,axis= dim_stride )
+    # grid_accepted_diffs=jnp.multiply(grid_accepted_diffs,sign_correction )
 
+    print("corrected grid_accepted_diffs")
+    print(pd.DataFrame(grid_accepted_diffs))
     # grid_shape_list=list(grid_shape)
     # grid_shape_list[dim_stride]=1
     # to_end=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))
@@ -134,14 +138,13 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
 
 
 
-    print(f"grid_accepted_diffs {grid_accepted_diffs}")
 
     res_grid_new=res_grid.at[:,:,dim_stride].set(grid_accepted_diffs)
+    # print(f" res_grid_new \n {disp_to_pandas(res_grid_new,(res_grid_new.shape[0],res_grid_new.shape[1]) )}")
 
     #intertwining
     res= einops.rearrange([res_grid,res_grid_new],  rearrange_to_intertwine_einops ) 
     # res=res.take(indices=jnp.arange(grid_shape[dim_stride]*2 -1) ,axis=dim_stride)
-    print(f" final res {res.shape} grid_shape {grid_shape}")
     return res
     # rolled_probs= jnp.sum(rolled_probs,axis=-1)
 
@@ -223,10 +226,12 @@ dim_stride=0
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
 rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,'f h w p-> (h f) w p ','(h c) w->h w c')
 
+print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
+
 dim_stride=1
 grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
-print(f"grid_shape {grid_shape} probs_shape {probs_shape}")
+
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
 
 print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
