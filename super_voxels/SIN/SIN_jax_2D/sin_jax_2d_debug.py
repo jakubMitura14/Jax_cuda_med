@@ -103,7 +103,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     diff_a=grid_back-grid_forward
     diff_b=grid_forward-grid_back
     
-    grid_proposition_diffs=jnp.stack([diff_b,diff_a],axis=-1)
+    grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-1)
 
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
 
@@ -117,24 +117,9 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     # mask_b=np.multiply(np.array([a-b , b-a]),np.array([0,1]))
     # np.array([b,a])+mask_a will give 8,8
     # np.array([b,a])+mask_b will give 10,10
-    
-    print(f" grid_accepted_diffs \n {disp_to_pandas(grid_accepted_diffs,(grid_accepted_diffs.shape[0],grid_accepted_diffs.shape[1]) )}")
-    print(f" grid rest \n {disp_to_pandas(jnp.stack([grid_back,grid_forward],axis=-1),(jnp.stack([grid_back,grid_forward],axis=-1).shape[0],jnp.stack([grid_back,grid_forward],axis=-1).shape[1]) )}")
-    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_back,grid_forward],axis=-1))
+    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-1))
     grid_accepted_diffs=grid_accepted_diffs[:,:,1]
     
-    # minus_ones=jnp.ones(tuple([grid_shape_list[0],grid_shape_list[1]]))-1
-    # grid_shape_list[dim_stride]=grid_shape[dim_stride]-1
-    # sign_correction= jnp.ones(tuple(grid_shape_list))
-    # sign_correction = jnp.concatenate((sign_correction,minus_ones) ,axis= dim_stride )
-    # grid_accepted_diffs=jnp.multiply(grid_accepted_diffs,sign_correction )
-
-    print("corrected grid_accepted_diffs")
-    print(pd.DataFrame(grid_accepted_diffs))
-    # grid_shape_list=list(grid_shape)
-    # grid_shape_list[dim_stride]=1
-    # to_end=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))
-    # grid_accepted_diffs= jnp.concatenate((grid_accepted_diffs,to_end) ,axis= dim_stride )
 
 
 
