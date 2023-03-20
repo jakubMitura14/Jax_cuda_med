@@ -127,12 +127,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # rolled_probs= jnp.sum(rolled_probs,axis=-1)
 
 
-def add_paddings():
-    """
-    one of big problems is that intepolation algorithm is deciding always weather to get a new voxel backward or forward in axis
-    hence there is no single good solution 
-    """
-
 
 w=8
 h=10
