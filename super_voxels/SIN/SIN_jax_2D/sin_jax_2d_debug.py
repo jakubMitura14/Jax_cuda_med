@@ -69,11 +69,14 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     we will just add the (0 0 0) voxel id to the end and use the probability of the last prob layer as probability of this (0 0 0)
         voxel
     """
+    num_dims=2 #number of dimensions we are analyzing 2 in debugging 3 in final
     #rolling and summing the same information
     rolled_probs=roll_in(probs,dim_stride,probs_shape)
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
-    
-    rolled_probs=jnp.take(rolled_probs, indices=jnp.arange(0,probs_shape[dim_stride]-2),axis=dim_stride )
+    # rolled_aaaaprobs=jnp.take(rolled_probs, indices=jnp.arange(0,probs_shape[dim_stride]-2),axis=dim_stride )
+    end_prob=jnp.take(probs, indices=probs_shape[dim_stride]-1,axis=dim_stride )# retaking this last probability looking out
+    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]
+    rolled_probs = jnp.concatenate((rolled_probs,end_prob) ,axis= dim_stride )
 
     # probs_shape_list=list(probs_shape)
     # probs_shape_list[dim_stride]=1
@@ -81,20 +84,20 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     # rolled_probs = jnp.concatenate((rolled_probs,to_end) ,axis= dim_stride )
     rolled_probs=einops.rearrange(rolled_probs,recreate_channels_einops,c=2 )
  
-    # rolled_probs=roll_in(probs,dim_stride,grid_shape)
-
     #adding as last in chosen dimension to have the same shape as original grid   
     rolled_probs= nn.softmax(rolled_probs,axis=-1)
     # probs = v_harder_diff_round(probs)*0.5
     rolled_probs = jnp.round(rolled_probs) #TODO(it is non differentiable !)  
-    # rolled_probs=jnp.multiply(rolled_probs,jnp.array([-1,1]))*0.5
 
-    # rolled_probs = jnp.sum(rolled_probs,axis=-1)
+    grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
+    grid_back =jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
+    #now we need also to add the last 
+    grid_shape_list=list(grid_shape)
+    grid_shape_list[dim_stride]=1
+    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))
 
-    # rolled_probs = jnp.concatenate((rolled_probs,(jnp.zeros(tuple(probs_shape_list))+(0.5))) ,axis= dim_stride )
-    grid_back=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )[:,:,0]
-    grid_forward=jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]-1),axis=dim_stride )[:,:,1]
 
+    grid_forward= jnp.concatenate((grid_forward,to_end_grid) ,axis= dim_stride)
     #in order to reduce rounding error we will work on diffrences not the actual values
     grid_proposition_diffs=jnp.stack([grid_back-grid_forward,grid_forward-grid_back],axis=-1)
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
@@ -108,10 +111,10 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
     # np.array([b,a])+mask_b will give 10,10
     grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_back,grid_forward],axis=-1))[:,:,0]
 
-    grid_shape_list=list(grid_shape)
-    grid_shape_list[dim_stride]=1
-    to_end=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))
-    grid_accepted_diffs= jnp.concatenate((grid_accepted_diffs,to_end) ,axis= dim_stride )
+    # grid_shape_list=list(grid_shape)
+    # grid_shape_list[dim_stride]=1
+    # to_end=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))
+    # grid_accepted_diffs= jnp.concatenate((grid_accepted_diffs,to_end) ,axis= dim_stride )
 
 
 
@@ -121,7 +124,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,rearrange_to_in
 
     #intertwining
     res= einops.rearrange([res_grid,res_grid_new],  rearrange_to_intertwine_einops ) 
-    res=res.take(indices=jnp.arange(grid_shape[dim_stride]*2 -1) ,axis=dim_stride)
+    # res=res.take(indices=jnp.arange(grid_shape[dim_stride]*2 -1) ,axis=dim_stride)
     print(f" final res {res.shape} grid_shape {grid_shape}")
     return res
     # rolled_probs= jnp.sum(rolled_probs,axis=-1)
