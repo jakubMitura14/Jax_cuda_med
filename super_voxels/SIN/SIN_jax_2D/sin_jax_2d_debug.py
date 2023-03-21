@@ -37,6 +37,9 @@ def disp_to_pandas(probs,shappe ):
     probs_to_disp=np.array(probs_to_disp).reshape(shappe)
     return pd.DataFrame(probs_to_disp)
 
+def disp_to_pandas_curr_shape(probs ):
+    return disp_to_pandas(probs,(probs.shape[0],probs.shape[1]) )
+
 
 
 def roll_in(probs,dim_stride,probs_shape):
@@ -126,19 +129,110 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     return res
     # rolled_probs= jnp.sum(rolled_probs,axis=-1)
 
+def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,orig_grid_shape:Tuple[int],diameter:int):
+    """
+    helper function for divide_sv_grid in order to calculate padding
+    additionally give the the right infor for cut
+    """
+
+    #calculating the length of the axis after all of the cuts and paddings
+    #for example if we have no shift we need to add r at the begining of the axis
+    for_pad_beg=r*(1-shift)
+    #wheather we want to remove sth from end or not depend wheater we have odd or even amountof supervoxel ids in this axis
+    is_even=int((orig_grid_shape[axis]%2==0))
+    is_odd=1-is_even
+    to_remove_from_end= (shift*is_odd)*r + ((1-shift)*is_even)*r
+    axis_len_prim=for_pad_beg+current_grid_shape[axis]-to_remove_from_end
+    #how much padding we need to make it divisible by diameter
+    for_pad_rem= jnp.remainder(axis_len_prim,diameter)
+    to_pad_end=diameter-jnp.remainder(axis_len_prim,diameter)
+    if(for_pad_rem==0):
+        to_pad_end=0
+    axis_len=axis_len_prim+to_pad_end    
+    return for_pad_beg,to_remove_from_end,axis_len_prim,axis_len,to_pad_end       
+
+
+def get_supervoxel_ids(shift_x:bool,shift_y:bool,orig_grid_shape:Tuple[int]):
+    """
+    In order to be able to vmap through the supervoxels we need to have a way 
+    to tell what id should be present in the area we have and that was given by main part of 
+    divide_sv_grid function the supervoxel ids are based on the orig_grid_shape  generally 
+    we have the supervoxel every r but here as we jump every 2r we need every second id
+    """
+    res_grid=jnp.mgrid[1:orig_grid_shape[0]+1, 1:orig_grid_shape[1]+1]
+    res_grid=einops.rearrange(res_grid,'p x y-> x y p')
+    print(f"not skipped res grid \n {disp_to_pandas_curr_shape(res_grid)}")
+
+    res_grid= res_grid[int(shift_x): orig_grid_shape[0]:2,
+                    int(shift_y): orig_grid_shape[1]:2, ]
+
+    # res_grid= res_grid[int(shift_x): orig_grid_shape[0]-(1-int(shift_x)):2,
+    #                 int(shift_y): orig_grid_shape[1]-(1-int(shift_y)):2, ]
+    print(f"skipped res grid \n {disp_to_pandas_curr_shape(res_grid)}")
+    
+    return einops.rearrange(res_grid,'x y p -> (x y) p')                 
+
+
+def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
+                    ,orig_grid_shape:Tuple[int],current_grid_shape:Tuple[int]):
+    """
+    as the supervoxel will overlap we need to have a way to divide the array with supervoxel ids
+    into the set of non overlapping areas - we want thos area to be maximum possible area where we could find
+    any voxels associated with this supervoxels- the "radius" of this cube hence can be calculated based on the amount of dilatations made
+    becouse of this overlapping we need to be able to have at least 8 diffrent divisions
+    we can work them out on the basis of the fact where we start at each axis at 0 or r - and do it for
+    all axis permutations 2**3 =8
+    we need also to take care about padding after removing r from each axis the grid need to be divisible by 2*r+1
+    as the first row and column do not grow back by construction if there is no shift we always need to add r padding rest of pad to the end
+    in case no shift is present all padding should go at the end
+    """
+    shift_x=int(shift_x)
+    shift_y=int(shift_y)
+    #max size of the area cube of intrest
+    # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
+    diameter=2*r+2
+
+    #first we cut out all areas not covered by current supervoxels
+    to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
+    to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y   =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
+    cutted=res_grid[0: current_grid_shape[0]- to_remove_from_end_x,0: current_grid_shape[1]- to_remove_from_end_y]
+
+    # print(f"pad_x {pad_x} shift_x {shift_x} pad x values{pad_x*(shift_x)} {pad_x*shift_x}")
+
+    cutted= jnp.pad(cutted,(
+                        (to_pad_beg_x,to_pad_end_x)
+                        ,(to_pad_beg_y,to_pad_end_y )
+                        ,(0,0)))
+    # cutted= jnp.pad(cutted,(
+    #                     (pad_x*(shift_x),pad_x*(1- shift_x))
+    #                     ,(pad_y*(shift_y),pad_y*(1- shift_y))
+    #                     ,(0,0)))
+    # print(f"padded {cutted.shape}")
+    print(f" cutted \n  {disp_to_pandas(cutted,(cutted.shape[0],cutted.shape[1]) )}")
+
+    cutted=einops.rearrange( cutted,'(a x) (b y) p-> (a b) x y p', x=diameter,y=diameter)
+    #setting to zero borders that are known to be 0
+    cutted=cutted.at[:,-1,:,:].set(0)
+    cutted=cutted.at[:,:,-1,:].set(0)
+    super_voxel_ids=get_supervoxel_ids(shift_x,shift_y,orig_grid_shape)
+    return cutted,super_voxel_ids
 
 
 w=8
 h=10
+r=1
 dim_stride=0
 grid_shape=(w//2,h//2)
+orig_grid_shape=grid_shape
 probs_shape=(w,h//2)
 sh=(w,h)
 
 res_grid=jnp.mgrid[1:w//2+1, 1:h//2+1].astype(jnp.float16)
 res_grid=einops.rearrange(res_grid,'p x y-> x y p')
-res_grid=einops.repeat(res_grid,'x y p-> x y p')
+print(f"aaa res_grid \n {res_grid.shape}")
+
 orig_grid_shape=res_grid.shape
+
 
 def get_probs_from_shape(dim_stride,grid_shape):
     new_shape=list(grid_shape)
@@ -153,6 +247,43 @@ def get_probs_from_shape(dim_stride,grid_shape):
 
 print("grid _ h")
 print(disp_to_pandas(res_grid,grid_shape))
+
+print("grid_build both")
+dim_stride=0
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape,'f h w p-> (h f) w p ','(h c) w->h w c')
+
+# print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
+
+dim_stride=1
+grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+
+rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
+
+print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
+
+# shift_x=True
+# shift_y=True
+
+shift_x=False
+shift_y=False
+r=1
+current_grid_shape=rolled_w.shape
+divided= divide_sv_grid(rolled_w,shift_x,shift_y,r,orig_grid_shape,current_grid_shape)
+a,b=divided
+print(f"a {a.shape} \n b {b.shape}")
+print(f"b 0 {b[0,:]} \n a {disp_to_pandas_curr_shape(a[0,:,:,:])}")
+print(f"b 1 {b[1,:]} \n a {disp_to_pandas_curr_shape(a[1,:,:,:])}")
+print(f"b 2 {b[2,:]} \n a {disp_to_pandas_curr_shape(a[2,:,:,:])}")
+print(f"b 3 {b[3,:]} \n a {disp_to_pandas_curr_shape(a[3,:,:,:])}")
+print(f"b 4 {b[4,:]} \n a {disp_to_pandas_curr_shape(a[4,:,:,:])}")
+print(f"b 5 {b[5,:]} \n a {disp_to_pandas_curr_shape(a[5,:,:,:])}")
+print(f"b 6 {b[6,:]} \n a {disp_to_pandas_curr_shape(a[6,:,:,:])}")
+
+
+
+
 # print("mainnn _ h")
 # dim_stride=0
 # print(disp_to_pandas(*get_probs_from_shape(0,grid_shape)))
@@ -193,24 +324,6 @@ print(disp_to_pandas(res_grid,grid_shape))
 
 # print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
 # # print( pd.DataFrame(rolled_h))
-
-print("grid_build both")
-dim_stride=0
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
-rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape,'f h w p-> (h f) w p ','(h c) w->h w c')
-
-print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
-
-dim_stride=1
-grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
-
-rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
-
-print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
-
-
-
 
 
 
