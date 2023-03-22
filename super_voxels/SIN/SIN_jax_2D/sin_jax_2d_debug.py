@@ -107,9 +107,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-1)
 
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
-
-
-
     #get back the values of the decision as we subtracted and now add we wil get exactly the same
     # values for both entries example:
     # a=10
@@ -218,7 +215,6 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bo
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
     # undo axis reshuffling
     texture_information= einops.rearrange(texture_information,'(a b) x y->(a x) (b y)', a=axis_len_x//diameter,b=axis_len_y//diameter, x=diameter,y=diameter)
-    # texture_information= einops.rearrange( texture_information,'a x y->(a x y)')
     #undo padding
     texture_information= texture_information[to_pad_beg_x: axis_len_x- to_pad_end_x,to_pad_beg_y:axis_len_y- to_pad_end_y  ]
     #undo cutting
@@ -263,7 +259,8 @@ print(disp_to_pandas(res_grid,grid_shape))
 print("grid_build both")
 dim_stride=0
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
-rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape,'f h w p-> (h f) w p ','(h c) w->h w c')
+rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
+,'f h w p-> (h f) w p','(h c) w->h w c')
 
 # print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
 
@@ -271,7 +268,8 @@ dim_stride=1
 grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
 
-rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape,'f h w p-> h (w f) p ','h (w c)->h w c')
+rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
+,'f h w p-> h (w f) p','h (w c)->h w c')
 
 print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
 

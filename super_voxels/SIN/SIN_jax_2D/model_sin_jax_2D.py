@@ -101,9 +101,10 @@ class SpixelNet(nn.Module):
         res_grid=jnp.mgrid[1:w+1, 1:h+1].astype(jnp.float16)
         res_grid=einops.rearrange(res_grid,'p x y-> x y p')
         res_grid=einops.repeat(res_grid,'x y p-> b x y p', b=b)
+        res_grid_shape=tuple(list(res_grid.shape)[1:])
         # print(f"prim res_grid {res_grid}")
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(out5,label,res_grid)
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
+        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55,res_grid_shape)(out5,label,res_grid)
+        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55,res_grid_shape)(deconv_multi,label,res_grid)
         # deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
 
 
