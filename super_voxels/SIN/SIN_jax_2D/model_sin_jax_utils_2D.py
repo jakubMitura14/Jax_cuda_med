@@ -183,6 +183,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
 
     # preparing the propositions to which the probabilities will be apply
     # to choose weather we want the grid id forward or back the axis
+    # print(f"grid_shape {grid_shape} dim_stride {dim_stride} res_grid {res_grid.shape}")
     grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
     grid_back =jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
     #now we need also to add the last 
@@ -323,11 +324,13 @@ def compare_up_and_down(label: jnp.ndarray,dim_stride:int, image_shape):
     compares up and down the axis is the element backward and forward the same as current
     then stacks resulting booleans
     """
-    dim_stride=dim_stride+1#we ignore batch dimension
     main=label.take(indices=jnp.arange(1,image_shape[dim_stride]-1),axis=dim_stride)
     back=label.take(indices=jnp.arange(0,image_shape[dim_stride]-2),axis=dim_stride)
     forward=label.take(indices=jnp.arange(2,image_shape[dim_stride]),axis=dim_stride)
-    return jnp.stack([jnp.equal(main,back),jnp.equal(main,forward )],axis=-1)
+    res=jnp.stack([jnp.equal(main,back),jnp.equal(main,forward )],axis=-1)
+    toPad=[(0,0),(0,0),(0,0)]
+    toPad[dim_stride]=(1,1)
+    return jnp.pad(res, toPad)
 
 
 class De_conv_with_loss_fun(nn.Module):
@@ -365,11 +368,9 @@ class De_conv_with_loss_fun(nn.Module):
         #clip values and use the result as a mask so we will ignore all of the volume without any labels set
         # probably simple boolean operation will suffice to deal with it
         lab_along=compare_up_and_down(lab_resized,dim_stride,lab_resized_shape)
-        # print(f"bbbbi_channel {bi_channel.shape}  lab_along {lab_along.shape} lab_resized {lab_resized.shape}")
-        # print(f"bi_channel {bi_channel.shape} deconv_multi {deconv_multi.shape} lab_resized {lab_resized.shape} lab_along {lab_along.shape} ")
-        # chex.assert_equal_shape(lab_along,bi_channel)
-        not_zeros=jnp.logical_not(jnp.equal(lab_resized,0))
-        not_zeros= jnp.stack([not_zeros,not_zeros],axis=-1).astype(jnp.float16)
+
+        not_zeros=jnp.logical_not(jnp.equal(lab_resized,0)).astype(jnp.float32)
+        not_zeros= jnp.stack([not_zeros,not_zeros],axis=-1).astype(jnp.float32)
         not_zeros=jnp.clip(not_zeros+0.00000001,0.0,1.0)
         bi_chan_multi=jnp.multiply(bi_channel,not_zeros.astype(jnp.float32))
         lab_along_multi=jnp.multiply(lab_along,not_zeros).astype(jnp.float16)
@@ -393,26 +394,40 @@ class De_conv_with_loss_fun(nn.Module):
 
         # self.v_v_single_vect_grid_build=jax.vmap(single_vect_grid_build, in_axes=(0,0,None), out_axes=0)
         #batched version
-        self.batched_operate_on_depth=jax.vmap(self.get_grid_and_loss_unbatched, in_axes=(0,0,0,0,None,None,None,None,None,None) )
+        self.batched_operate_on_depth=jax.vmap(self.get_grid_and_loss_unbatched, in_axes=(0,0,0,0,None,None,None,None,None,None,None) )
+
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, label: jnp.ndarray, grid: jnp.ndarray) -> jnp.ndarray:
         # first deconvolve with multiple channels to avoid loosing information
         deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(x)
         b,w,h,c= deconv_multi.shape
-        grid_shape= grid.shape
+        gb,gw,gh,gc= grid.shape
         # now we need to reduce channels to 2 and softmax so we will have the probability that 
         #the voxel before is of the same supervoxel in first channel
         # and next voxel in the axis is of the same supervoxel
         bi_channel=nn.Conv(2, kernel_size=(3,3))(deconv_multi) #we do not use here softmax or sigmoid as it will be in loss
         # now we need to reshape the label to the same size as deconvolved image
         lab_resized=jax.image.resize(label, (b,w,h), "nearest").astype(jnp.float16)
-        bi_channel_shape=(w,h,2)
-        return self.batched_operate_on_depth(deconv_multi,bi_channel,lab_resized,grid,self.dim_stride,(w,h) 
-                                            ,bi_channel_shape= (w,h,2),grid_shape=grid_shape
-                                            ,orig_grid_shape=self.orig_grid_shape,rearrange_to_intertwine_einops=self.rearrange_to_intertwine_einops
-                                             ,recreate_channels_einops=self.recreate_channels_einops   )
 
+        return self.batched_operate_on_depth(deconv_multi
+                                            ,bi_channel
+                                            ,lab_resized
+                                            ,grid
+                                            ,self.dim_stride
+                                            ,(w,h) 
+                                            ,(w,h,2)
+                                            ,(gw,gh,gc)
+                                            ,self.orig_grid_shape
+                                            ,self.rearrange_to_intertwine_einops
+                                            ,self.recreate_channels_einops   )
+
+
+
+    # def get_grid_and_loss_unbatched(self,deconv_multi: jnp.ndarray, bi_channel: jnp.ndarray, lab_resized: jnp.ndarray
+    #                      , grid: jnp.ndarray,dim_stride:int ,lab_resized_shape:Tuple[int]
+    #                      ,bi_channel_shape:Tuple[int], grid_shape:Tuple[int]
+    #                      ,orig_grid_shape:Tuple[int],rearrange_to_intertwine_einops:str, recreate_channels_einops:str  ) -> jnp.ndarray:
 
 
 class De_conv_3_dim(nn.Module):
