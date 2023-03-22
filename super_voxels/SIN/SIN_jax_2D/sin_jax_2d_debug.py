@@ -144,8 +144,8 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
     to_remove_from_end= (shift*is_odd)*r + ((1-shift)*is_even)*r
     axis_len_prim=for_pad_beg+current_grid_shape[axis]-to_remove_from_end
     #how much padding we need to make it divisible by diameter
-    for_pad_rem= jnp.remainder(axis_len_prim,diameter)
-    to_pad_end=diameter-jnp.remainder(axis_len_prim,diameter)
+    for_pad_rem= np.remainder(axis_len_prim,diameter)
+    to_pad_end=diameter-np.remainder(axis_len_prim,diameter)
     if(for_pad_rem==0):
         to_pad_end=0
     axis_len=axis_len_prim+to_pad_end    
@@ -161,14 +161,8 @@ def get_supervoxel_ids(shift_x:bool,shift_y:bool,orig_grid_shape:Tuple[int]):
     """
     res_grid=jnp.mgrid[1:orig_grid_shape[0]+1, 1:orig_grid_shape[1]+1]
     res_grid=einops.rearrange(res_grid,'p x y-> x y p')
-    print(f"not skipped res grid \n {disp_to_pandas_curr_shape(res_grid)}")
-
     res_grid= res_grid[int(shift_x): orig_grid_shape[0]:2,
                     int(shift_y): orig_grid_shape[1]:2, ]
-
-    # res_grid= res_grid[int(shift_x): orig_grid_shape[0]-(1-int(shift_x)):2,
-    #                 int(shift_y): orig_grid_shape[1]-(1-int(shift_y)):2, ]
-    print(f"skipped res grid \n {disp_to_pandas_curr_shape(res_grid)}")
     
     return einops.rearrange(res_grid,'x y p -> (x y) p')                 
 
@@ -191,31 +185,49 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
     #max size of the area cube of intrest
     # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
     diameter=2*r+2
-
     #first we cut out all areas not covered by current supervoxels
+    #TODO as there is some numpy inside it should be in precomputation
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y   =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
     cutted=res_grid[0: current_grid_shape[0]- to_remove_from_end_x,0: current_grid_shape[1]- to_remove_from_end_y]
-
-    # print(f"pad_x {pad_x} shift_x {shift_x} pad x values{pad_x*(shift_x)} {pad_x*shift_x}")
-
     cutted= jnp.pad(cutted,(
                         (to_pad_beg_x,to_pad_end_x)
                         ,(to_pad_beg_y,to_pad_end_y )
                         ,(0,0)))
-    # cutted= jnp.pad(cutted,(
-    #                     (pad_x*(shift_x),pad_x*(1- shift_x))
-    #                     ,(pad_y*(shift_y),pad_y*(1- shift_y))
-    #                     ,(0,0)))
-    # print(f"padded {cutted.shape}")
-    print(f" cutted \n  {disp_to_pandas(cutted,(cutted.shape[0],cutted.shape[1]) )}")
-
     cutted=einops.rearrange( cutted,'(a x) (b y) p-> (a b) x y p', x=diameter,y=diameter)
     #setting to zero borders that are known to be 0
     cutted=cutted.at[:,-1,:,:].set(0)
     cutted=cutted.at[:,:,-1,:].set(0)
     super_voxel_ids=get_supervoxel_ids(shift_x,shift_y,orig_grid_shape)
+
     return cutted,super_voxel_ids
+
+def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
+                    ,orig_grid_shape:Tuple[int],current_grid_shape:Tuple[int]):
+    """
+    as in divide_sv_grid we are changing the shape for supervoxel based texture infrence
+    we need then to recreate undo padding axis reshuffling ... to get back the original image shape
+    """
+    shift_x=int(shift_x)
+    shift_y=int(shift_y)
+    #max size of the area cube of intrest
+    # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
+    diameter=2*r+2
+    #first we cut out all areas not covered by current supervoxels
+    to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
+    to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
+    # undo axis reshuffling
+    texture_information= einops.rearrange(texture_information,'(a b) x y->(a x) (b y)', a=axis_len_x//diameter,b=axis_len_y//diameter, x=diameter,y=diameter)
+    # texture_information= einops.rearrange( texture_information,'a x y->(a x y)')
+    #undo padding
+    texture_information= texture_information[to_pad_beg_x: axis_len_x- to_pad_end_x,to_pad_beg_y:axis_len_y- to_pad_end_y  ]
+    #undo cutting
+    texture_information= jnp.pad(texture_information,(
+                        (0,to_remove_from_end_x)
+                        ,(0,to_remove_from_end_y )
+                        ))
+    return texture_information
+
 
 
 w=8
@@ -266,20 +278,31 @@ print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
 # shift_x=True
 # shift_y=True
 
-shift_x=False
-shift_y=False
+shift_x=True
+shift_y=True
 r=1
 current_grid_shape=rolled_w.shape
 divided= divide_sv_grid(rolled_w,shift_x,shift_y,r,orig_grid_shape,current_grid_shape)
 a,b=divided
-print(f"a {a.shape} \n b {b.shape}")
-print(f"b 0 {b[0,:]} \n a {disp_to_pandas_curr_shape(a[0,:,:,:])}")
-print(f"b 1 {b[1,:]} \n a {disp_to_pandas_curr_shape(a[1,:,:,:])}")
-print(f"b 2 {b[2,:]} \n a {disp_to_pandas_curr_shape(a[2,:,:,:])}")
-print(f"b 3 {b[3,:]} \n a {disp_to_pandas_curr_shape(a[3,:,:,:])}")
-print(f"b 4 {b[4,:]} \n a {disp_to_pandas_curr_shape(a[4,:,:,:])}")
-print(f"b 5 {b[5,:]} \n a {disp_to_pandas_curr_shape(a[5,:,:,:])}")
-print(f"b 6 {b[6,:]} \n a {disp_to_pandas_curr_shape(a[6,:,:,:])}")
+print(f"gga {a.shape}")
+a=a.at[:,:,:,0].set(a[:,:,:,0]*1000)
+a= jnp.sum(a, axis=-1)
+print(f"aaa {jnp.round(a).astype(int)}")
+# a= jnp.array(a)
+
+combined= recreate_orig_shape(a,shift_x,shift_y,r,orig_grid_shape,current_grid_shape)
+print(f"combined shape {combined.shape}")
+print(pd.DataFrame(combined))
+
+# print(f"a {a.shape} \n b {b.shape}")
+# print(f"b 0 {b[0,:]} \n a {disp_to_pandas_curr_shape(a[0,:,:,:])}")
+# print(f"b 1 {b[1,:]} \n a {disp_to_pandas_curr_shape(a[1,:,:,:])}")
+# print(f"b 2 {b[2,:]} \n a {disp_to_pandas_curr_shape(a[2,:,:,:])}")
+# print(f"b 3 {b[3,:]} \n a {disp_to_pandas_curr_shape(a[3,:,:,:])}")
+# print(f"b 4 {b[4,:]} \n a {disp_to_pandas_curr_shape(a[4,:,:,:])}")
+# print(f"b 5 {b[5,:]} \n a {disp_to_pandas_curr_shape(a[5,:,:,:])}")
+# print(f"b 6 {b[6,:]} \n a {disp_to_pandas_curr_shape(a[6,:,:,:])}")
+# print(f"a {a}")
 
 
 
