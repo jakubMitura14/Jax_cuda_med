@@ -102,16 +102,12 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
     #TODO as there is some numpy inside it should be in precomputation
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y   =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
-    print(f"in divide_sv_grid  res_grid {res_grid.shape} ")
     cutted=res_grid[0: current_grid_shape[0]- to_remove_from_end_x,0: current_grid_shape[1]- to_remove_from_end_y]
-    print(f"a cutted {cutted.shape} ")
     cutted= jnp.pad(cutted,(
                         (to_pad_beg_x,to_pad_end_x)
                         ,(to_pad_beg_y,to_pad_end_y )
                         ,(0,0)))
-    print(f"a padded {cutted.shape} ")                    
     cutted=einops.rearrange( cutted,einops_rearrange, x=diameter,y=diameter)
-    print(f"a rearranged {cutted.shape} ")                    
 
     # #setting to zero borders that are known to be 0
     # cutted=cutted.at[:,-1,:,:].set(0)
@@ -150,9 +146,19 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bo
 def soft_equal(a,b):
     """
     differentiable version of equality function
-    adapted and improved version of https://kusemanohar.wordpress.com/2017/01/05/trick-to-convert-a-indicator-function-to-continuous-and-differential-function/
+    adapted from https://kusemanohar.wordpress.com/2017/01/05/trick-to-convert-a-indicator-function-to-continuous-and-differential-function/
     """
-    return diff_round(diff_round(jnp.exp(-jax.numpy.linalg.norm(a-b,ord=2))))
+    # return diff_round(diff_round(jnp.exp(-jax.numpy.linalg.norm(a-b,ord=2))))
+    # return diff_round(jnp.exp(-jax.numpy.linalg.norm(a-b,ord=2)))
+    # return jnp.exp(-jax.numpy.linalg.norm(a-b,ord=2))
+    # return 1/(jax.numpy.linalg.norm(a-b,ord=2)+0.0000001)
+    # return 1/((jnp.dot((a-b),(a-b).T))+0.0000001)
+    # return jnp.dot((a-b),(a-b).T)
+    return  jnp.exp(-jnp.dot((a-b),(a-b).T))
+
+# a= jnp.arange(1,4)
+# b= jnp.arange(3,6)
+# jnp.dot(a,a.T)
 
 v_soft_equal=jax.vmap(soft_equal, in_axes=(0,None))
 v_v_soft_equal=jax.vmap(v_soft_equal, in_axes=(0,None))
@@ -178,6 +184,7 @@ class Texture_sv(nn.Module):
         generated_texture_single= (generated_texture_single+mean[0])*var[0]
         #masking
         mask= v_v_soft_equal(sv_area_ids,sv_id )
+        # print(f"mask {mask.shape} generated_texture_single {generated_texture_single.shape} ")
         generated_texture_single= jnp.multiply(generated_texture_single, mask)   
         #setting to zero borders that are known to be 0 as by constructions we should not be able to
             #find there the queried supervoxel
@@ -220,9 +227,8 @@ class Image_with_texture(nn.Module):
                         ,self.cfg.orig_grid_shape
                         ,sv_texture.shape
                         ,'(a x) (b y) p-> (a b) x y p')
-        print(f"sv_area_ids {sv_area_ids.shape} sv_ids {sv_ids.shape}")
         #creating textured image based on currently analyzed supervoxels
-        new_textures=v_Texture_sv(self.cfg,self.cfg.r*2+2)(sv_area_ids,sv_ids)
+        new_textures=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids)
         #recreating original shape
         new_textures=recreate_orig_shape(new_textures
                 ,self.shift_x

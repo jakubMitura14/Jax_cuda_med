@@ -103,18 +103,18 @@ class SpixelNet(nn.Module):
         res_grid=einops.rearrange(res_grid,'p x y-> x y p')
         res_grid=einops.repeat(res_grid,'x y p-> b x y p', b=b)
         res_grid_shape=tuple(list(res_grid.shape)[1:])
-        print(f"prim res_grid {res_grid.shape}  cfg {self.cfg.orig_grid_shape}")
 
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55,res_grid_shape)(out5,label,res_grid)
-        deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55,res_grid_shape)(deconv_multi,label,res_grid)
+        deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,55,res_grid_shape)(out5,label,res_grid)
+        deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,55,res_grid_shape)(deconv_multi,label,res_grid)
         
         out_image=v_Image_with_texture(self.cfg,False,False)(jnp.zeros((bi, wi, hi)),res_grid)
         out_image=v_Image_with_texture(self.cfg,True,False)(out_image,res_grid)
         out_image=v_Image_with_texture(self.cfg,False,True)(out_image,res_grid)
         out_image=v_Image_with_texture(self.cfg,True,True)(out_image,res_grid)
         
-        out_image=einops.rearrange(out_image,'b w h-> b w h 1')    
-        loss=loss+optax.l2_loss(out_image,image)
+        out_image=einops.rearrange(out_image,'b w h-> b w h 1') 
+   
+        loss=jnp.nanmean(jnp.stack([lossA,lossB]))+jnp.nanmean(optax.l2_loss(out_image,image))
 
         # deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
 

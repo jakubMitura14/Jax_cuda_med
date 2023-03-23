@@ -104,7 +104,7 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
   params = model.init({'params': rng_main,'texture' : rng_mean}, input,input_label)['params'] # initialize parameters by passing a template image
   tx = optax.chain(
         optax.clip_by_global_norm(1.5),  # Clip gradients at norm 1.5
-        optax.adamw(learning_rate=0.000001))
+        optax.adamw(learning_rate=0.00001))
   return train_state.TrainState.create(
       apply_fn=model.apply, params=params, tx=tx)
 
@@ -113,21 +113,21 @@ state = create_train_state(rng_2,cfg)
 
 # @functools.partial(jax.pmap, axis_name='ensemble')
 def train_step(state, image,label):
-  print(f"labellll {label.shape}")
   """Train for a single step."""
   def loss_fn(params):
-    loss,grid_res=state.apply_fn({'params': params}, image,label)
-    return loss,(loss.copy(),grid_res)
+    loss,out_image=state.apply_fn({'params': params}, image,label, rngs={'texture': random.PRNGKey(2)})
+    return loss#,(loss.copy(),out_image)
     # loss,grid = state.apply_fn({'params': params}, image,label)
     # print(f"loss {loss} ")
     # return loss,grid 
-  grad_fn = jax.grad(loss_fn, has_aux=True)
-  grads, pair = grad_fn(state.params)
-  losss,grid_res=pair
+  grad_fn = jax.grad(loss_fn)#, has_aux=True
+  grads = grad_fn(state.params)
+  # losss,grid_res=pair
   
   state = state.apply_gradients(grads=grads)
   # return state,(jax.lax.pmean(losss, axis_name='ensemble'), grid_res )
-  return state,(losss,grid_res )
+  return state#,(losss,grid_res )
+
 
 
 cached_subj =get_spleen_data()[0:44]
@@ -171,8 +171,10 @@ for epoch in range(1, cfg.total_steps):
         batch_images,label,batch_labels=dat# here batch_labels is slic
         print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
 
-        batch_images=batch_images[:,:,96:-96,96:-96,32]
-        batch_labels=batch_labels[:,96:-96,96:-96,32]
+        batch_images=batch_images[:,:,96:-96,96:-96,:]
+        batch_labels=batch_labels[:,96:-96,96:-96,:]
+        batch_images= einops.rearrange(batch_images, 'b c x y z-> (b z) c x y  ' )
+        batch_labels= einops.rearrange(batch_labels, 'b x y z-> (b z) x y  ' )
         print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} ")
 
         batch_images_prim=batch_images
@@ -184,18 +186,22 @@ for epoch in range(1, cfg.total_steps):
         # print(f"#### {jnp.sum(label)} ")
         # slic= einops.rearrange(slic,'w h d->1 w h d')
         
-        state,pair=train_step(state, batch_images,batch_labels) 
+        state=train_step(state, batch_images,batch_labels) 
 
         # losss_curr,grid_res=jax_utils.unreplicate(pair)
-        losss_curr,out_image=pair
-        losss=losss+losss_curr
+        # losss_curr,out_image=pair
+        # losss=losss+losss_curr
 
         #saving only with index one
         if(index==0):
           slicee=32
-          image_to_disp=einops.rearrange(batch_images_prim[0,0,:,:],'a b-> 1 a b 1')
+
+          loss,out_image=state.apply_fn({'params': state.params}, batch_images,batch_labels, rngs={'texture': random.PRNGKey(2)})
+
+          image_to_disp=einops.rearrange(batch_images_prim[64,0,:,:],'a b-> 1 a b 1')
           image_to_disp=np.rot90(np.array(image_to_disp))
-          out_image=np.rot90(np.array(out_image[0,:,:,:]))
+          out_image=einops.rearrange(out_image[64,:,:,:],'a b c-> 1 a b c')
+          out_image=np.rot90(np.array(out_image))
 
           # aaa=einops.rearrange(grid_res[0,:,:],'a b-> 1 a b 1')
           # print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
@@ -207,11 +213,13 @@ for epoch in range(1, cfg.total_steps):
           # print(f"with_boundaries {with_boundaries.shape}")
           with file_writer.as_default():
             tf.summary.image(f"image_to_disp{epoch}",image_to_disp , step=epoch)
-            tf.summary.image(f"grid_image {epoch}",out_image , step=epoch)
+            tf.summary.image(f"out_image {epoch}",out_image , step=epoch)
+
+          with file_writer.as_default():
+              tf.summary.scalar(f"train loss epoch", jnp.mean(jnp.ravel(loss))/len(cached_subj), step=epoch)
+
         print(f"*** epoch {epoch} *** ")
 
-    with file_writer.as_default():
-        tf.summary.scalar(f"train loss epoch", losss/len(cached_subj), step=epoch)
 
 
 # for some reson there is high density up and right and low down and bottom - there is 
