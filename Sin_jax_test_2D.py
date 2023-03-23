@@ -62,8 +62,11 @@ cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
 cfg.batch_size=1
-cfg.img_size = (cfg.batch_size,1,32,32)
-cfg.label_size = (cfg.batch_size,32,32)
+cfg.img_size = (cfg.batch_size,1,64,64)
+cfg.label_size = (cfg.batch_size,64,64)
+cfg.num_strided_convs= 2
+cfg.r= 2
+cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
 
 cfg.total_steps=8
 
@@ -95,7 +98,10 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
   """Creates initial `TrainState`."""
   input=jnp.ones(cfg.img_size)
   input_label=jnp.ones(cfg.label_size)
-  params = model.init(rng_2, input,input_label)['params'] # initialize parameters by passing a template image
+  rng_main,rng_mean,rng_var=jax.random.split(rng_2,num=3 )
+  #jax.random.split(rng_2,num=1 )
+  # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
+  params = model.init({'params': rng_main,'texture' : rng_mean}, input,input_label)['params'] # initialize parameters by passing a template image
   tx = optax.chain(
         optax.clip_by_global_norm(1.5),  # Clip gradients at norm 1.5
         optax.adamw(learning_rate=0.000001))
@@ -163,10 +169,10 @@ for epoch in range(1, cfg.total_steps):
     
     for index,dat in enumerate(cached_subj) :
         batch_images,label,batch_labels=dat# here batch_labels is slic
-        print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} ")
+        print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
 
-        batch_images=batch_images[:,:,112:-112,112:-112,32]
-        batch_labels=batch_labels[:,112:-112,112:-112,32]
+        batch_images=batch_images[:,:,96:-96,96:-96,32]
+        batch_labels=batch_labels[:,96:-96,96:-96,32]
         print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} ")
 
         batch_images_prim=batch_images
@@ -181,24 +187,29 @@ for epoch in range(1, cfg.total_steps):
         state,pair=train_step(state, batch_images,batch_labels) 
 
         # losss_curr,grid_res=jax_utils.unreplicate(pair)
-        losss_curr,grid_res=pair
+        losss_curr,out_image=pair
         losss=losss+losss_curr
 
         #saving only with index one
         if(index==0):
           slicee=32
+          image_to_disp=einops.rearrange(batch_images_prim[0,0,:,:],'a b-> 1 a b 1')
+          image_to_disp=np.rot90(np.array(image_to_disp))
+          out_image=np.rot90(np.array(out_image[0,:,:,:]))
 
-          aaa=einops.rearrange(grid_res[0,:,:],'a b-> 1 a b 1')
-          print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
-          grid_image=np.rot90(np.array(aaa[0,:,:,0]))
-          image_to_disp=np.rot90(np.array(batch_images_prim[0,0,:,:]))
-          with_boundaries=mark_boundaries(image_to_disp, np.round(grid_image).astype(int) )
-          with_boundaries= np.array(with_boundaries)
-          with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
-          print(f"with_boundaries {with_boundaries.shape}")
+          # aaa=einops.rearrange(grid_res[0,:,:],'a b-> 1 a b 1')
+          # print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
+          # grid_image=np.rot90(np.array(aaa[0,:,:,0]))
+          # image_to_disp=np.rot90(np.array(batch_images_prim[0,0,:,:]))
+          # with_boundaries=mark_boundaries(image_to_disp, np.round(grid_image).astype(int) )
+          # with_boundaries= np.array(with_boundaries)
+          # with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
+          # print(f"with_boundaries {with_boundaries.shape}")
           with file_writer.as_default():
-            tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
-            tf.summary.image(f"grid_image {epoch}",einops.rearrange(grid_image,'a b -> 1 a b 1') , step=epoch)
+            tf.summary.image(f"image_to_disp{epoch}",image_to_disp , step=epoch)
+            tf.summary.image(f"grid_image {epoch}",out_image , step=epoch)
+        print(f"*** epoch {epoch} *** ")
+
     with file_writer.as_default():
         tf.summary.scalar(f"train loss epoch", losss/len(cached_subj), step=epoch)
 

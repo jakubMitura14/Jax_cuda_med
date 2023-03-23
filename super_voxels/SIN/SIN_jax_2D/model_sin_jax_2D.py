@@ -23,6 +23,7 @@ import ml_collections
 from ml_collections import config_dict
 # from Jax_cuda_med.super_voxels.SIN.SIN_jax.model_sin_jax_utils import *
 from .model_sin_jax_utils_2D import *
+from .render2D import v_Texture_sv,get_supervoxel_ids,divide_sv_grid,recreate_orig_shape,v_Image_with_texture
 
 class Render_from_grid(nn.Module):
     """
@@ -82,9 +83,9 @@ class SpixelNet(nn.Module):
 
     
     @nn.compact
-    def __call__(self, x: jnp.ndarray, label: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, image: jnp.ndarray, label: jnp.ndarray) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
-        x=einops.rearrange(x,'b c w h-> b w h c')
+        image=einops.rearrange(image,'b c w h-> b w h c')
         
         out5=nn.Sequential([
             Conv_trio(self.cfg,channels=8)
@@ -93,22 +94,32 @@ class SpixelNet(nn.Module):
             # ,Conv_trio(self.cfg,channels=32,strides=(2,2))
 
             # ,Conv_trio(channels=32,strides=(2,2,2))     
-            ])(x)
+            ])(image)
         # grid of
         b, w, h,c=out5.shape 
-
+        bi, wi, hi, ci,=image.shape
         #creating grid where each supervoxel is described by 3 coordinates
         res_grid=jnp.mgrid[1:w+1, 1:h+1].astype(jnp.float16)
         res_grid=einops.rearrange(res_grid,'p x y-> x y p')
         res_grid=einops.repeat(res_grid,'x y p-> b x y p', b=b)
         res_grid_shape=tuple(list(res_grid.shape)[1:])
-        # print(f"prim res_grid {res_grid}")
+        print(f"prim res_grid {res_grid.shape}  cfg {self.cfg.orig_grid_shape}")
+
         deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55,res_grid_shape)(out5,label,res_grid)
         deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55,res_grid_shape)(deconv_multi,label,res_grid)
+        
+        out_image=v_Image_with_texture(self.cfg,False,False)(jnp.zeros((bi, wi, hi)),res_grid)
+        out_image=v_Image_with_texture(self.cfg,True,False)(out_image,res_grid)
+        out_image=v_Image_with_texture(self.cfg,False,True)(out_image,res_grid)
+        out_image=v_Image_with_texture(self.cfg,True,True)(out_image,res_grid)
+        
+        out_image=einops.rearrange(out_image,'b w h-> b w h 1')    
+        loss=loss+optax.l2_loss(out_image,image)
+
         # deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
 
 
-        return loss,res_grid
+        return loss,out_image
 
         # now we need to deconvolve a plane at a time and each time check weather 
         # the simmilarity to the neighbouring voxels is as should be
