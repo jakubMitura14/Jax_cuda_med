@@ -61,14 +61,14 @@ jax.numpy.set_printoptions(linewidth=400)
 cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
-cfg.batch_size=256
+cfg.batch_size=128
 cfg.img_size = (cfg.batch_size,1,64,64)
 cfg.label_size = (cfg.batch_size,64,64)
 cfg.num_strided_convs= 2
 cfg.r= 2
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
 
-cfg.total_steps=40
+cfg.total_steps=200
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -104,7 +104,7 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
   params = model.init({'params': rng_main,'texture' : rng_mean}, input,input_label)['params'] # initialize parameters by passing a template image
   tx = optax.chain(
         optax.clip_by_global_norm(1.5),  # Clip gradients at norm 1.5
-        optax.adamw(learning_rate=0.001))
+        optax.adamw(learning_rate=0.00001))
   return train_state.TrainState.create(
       apply_fn=model.apply, params=params, tx=tx)
 
@@ -140,7 +140,7 @@ import more_itertools
 import toolz
 
 # cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
-cached_subj=list(more_itertools.chunked(cached_subj, 2))
+cached_subj=list(more_itertools.chunked(cached_subj, 1))
 cached_subj=list(map(toolz.sandbox.core.unzip,cached_subj ))
 cached_subj=list(map(lambda inn: list(map(list,inn)),cached_subj ))
 # cached_subj=list(map(lambda inn: list(map(lambda aa: aa[:,:,64:-64,64:-64,32],inn)),cached_subj ))
@@ -171,6 +171,7 @@ for epoch in range(1, cfg.total_steps):
     
     for index,dat in enumerate(cached_subj) :
         batch_images,label,batch_labels=dat# here batch_labels is slic
+        batch_labels= einops.rearrange(batch_labels,'c h w b-> b h w c')
         print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
 
         batch_images=batch_images[:,:,96:-96,96:-96,:]

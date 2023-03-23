@@ -114,8 +114,8 @@ class SpixelNet(nn.Module):
         
         out_image=einops.rearrange(out_image,'b w h-> b w h 1') 
    
-        loss=jnp.mean(optax.l2_loss(out_image,image))
-        # loss=jnp.mean(jnp.stack([lossA,lossB]))+jnp.mean(optax.l2_loss(out_image,image))
+        # loss=jnp.mean(optax.l2_loss(out_image,image))
+        loss=jnp.mean(jnp.stack([lossA,lossB]))+jnp.mean(optax.l2_loss(out_image,image))
 
         # deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
 

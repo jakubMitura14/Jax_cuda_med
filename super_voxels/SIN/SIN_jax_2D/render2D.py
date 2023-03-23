@@ -166,7 +166,7 @@ def soft_equal(a,b):
     # return 1/(jax.numpy.linalg.norm(a-b,ord=2)+0.0000001)
     # return 1/((jnp.dot((a-b),(a-b).T))+0.0000001)
     # return jnp.dot((a-b),(a-b).T)
-    return  jnp.exp(-jnp.dot((a-b),(a-b).T))
+    return  diff_round(jnp.exp(-jnp.dot((a-b),(a-b).T)))
 
 # a= jnp.arange(1,4)
 # b= jnp.arange(3,6)

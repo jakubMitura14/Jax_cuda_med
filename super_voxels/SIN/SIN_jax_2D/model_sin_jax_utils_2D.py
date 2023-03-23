@@ -111,7 +111,7 @@ def losss(prob_plane,label_plane):
 
 
 def harder_diff_round(x):
-    return diff_round(diff_round(diff_round(x)))
+    return diff_round(diff_round(diff_round(diff_round(diff_round(x)))))
     # return  diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(x)))))))))))))
     # - 0.51 so all 
     # return diff_round(diff_round(nn.relu(x-0.51)))
