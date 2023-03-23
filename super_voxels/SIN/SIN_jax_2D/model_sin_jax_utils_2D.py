@@ -111,7 +111,7 @@ def losss(prob_plane,label_plane):
 
 
 def harder_diff_round(x):
-    return diff_round(diff_round(diff_round(diff_round(diff_round(x)))))
+    return diff_round(diff_round(x))
     # return  diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(x)))))))))))))
     # - 0.51 so all 
     # return diff_round(diff_round(nn.relu(x-0.51)))
@@ -153,7 +153,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     we will just add the  voxel id to the end and use the probability of the last prob layer as probability of this new voxel
     this id will be bigger than the max id present in original voxel grid
     """
-    num_dims=2 #number of dimensions we are analyzing 2 in debugging 3 in final
     #rolling and summing the same information
     rolled_probs=roll_in(probs,dim_stride,probs_shape)
     rolled_probs = jnp.sum(rolled_probs,axis=-1)

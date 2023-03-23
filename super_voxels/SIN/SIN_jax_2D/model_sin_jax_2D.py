@@ -86,17 +86,22 @@ class SpixelNet(nn.Module):
     def __call__(self, image: jnp.ndarray, label: jnp.ndarray) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
         image=einops.rearrange(image,'b c w h-> b w h c')
-        
-        out5=nn.Sequential([
-            Conv_trio(self.cfg,channels=8)
-            ,Conv_trio(self.cfg,channels=8,strides=(2,2))
-            ,Conv_trio(self.cfg,channels=16,strides=(2,2))
-            # ,Conv_trio(self.cfg,channels=32,strides=(2,2))
+        out1=Conv_trio(self.cfg,channels=16)(image)
+        out2=Conv_trio(self.cfg,channels=16,strides=(2,2))(out1)
+        out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
+        out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-            # ,Conv_trio(channels=32,strides=(2,2,2))     
-            ])(image)
+        # out5=nn.Sequential([
+        #     Conv_trio(self.cfg,channels=16)
+        #     ,Conv_trio(self.cfg,channels=16,strides=(2,2))
+        #     ,Conv_trio(self.cfg,channels=32,strides=(2,2))
+        #     ,Conv_trio(self.cfg,channels=64,strides=(2,2))
+        #     # ,Conv_trio(self.cfg,channels=32,strides=(2,2))
+
+        #     # ,Conv_trio(channels=32,strides=(2,2,2))     
+        #     ])(image)
         # grid of
-        b, w, h,c=out5.shape 
+        b, w, h,c=out4.shape 
         bi, wi, hi, ci,=image.shape
         #creating grid where each supervoxel is described by 3 coordinates
         res_grid=jnp.mgrid[1:w+1, 1:h+1].astype(jnp.float16)
@@ -104,8 +109,9 @@ class SpixelNet(nn.Module):
         res_grid=einops.repeat(res_grid,'x y p-> b x y p', b=b)
         res_grid_shape=tuple(list(res_grid.shape)[1:])
 
-        deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,55,res_grid_shape)(out5,label,res_grid)
-        deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,55,res_grid_shape)(deconv_multi,label,res_grid)
+        deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,32,res_grid_shape)(out4,label,res_grid)
+        deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out3,label,res_grid)
+        deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out2,label,res_grid)
 
         out_image=v_Image_with_texture(self.cfg,False,False)(image,res_grid)
         out_image=v_Image_with_texture(self.cfg,True,False)(image,res_grid)+out_image

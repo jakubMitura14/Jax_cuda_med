@@ -62,13 +62,13 @@ cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
 cfg.batch_size=128
-cfg.img_size = (cfg.batch_size,1,64,64)
-cfg.label_size = (cfg.batch_size,64,64)
-cfg.num_strided_convs= 2
-cfg.r= 2
+cfg.img_size = (cfg.batch_size,1,128,128)
+cfg.label_size = (cfg.batch_size,128,128)
+cfg.num_strided_convs= 3
+cfg.r= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
 
-cfg.total_steps=200
+cfg.total_steps=400
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -103,8 +103,8 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
   params = model.init({'params': rng_main,'texture' : rng_mean}, input,input_label)['params'] # initialize parameters by passing a template image
   tx = optax.chain(
-        optax.clip_by_global_norm(1.5),  # Clip gradients at norm 1.5
-        optax.adamw(learning_rate=0.00001))
+        optax.clip_by_global_norm(3.0),  # Clip gradients at norm 1.5
+        optax.adamw(learning_rate=0.000001))
   return train_state.TrainState.create(
       apply_fn=model.apply, params=params, tx=tx)
 
@@ -170,12 +170,13 @@ for epoch in range(1, cfg.total_steps):
     losss=0
     
     for index,dat in enumerate(cached_subj) :
+      
         batch_images,label,batch_labels=dat# here batch_labels is slic
         batch_labels= einops.rearrange(batch_labels,'c h w b-> b h w c')
-        print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
+        # print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
 
-        batch_images=batch_images[:,:,96:-96,96:-96,:]
-        batch_labels=batch_labels[:,96:-96,96:-96,:]
+        batch_images=batch_images[:,:,64:-64,64:-64,:]
+        batch_labels=batch_labels[:,64:-64,64:-64,:]
         batch_images= einops.rearrange(batch_images, 'b c x y z-> (b z) c x y  ' )
         batch_labels= einops.rearrange(batch_labels, 'b x y z-> (b z) x y  ' )
         print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} ")
@@ -197,14 +198,14 @@ for epoch in range(1, cfg.total_steps):
 
         #saving only with index one
         if(index==0):
-          slicee=32
+          slicee=15
 
           loss,out_image=state.apply_fn({'params': state.params}, batch_images,batch_labels, rngs={'texture': random.PRNGKey(2)})
 
-          image_to_disp=batch_images_prim[32,0,:,:]
+          image_to_disp=batch_images_prim[slicee,0,:,:]
           image_to_disp=np.rot90(np.array(image_to_disp))
           # out_image=einops.rearrange(out_image[0,:,:,0],'a b -> 1 a b 1')
-          out_image=np.rot90(np.array(out_image[32,:,:,0]))
+          out_image=np.rot90(np.array(out_image[slicee,:,:,0]))
 
           image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
           out_image=einops.rearrange(out_image,'a b-> 1 a b 1')

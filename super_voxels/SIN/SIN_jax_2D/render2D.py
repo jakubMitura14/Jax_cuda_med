@@ -122,8 +122,8 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
     cutted=einops.rearrange( cutted,einops_rearrange, x=diameter,y=diameter)
 
     # #setting to zero borders that are known to be 0
-    # cutted=cutted.at[:,-1,:,:].set(0)
-    # cutted=cutted.at[:,:,-1,:].set(0)
+    cutted=cutted.at[:,-1,:,:].set(0)
+    cutted=cutted.at[:,:,-1,:].set(0)
     super_voxel_ids=get_supervoxel_ids(shift_x,shift_y,orig_grid_shape)
 
     return cutted,super_voxel_ids
@@ -203,15 +203,16 @@ class Texture_sv(nn.Module):
         # generated_texture_single=mask*mean[0]
         image_part= einops.rearrange(image_part,'x y c ->1 x y c')# add batch dim to be compatible with convolution
         image_part=jnp.multiply(image_part,mask)
-        image_part= Conv_trio(self.cfg,channels=8)(image_part)
-        image_part= Conv_trio(self.cfg,channels=16)(image_part)
-        mean= nn.Dense(1)(jnp.ravel(image_part))
+        image_part= Conv_trio(self.cfg,channels=2)(image_part)
+        image_part= Conv_trio(self.cfg,channels=4)(image_part)
+        mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
         generated_texture_single=mask*mean[0]
 
         #setting to zero borders that are known to be 0 as by constructions we should not be able to
             #find there the queried supervoxel
-        generated_texture_single=generated_texture_single.at[-1,:].set(0)
-        generated_texture_single=generated_texture_single.at[:,-1].set(0)
+
+        # generated_texture_single=generated_texture_single.at[-1,:].set(0)
+        # generated_texture_single=generated_texture_single.at[:,-1].set(0)
 
         return generated_texture_single
                 # generated_texture_single = self.param('shape_param_single_s_vox',
