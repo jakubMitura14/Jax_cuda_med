@@ -106,15 +106,16 @@ class SpixelNet(nn.Module):
 
         deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,55,res_grid_shape)(out5,label,res_grid)
         deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,55,res_grid_shape)(deconv_multi,label,res_grid)
-        
-        out_image=v_Image_with_texture(self.cfg,False,False)(jnp.zeros((bi, wi, hi)),res_grid)
-        out_image=v_Image_with_texture(self.cfg,True,False)(out_image,res_grid)
-        out_image=v_Image_with_texture(self.cfg,False,True)(out_image,res_grid)
-        out_image=v_Image_with_texture(self.cfg,True,True)(out_image,res_grid)
+
+        out_image=v_Image_with_texture(self.cfg,False,False)(image,res_grid)
+        out_image=v_Image_with_texture(self.cfg,True,False)(image,res_grid)+out_image
+        out_image=v_Image_with_texture(self.cfg,False,True)(image,res_grid)+out_image
+        out_image=v_Image_with_texture(self.cfg,True,True)(image,res_grid)+out_image
         
         out_image=einops.rearrange(out_image,'b w h-> b w h 1') 
    
-        loss=jnp.nanmean(jnp.stack([lossA,lossB]))+jnp.nanmean(optax.l2_loss(out_image,image))
+        loss=jnp.mean(optax.l2_loss(out_image,image))
+        # loss=jnp.mean(jnp.stack([lossA,lossB]))+jnp.mean(optax.l2_loss(out_image,image))
 
         # deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
 

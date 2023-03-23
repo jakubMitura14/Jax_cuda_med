@@ -53,22 +53,22 @@ import ml_collections
 
 jax.numpy.set_printoptions(linewidth=400)
 
-config.update("jax_debug_nans", True)
-config.update("jax_disable_jit", True)
+# config.update("jax_debug_nans", True)
+# config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
 
 
 cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
-cfg.batch_size=1
+cfg.batch_size=256
 cfg.img_size = (cfg.batch_size,1,64,64)
 cfg.label_size = (cfg.batch_size,64,64)
 cfg.num_strided_convs= 2
 cfg.r= 2
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
 
-cfg.total_steps=8
+cfg.total_steps=40
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -104,7 +104,7 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
   params = model.init({'params': rng_main,'texture' : rng_mean}, input,input_label)['params'] # initialize parameters by passing a template image
   tx = optax.chain(
         optax.clip_by_global_norm(1.5),  # Clip gradients at norm 1.5
-        optax.adamw(learning_rate=0.00001))
+        optax.adamw(learning_rate=0.001))
   return train_state.TrainState.create(
       apply_fn=model.apply, params=params, tx=tx)
 
@@ -112,6 +112,7 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
 state = create_train_state(rng_2,cfg)
 
 # @functools.partial(jax.pmap, axis_name='ensemble')
+@jax.jit
 def train_step(state, image,label):
   """Train for a single step."""
   def loss_fn(params):
@@ -138,7 +139,8 @@ cached_subj =get_spleen_data()[0:44]
 import more_itertools
 import toolz
 
-cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
+# cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
+cached_subj=list(more_itertools.chunked(cached_subj, 2))
 cached_subj=list(map(toolz.sandbox.core.unzip,cached_subj ))
 cached_subj=list(map(lambda inn: list(map(list,inn)),cached_subj ))
 # cached_subj=list(map(lambda inn: list(map(lambda aa: aa[:,:,64:-64,64:-64,32],inn)),cached_subj ))
@@ -198,10 +200,16 @@ for epoch in range(1, cfg.total_steps):
 
           loss,out_image=state.apply_fn({'params': state.params}, batch_images,batch_labels, rngs={'texture': random.PRNGKey(2)})
 
-          image_to_disp=einops.rearrange(batch_images_prim[64,0,:,:],'a b-> 1 a b 1')
+          image_to_disp=batch_images_prim[32,0,:,:]
           image_to_disp=np.rot90(np.array(image_to_disp))
-          out_image=einops.rearrange(out_image[64,:,:,:],'a b c-> 1 a b c')
-          out_image=np.rot90(np.array(out_image))
+          # out_image=einops.rearrange(out_image[0,:,:,0],'a b -> 1 a b 1')
+          out_image=np.rot90(np.array(out_image[32,:,:,0]))
+
+          image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
+          out_image=einops.rearrange(out_image,'a b-> 1 a b 1')
+
+          print(f"ooo out_image {out_image.shape}")
+          print(f"ooo image_to_disp {image_to_disp.shape}")
 
           # aaa=einops.rearrange(grid_res[0,:,:],'a b-> 1 a b 1')
           # print(f"grid_res {grid_res.shape}   aaa {aaa.shape}  min {jnp.min(jnp.ravel(grid_res))} max {jnp.max(jnp.ravel(grid_res))} var {jnp.var(jnp.ravel(grid_res))}" )
@@ -218,7 +226,7 @@ for epoch in range(1, cfg.total_steps):
           with file_writer.as_default():
               tf.summary.scalar(f"train loss epoch", jnp.mean(jnp.ravel(loss))/len(cached_subj), step=epoch)
 
-        print(f"*** epoch {epoch} *** ")
+          print(f"*** epoch {epoch} *** ")
 
 
 

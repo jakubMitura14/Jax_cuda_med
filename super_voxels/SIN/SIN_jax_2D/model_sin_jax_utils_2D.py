@@ -25,7 +25,7 @@ from ml_collections import config_dict
 from functools import partial
 import toolz
 import chex
-from .render2D import diff_round
+from .render2D import diff_round,Conv_trio
 # class Predict_prob(nn.Module):
 #     cfg: ml_collections.config_dict.config_dict.ConfigDict
 
@@ -34,16 +34,6 @@ from .render2D import diff_round
 #         x=nn.Conv(2, kernel_size=(3,3,3))(x)
 #         return jax.nn.softmax(x, axis=1)
 
-class Conv_trio(nn.Module):
-    cfg: ml_collections.config_dict.config_dict.ConfigDict
-    channels: int
-    strides:Tuple[int]=(1,1)
-
-    @nn.compact
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x=nn.Conv(self.channels, kernel_size=(3,3),strides=self.strides)(x)
-        x=nn.LayerNorm()(x)
-        return jax.nn.gelu(x)
 
 
 class De_conv_not_sym(nn.Module):

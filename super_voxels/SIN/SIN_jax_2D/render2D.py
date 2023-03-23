@@ -26,6 +26,18 @@ from functools import partial
 import toolz
 import chex
 
+class Conv_trio(nn.Module):
+    cfg: ml_collections.config_dict.config_dict.ConfigDict
+    channels: int
+    strides:Tuple[int]=(1,1)
+
+    @nn.compact
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        x=nn.Conv(self.channels, kernel_size=(3,3),strides=self.strides)(x)
+        x=nn.LayerNorm()(x)
+        return jax.nn.gelu(x)
+
+
 def diff_round(x):
     """
     differentiable version of round function
@@ -175,17 +187,27 @@ class Texture_sv(nn.Module):
     # kernel_init: Callable = nn.initializers.lecun_normal()
 
     @nn.compact
-    def __call__(self,sv_area_ids: jnp.ndarray,sv_id: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self,sv_area_ids: jnp.ndarray,sv_id: jnp.ndarray,image_part: jnp.ndarray) -> jnp.ndarray:
         mean = self.param('mean',
                 nn.initializers.lecun_normal(),(1,1))
         var = self.param('var',
                 nn.initializers.lecun_normal(),(1,1))
-        generated_texture_single= jax.random.normal(self.make_rng("texture"),(self.diameter,self.diameter))        
-        generated_texture_single= (generated_texture_single+mean[0])*var[0]
+        # generated_texture_single= jax.random.normal(self.make_rng("texture"),(self.diameter,self.diameter))        
+        # generated_texture_single= (generated_texture_single+mean[0])*var[0]
         #masking
+        
+
         mask= v_v_soft_equal(sv_area_ids,sv_id )
         # print(f"mask {mask.shape} generated_texture_single {generated_texture_single.shape} ")
-        generated_texture_single= jnp.multiply(generated_texture_single, mask)   
+        # generated_texture_single= jnp.multiply(generated_texture_single, mask)   
+        # generated_texture_single=mask*mean[0]
+        image_part= einops.rearrange(image_part,'x y c ->1 x y c')# add batch dim to be compatible with convolution
+        image_part=jnp.multiply(image_part,mask)
+        image_part= Conv_trio(self.cfg,channels=8)(image_part)
+        image_part= Conv_trio(self.cfg,channels=16)(image_part)
+        mean= nn.Dense(1)(jnp.ravel(image_part))
+        generated_texture_single=mask*mean[0]
+
         #setting to zero borders that are known to be 0 as by constructions we should not be able to
             #find there the queried supervoxel
         generated_texture_single=generated_texture_single.at[-1,:].set(0)
@@ -197,7 +219,7 @@ class Texture_sv(nn.Module):
 
 
 v_Texture_sv=nn.vmap(Texture_sv
-                            ,in_axes=(0, 0)
+                            ,in_axes=(0, 0,0)
                             ,variable_axes={'params': 0} #parametters are not shared
                             ,split_rngs={'params': True,'texture' :True}
                             )
@@ -218,26 +240,34 @@ class Image_with_texture(nn.Module):
     # diameter:int
 
     @nn.compact
-    def __call__(self,sv_texture: jnp.ndarray ,sv_area_ids: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self,image: jnp.ndarray ,sv_area_ids: jnp.ndarray) -> jnp.ndarray:
         # first we need to reshape it to make it ameneable to vmapped Texture_sv
+        sv_shape=sv_area_ids.shape
         sv_area_ids,sv_ids=divide_sv_grid(sv_area_ids
                         ,self.shift_x
                         ,self.shift_y
                         ,self.cfg.r
                         ,self.cfg.orig_grid_shape
-                        ,sv_texture.shape
+                        ,sv_shape
                         ,'(a x) (b y) p-> (a b) x y p')
+        image,sv_ids=divide_sv_grid(image
+                ,self.shift_x
+                ,self.shift_y
+                ,self.cfg.r
+                ,self.cfg.orig_grid_shape
+                ,sv_shape
+                ,'(a x) (b y) p-> (a b) x y p')                
         #creating textured image based on currently analyzed supervoxels
-        new_textures=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids)
+        new_textures=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids,image)
         #recreating original shape
         new_textures=recreate_orig_shape(new_textures
                 ,self.shift_x
                 ,self.shift_y
                 ,self.cfg.r
                 ,self.cfg.orig_grid_shape
-                ,sv_texture.shape)
+                ,sv_shape)
 
-        return sv_texture+ new_textures        
+        return new_textures        
 
 #for batch dimension
 v_Image_with_texture=nn.vmap(Image_with_texture
