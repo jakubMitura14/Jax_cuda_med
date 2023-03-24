@@ -28,9 +28,26 @@ import chex
 import pandas as pd
 
 
+from jax.config import config
+config.update('jax_platform_name', 'cpu')
 
+jax.numpy.set_printoptions(linewidth=800)
 
-jax.numpy.set_printoptions(linewidth=400)
+def get_diameter_no_pad(r):
+    """
+    so every time we have n elements we can get n+ more elements
+    so analyzing on single axis
+    start from 1 ->1+1+1 =3 good
+    start from 3 ->3+3+1=7 good 
+    start from 7 ->7+7+1=15 good 
+    """
+    curr = 1
+    for i in range(0,r):
+        curr=curr*2+1
+    return curr
+
+def get_diameter(r):
+    return get_diameter_no_pad(r)+1
 
 
 def disp_to_pandas(probs,shappe ):
@@ -137,11 +154,13 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
 
     #calculating the length of the axis after all of the cuts and paddings
     #for example if we have no shift we need to add r at the begining of the axis
-    for_pad_beg=r*(1-shift)
+    r_to_pad=(get_diameter_no_pad(r)-1)//2
+
+    for_pad_beg=r_to_pad*(1-shift)
     #wheather we want to remove sth from end or not depend wheater we have odd or even amountof supervoxel ids in this axis
     is_even=int((orig_grid_shape[axis]%2==0))
     is_odd=1-is_even
-    to_remove_from_end= (shift*is_odd)*r + ((1-shift)*is_even)*r
+    to_remove_from_end= (shift*is_odd)*r_to_pad + ((1-shift)*is_even)*r_to_pad
     axis_len_prim=for_pad_beg+current_grid_shape[axis]-to_remove_from_end
     #how much padding we need to make it divisible by diameter
     for_pad_rem= np.remainder(axis_len_prim,diameter)
@@ -184,11 +203,10 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
     shift_y=int(shift_y)
     #max size of the area cube of intrest
     # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
-    diameter=5*r+2+16
+    diameter=get_diameter(r)
     # for r=1 we have 2*r+2
     # for r=2 we have 2*r+2+2
     # for r=3 we have 5*r+2
-    print(f"rrrrrrrrrrrrrr {r} diameter {diameter}")
 
     #first we cut out all areas not covered by current supervoxels
     #TODO as there is some numpy inside it should be in precomputation
@@ -217,7 +235,7 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bo
     shift_y=int(shift_y)
     #max size of the area cube of intrest
     # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
-    diameter=5*r+2+16 # krowa seem to work if we add 2 to this one more time
+    diameter=get_diameter(r)
     #first we cut out all areas not covered by current supervoxels
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
@@ -234,8 +252,10 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bo
 
 
 
-w=16
-h=16
+w=32
+h=32
+# w=16
+# h=16
 r=3
 dim_stride=0
 grid_shape=(w//2,h//2)
@@ -246,108 +266,192 @@ sh=(w,h)
 res_grid=jnp.mgrid[1:w//2+1, 1:h//2+1].astype(jnp.float16)
 res_grid=einops.rearrange(res_grid,'p x y-> x y p')
 print(f"aaa res_grid \n {res_grid.shape}")
-
+orig_res_grid=res_grid
 orig_grid_shape=res_grid.shape
 
 
-def get_probs_from_shape(dim_stride,grid_shape):
+def get_probs_from_shape(dim_stride,grid_shape, rng):
     new_shape=list(grid_shape)
     new_shape[dim_stride]=new_shape[dim_stride]*2
-
+    rng_a,rng_b=jax.random.split(rng)
     # probs=jnp.stack([jnp.zeros(probs_shape),jnp.ones(probs_shape)],axis=-1).astype(jnp.float32)
-    probs=jnp.stack([jnp.array(np.random.random(new_shape)),jnp.array(np.random.random(new_shape))],axis=-1).astype(jnp.float32)
+    probs=jnp.stack([jax.random.normal(rng_a,new_shape),jax.random.normal(rng_b,new_shape)],axis=-1).astype(jnp.float32)
     # probs=jnp.arange(1,np.product(list(new_shape))*2+1)
     # probs=probs.reshape((new_shape[0],new_shape[1],2))
     return jnp.round(probs,1),new_shape
     # print(res)
+
+def print_example_part(rolled,num,r_curr):
+    shift_x=False
+    shift_y=False
+    current_grid_shape=rolled.shape
+    divided= divide_sv_grid(rolled,shift_x,shift_y,r_curr,orig_grid_shape,current_grid_shape)
+    a,b=divided
+
+    #checking widest/highest combinations in whole generated grid
+    x_max_main=0
+    y_max_main=0
+    for x in range(1,orig_grid_shape[0]+1):
+        for y in range(1,orig_grid_shape[1]+1):
+            x_ok = rolled[:,:,0]==x
+            y_ok=rolled[:,:,1]==y
+            both_ok = jnp.logical_and(x_ok,y_ok)
+            x_max= np.max(jnp.sum(both_ok,axis=0))
+            y_max= np.max(jnp.sum(both_ok,axis=1))
+            x_max_main=np.max(np.stack([x_max,x_max_main]))
+            y_max_main=np.max(np.stack([y_max,y_max_main]))
+    print(f"************ num {num} r {r_curr} maxes x{x_max_main} y {y_max_main} ; a {a.shape} {b.shape}  ***************** ")
+    print(f"b {b[num,:]} \n  a 0 \n {disp_to_pandas_curr_shape(a[num,:,:])}")            
+
+
+prng = jax.random.PRNGKey(39)
+# prng = jax.random.PRNGKey(42)
+example_part=10
+example_part_b=11
 
 print("grid _ h")
 print(disp_to_pandas(res_grid,grid_shape))
 
 print("grid_build both a ")
 dim_stride=0
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+prng,new_rng=jax.random.split(prng)
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
+# print_example_part(rolled_h,example_part,1)
+
 
 # print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
 print("grid_build both b")
 dim_stride=1
 grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
-
+prng,new_rng=jax.random.split(prng)
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> h (w f) p','h (w c)->h w c')
+print_example_part(rolled_w,example_part,1)
+print_example_part(rolled_w,example_part_b,1)
+
+
 
 print("grid_build both c")
 dim_stride=0
 grid_shape=(rolled_w.shape[0],rolled_w.shape[1])
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+prng,new_rng=jax.random.split(prng)
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(rolled_w,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
+# print_example_part(rolled_h,example_part,2)
 
 
 print("grid_build both d")
 dim_stride=1
 grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+prng,new_rng=jax.random.split(prng)
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> h (w f) p','h (w c)->h w c')
+print_example_part(rolled_w,example_part,2)
+print_example_part(rolled_w,example_part_b,2)
 
 
 print("grid_build both e")
 dim_stride=0
 grid_shape=(rolled_w.shape[0],rolled_w.shape[1])
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+prng,new_rng=jax.random.split(prng)
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(rolled_w,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
+# print_example_part(rolled_h,example_part,3)
 
 
 print("grid_build both f")
 dim_stride=1
 grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+prng,new_rng=jax.random.split(prng)
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> h (w f) p','h (w c)->h w c')
+print_example_part(rolled_w,example_part,3)
+print_example_part(rolled_w,example_part_b,3)
 
 
 print("grid_build both g")
 dim_stride=0
 grid_shape=(rolled_w.shape[0],rolled_w.shape[1])
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+prng,new_rng=jax.random.split(prng)
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(rolled_w,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
+# print_example_part(rolled_h,example_part,3)
 
 
 print("grid_build both h")
 dim_stride=1
 grid_shape=(rolled_h.shape[0],rolled_h.shape[1])
-probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape)
+prng,new_rng=jax.random.split(prng)
+probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> h (w f) p','h (w c)->h w c')
+print_example_part(rolled_w,example_part,4)
+print_example_part(rolled_w,example_part_b,4)
 
 
+def part_test_mas_completness(rolled,shift_x,shift_y,r_curr):
+    """
+    checking weather we have full cover of the mask 
+    """
+    current_grid_shape=rolled.shape
+    divided= divide_sv_grid(rolled,shift_x,shift_y,r_curr,orig_grid_shape,current_grid_shape)
+    a,b=divided
+    res=jnp.zeros((rolled.shape[0],rolled.shape[1])).astype(bool)
+    for id in b:
+            loc_copy=rolled.copy()
+            x_ok = loc_copy[:,:,0]==id[0]
+            y_ok=loc_copy[:,:,1]==id[1]
+            res_loc=jnp.logical_and(x_ok,y_ok)
+            res= jnp.logical_or(res,res_loc)
+    return res        
 
-print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
+
+a1=part_test_mas_completness(rolled_w,True,True,4)
+a2=part_test_mas_completness(rolled_w,True,False,4)
+a3=part_test_mas_completness(rolled_w,False,True,4)
+a4=part_test_mas_completness(rolled_w,False,False,4)
+
+a5= jnp.logical_or(a1,a2)
+a6= jnp.logical_or(a3,a4)
+
+
+print(f"should {rolled_w.shape[0]*rolled_w.shape[1]} is {jnp.sum(jnp.logical_or(a5,a6)) }  ")
+
+from matplotlib import pyplot as plt
+plt.figure(figsize=(20, 10))
+plt.style.use('grayscale')
+plt.imshow(np.rot90(jnp.logical_or(a5,a6)))
+plt.savefig('/workspaces/Jax_cuda_med/data/explore/foo.png')
+
+
+# print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))
 
 # shift_x=True
 # shift_y=True
 
-shift_x=True
-shift_y=False
-current_grid_shape=rolled_w.shape
-divided= divide_sv_grid(rolled_w,shift_x,shift_y,r,orig_grid_shape,current_grid_shape)
-a,b=divided
-print(f"gga {a.shape}")
-a=a.at[:,:,:,0].set(a[:,:,:,0]*1000)
-a= jnp.sum(a, axis=-1)
-# a= jnp.array(a)
 
-combined= recreate_orig_shape(a,shift_x,shift_y,r,orig_grid_shape,current_grid_shape)
-print(f"combined shape {combined.shape}")
-print(pd.DataFrame(combined))
-print(f"a {a.shape} b {b.shape} orig_grid_shape {orig_grid_shape} current_grid_shape {current_grid_shape}")
-print(f"a 0 \n {a[10,:,:]}\n b {b[10,:]}")
+
+
+
+# print(f"gga {a.shape}")
+# a=a.at[:,:,:,0].set(a[:,:,:,0]*1000)
+# a= jnp.sum(a, axis=-1)
+# # a= jnp.array(a)
+
+# combined= recreate_orig_shape(a,shift_x,shift_y,r,orig_grid_shape,current_grid_shape)
+# print(f"combined shape {combined.shape}")
+# print(pd.DataFrame(combined))
+# print(f"a {a.shape} b {b.shape} orig_grid_shape {orig_grid_shape} current_grid_shape {current_grid_shape}")
+# print(f"a 0 \n {a[10,:,:]}\n b {b[10,:]}")
+
 # print(f"a {a.shape} \n b {b.shape}")
 # print(f"b 0 {b[0,:]} \n a {disp_to_pandas_curr_shape(a[0,:,:,:])}")
 # print(f"b 1 {b[1,:]} \n a {disp_to_pandas_curr_shape(a[1,:,:,:])}")

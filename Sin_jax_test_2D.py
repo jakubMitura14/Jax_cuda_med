@@ -68,7 +68,7 @@ cfg.num_strided_convs= 3
 cfg.r= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
 
-cfg.total_steps=400
+cfg.total_steps=500
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -196,6 +196,7 @@ for epoch in range(1, cfg.total_steps):
         # losss_curr,out_image=pair
         # losss=losss+losss_curr
 
+
         #saving only with index one
         if(index==0):
           slicee=15
@@ -210,7 +211,7 @@ for epoch in range(1, cfg.total_steps):
           image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
           out_image=einops.rearrange(out_image,'a b-> 1 a b 1')
 
-          print(f"ooo out_image {out_image.shape}")
+          print(f"ooo out_image {out_image.shape} min {jnp.min(jnp.ravel(out_image))} max {jnp.max(jnp.ravel(out_image))} ")
           print(f"ooo image_to_disp {image_to_disp.shape}")
 
           # aaa=einops.rearrange(grid_res[0,:,:],'a b-> 1 a b 1')
@@ -221,9 +222,15 @@ for epoch in range(1, cfg.total_steps):
           # with_boundaries= np.array(with_boundaries)
           # with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
           # print(f"with_boundaries {with_boundaries.shape}")
+          if(epoch==0):
+            with file_writer.as_default():
+              tf.summary.image(f"image_to_disp{epoch}",image_to_disp , step=epoch)
+
+
           with file_writer.as_default():
-            tf.summary.image(f"image_to_disp{epoch}",image_to_disp , step=epoch)
+
             tf.summary.image(f"out_image {epoch}",out_image , step=epoch)
+
 
           with file_writer.as_default():
               tf.summary.scalar(f"train loss epoch", jnp.mean(jnp.ravel(loss))/len(cached_subj), step=epoch)

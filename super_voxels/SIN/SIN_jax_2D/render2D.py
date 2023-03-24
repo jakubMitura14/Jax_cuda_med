@@ -44,16 +44,22 @@ def diff_round(x):
     """
     return x - jnp.sin(2*jnp.pi*x)/(2*jnp.pi)
 
+def get_diameter_no_pad(r):
+    """
+    so every time we have n elements we can get n+ more elements
+    so analyzing on single axis
+    start from 1 ->1+1+1 =3 good
+    start from 3 ->3+3+1=7 good 
+    start from 7 ->7+7+1=15 good 
+    """
+    curr = 1
+    for i in range(0,r):
+        curr=curr*2+1
+    return curr
+
 def get_diameter(r):
-    """
-    experimentally set formula to calculate required diameter 
-    for analyzed sv area
-    """
-    a=np.arange(1,r+1)
-    a=np.sum(np.power(a,2))
-    res= a+3
-    # print(f"rrr {type(res)}")
-    return res
+    return get_diameter_no_pad(r)+1
+
 
 def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,orig_grid_shape:Tuple[int],diameter:int):
     """
@@ -63,11 +69,13 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
 
     #calculating the length of the axis after all of the cuts and paddings
     #for example if we have no shift we need to add r at the begining of the axis
-    for_pad_beg=r*(1-shift)
+    r_to_pad=(get_diameter_no_pad(r)-1)//2
+
+    for_pad_beg=r_to_pad*(1-shift)
     #wheather we want to remove sth from end or not depend wheater we have odd or even amountof supervoxel ids in this axis
     is_even=int((orig_grid_shape[axis]%2==0))
     is_odd=1-is_even
-    to_remove_from_end= (shift*is_odd)*r + ((1-shift)*is_even)*r
+    to_remove_from_end= (shift*is_odd)*r_to_pad + ((1-shift)*is_even)*r_to_pad
     axis_len_prim=for_pad_beg+current_grid_shape[axis]-to_remove_from_end
     #how much padding we need to make it divisible by diameter
     for_pad_rem= np.remainder(axis_len_prim,diameter)
@@ -75,7 +83,8 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
     if(for_pad_rem==0):
         to_pad_end=0
     axis_len=axis_len_prim+to_pad_end    
-    return for_pad_beg,to_remove_from_end,axis_len_prim,axis_len,to_pad_end       
+    return for_pad_beg,to_remove_from_end,axis_len_prim,axis_len,to_pad_end     
+
 
 def get_supervoxel_ids(shift_x:bool,shift_y:bool,orig_grid_shape:Tuple[int]):
     """
@@ -122,8 +131,8 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
     cutted=einops.rearrange( cutted,einops_rearrange, x=diameter,y=diameter)
 
     # #setting to zero borders that are known to be 0
-    cutted=cutted.at[:,-1,:,:].set(0)
-    cutted=cutted.at[:,:,-1,:].set(0)
+    # cutted=cutted.at[:,-1,:,:].set(0)
+    # cutted=cutted.at[:,:,-1,:].set(0)
     super_voxel_ids=get_supervoxel_ids(shift_x,shift_y,orig_grid_shape)
 
     return cutted,super_voxel_ids
@@ -201,12 +210,18 @@ class Texture_sv(nn.Module):
         # print(f"mask {mask.shape} generated_texture_single {generated_texture_single.shape} ")
         # generated_texture_single= jnp.multiply(generated_texture_single, mask)   
         # generated_texture_single=mask*mean[0]
-        image_part= einops.rearrange(image_part,'x y c ->1 x y c')# add batch dim to be compatible with convolution
-        image_part=jnp.multiply(image_part,mask)
-        image_part= Conv_trio(self.cfg,channels=2)(image_part)
-        image_part= Conv_trio(self.cfg,channels=4)(image_part)
-        mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
-        generated_texture_single=mask*mean[0]
+        
+
+
+        # image_part= einops.rearrange(image_part,'x y c ->1 x y c')# add batch dim to be compatible with convolution
+        # image_part=jnp.multiply(image_part,mask)
+        # image_part= Conv_trio(self.cfg,channels=2)(image_part)
+        # image_part= Conv_trio(self.cfg,channels=4)(image_part)
+        # mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
+        # generated_texture_single=mask*mean[0]
+
+
+        generated_texture_single=mask
 
         #setting to zero borders that are known to be 0 as by constructions we should not be able to
             #find there the queried supervoxel

@@ -125,7 +125,8 @@ RUN python3 -m  pip install \
     scikit-image==0.20.0 \
     imageio==2.26.0 \
     jax-cosmo==0.1.0 \
-    more-itertools
+    more-itertools 
+    # torch-tb-profiler
 # RUN python3 -m  pip install \
 #     absl-py==1.0.0 \
 #     cloudpickle==2.0.0 \
