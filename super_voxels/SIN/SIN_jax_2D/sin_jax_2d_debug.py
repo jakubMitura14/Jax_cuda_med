@@ -109,7 +109,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
 
     # probs = v_harder_diff_round(probs)*0.5
     rolled_probs = jnp.round(rolled_probs) #TODO(it is non differentiable !)  
-
     # preparing the propositions to which the probabilities will be apply
     # to choose weather we want the grid id forward or back the axis
     grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
@@ -252,10 +251,10 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bo
 
 
 
-w=32
-h=32
-# w=16
-# h=16
+# w=32
+# h=32
+w=8
+h=8
 r=3
 dim_stride=0
 grid_shape=(w//2,h//2)
@@ -329,9 +328,9 @@ prng,new_rng=jax.random.split(prng)
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> h (w f) p','h (w c)->h w c')
-print_example_part(rolled_w,example_part,1)
-print_example_part(rolled_w,example_part_b,1)
-
+# print_example_part(rolled_w,example_part,1)
+# print_example_part(rolled_w,example_part_b,1)
+print(disp_to_pandas_curr_shape(rolled_w))
 
 
 print("grid_build both c")
@@ -342,6 +341,7 @@ probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(rolled_w,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
 # print_example_part(rolled_h,example_part,2)
+print(disp_to_pandas_curr_shape(rolled_h))
 
 
 print("grid_build both d")
@@ -351,8 +351,9 @@ prng,new_rng=jax.random.split(prng)
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> h (w f) p','h (w c)->h w c')
-print_example_part(rolled_w,example_part,2)
-print_example_part(rolled_w,example_part_b,2)
+# print_example_part(rolled_w,example_part,2)
+# print_example_part(rolled_w,example_part_b,2)
+print(disp_to_pandas_curr_shape(rolled_w))
 
 
 print("grid_build both e")
@@ -363,6 +364,7 @@ probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(rolled_w,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
 # print_example_part(rolled_h,example_part,3)
+print(disp_to_pandas_curr_shape(rolled_h))
 
 
 print("grid_build both f")
@@ -372,8 +374,9 @@ prng,new_rng=jax.random.split(prng)
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> h (w f) p','h (w c)->h w c')
-print_example_part(rolled_w,example_part,3)
-print_example_part(rolled_w,example_part_b,3)
+# print_example_part(rolled_w,example_part,3)
+# print_example_part(rolled_w,example_part_b,3)
+print(disp_to_pandas_curr_shape(rolled_w))
 
 
 print("grid_build both g")
@@ -384,6 +387,7 @@ probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(rolled_w,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
 # print_example_part(rolled_h,example_part,3)
+print(disp_to_pandas_curr_shape(rolled_h))
 
 
 print("grid_build both h")
@@ -393,43 +397,44 @@ prng,new_rng=jax.random.split(prng)
 probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> h (w f) p','h (w c)->h w c')
-print_example_part(rolled_w,example_part,4)
-print_example_part(rolled_w,example_part_b,4)
+# print_example_part(rolled_w,example_part,4)
+# print_example_part(rolled_w,example_part_b,4)
+print(disp_to_pandas_curr_shape(rolled_w))
 
 
-def part_test_mas_completness(rolled,shift_x,shift_y,r_curr):
-    """
-    checking weather we have full cover of the mask 
-    """
-    current_grid_shape=rolled.shape
-    divided= divide_sv_grid(rolled,shift_x,shift_y,r_curr,orig_grid_shape,current_grid_shape)
-    a,b=divided
-    res=jnp.zeros((rolled.shape[0],rolled.shape[1])).astype(bool)
-    for id in b:
-            loc_copy=rolled.copy()
-            x_ok = loc_copy[:,:,0]==id[0]
-            y_ok=loc_copy[:,:,1]==id[1]
-            res_loc=jnp.logical_and(x_ok,y_ok)
-            res= jnp.logical_or(res,res_loc)
-    return res        
+# def part_test_mas_completness(rolled,shift_x,shift_y,r_curr):
+#     """
+#     checking weather we have full cover of the mask 
+#     """
+#     current_grid_shape=rolled.shape
+#     divided= divide_sv_grid(rolled,shift_x,shift_y,r_curr,orig_grid_shape,current_grid_shape)
+#     a,b=divided
+#     res=jnp.zeros((rolled.shape[0],rolled.shape[1])).astype(bool)
+#     for id in b:
+#             loc_copy=rolled.copy()
+#             x_ok = loc_copy[:,:,0]==id[0]
+#             y_ok=loc_copy[:,:,1]==id[1]
+#             res_loc=jnp.logical_and(x_ok,y_ok)
+#             res= jnp.logical_or(res,res_loc)
+#     return res        
 
 
-a1=part_test_mas_completness(rolled_w,True,True,4)
-a2=part_test_mas_completness(rolled_w,True,False,4)
-a3=part_test_mas_completness(rolled_w,False,True,4)
-a4=part_test_mas_completness(rolled_w,False,False,4)
+# a1=part_test_mas_completness(rolled_w,True,True,4)
+# a2=part_test_mas_completness(rolled_w,True,False,4)
+# a3=part_test_mas_completness(rolled_w,False,True,4)
+# a4=part_test_mas_completness(rolled_w,False,False,4)
 
-a5= jnp.logical_or(a1,a2)
-a6= jnp.logical_or(a3,a4)
+# a5= jnp.logical_or(a1,a2)
+# a6= jnp.logical_or(a3,a4)
 
 
-print(f"should {rolled_w.shape[0]*rolled_w.shape[1]} is {jnp.sum(jnp.logical_or(a5,a6)) }  ")
+# print(f"should {rolled_w.shape[0]*rolled_w.shape[1]} is {jnp.sum(jnp.logical_or(a5,a6)) }  ")
 
-from matplotlib import pyplot as plt
-plt.figure(figsize=(20, 10))
-plt.style.use('grayscale')
-plt.imshow(np.rot90(jnp.logical_or(a5,a6)))
-plt.savefig('/workspaces/Jax_cuda_med/data/explore/foo.png')
+# from matplotlib import pyplot as plt
+# plt.figure(figsize=(20, 10))
+# plt.style.use('grayscale')
+# plt.imshow(np.rot90(jnp.logical_or(a5,a6)))
+# plt.savefig('/workspaces/Jax_cuda_med/data/explore/foo.png')
 
 
 # print( disp_to_pandas(rolled_w,(rolled_w.shape[0],rolled_w.shape[1])))

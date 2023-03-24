@@ -213,15 +213,14 @@ class Texture_sv(nn.Module):
         
 
 
-        # image_part= einops.rearrange(image_part,'x y c ->1 x y c')# add batch dim to be compatible with convolution
-        # image_part=jnp.multiply(image_part,mask)
-        # image_part= Conv_trio(self.cfg,channels=2)(image_part)
-        # image_part= Conv_trio(self.cfg,channels=4)(image_part)
-        # mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
-        # generated_texture_single=mask*mean[0]
+        image_part= einops.rearrange(image_part,'x y c ->1 x y c')# add batch dim to be compatible with convolution
+        image_part=jnp.multiply(image_part,mask)
+        image_part= Conv_trio(self.cfg,channels=2)(image_part)
+        image_part= Conv_trio(self.cfg,channels=4)(image_part)
+        mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
+        generated_texture_single=mask*mean[0]
 
 
-        generated_texture_single=mask
 
         #setting to zero borders that are known to be 0 as by constructions we should not be able to
             #find there the queried supervoxel
