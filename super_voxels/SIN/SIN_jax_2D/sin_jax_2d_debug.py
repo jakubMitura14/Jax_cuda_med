@@ -111,12 +111,12 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     rolled_probs = jnp.round(rolled_probs) #TODO(it is non differentiable !)  
     # preparing the propositions to which the probabilities will be apply
     # to choose weather we want the grid id forward or back the axis
-    grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
-    grid_back =jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
+    grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )
+    grid_back =jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]),axis=dim_stride )
     #now we need also to add the last 
     grid_shape_list=list(grid_shape)
     grid_shape_list[dim_stride]=1
-    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))+orig_grid_shape[dim_stride]+1
+    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1],num_dims]))+orig_grid_shape[dim_stride]+1
     grid_forward= jnp.concatenate((grid_forward,to_end_grid) ,axis= dim_stride)
 
     #in order to reduce rounding error we will work on diffrences not the actual values
@@ -124,8 +124,11 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     diff_a=grid_back-grid_forward
     diff_b=grid_forward-grid_back
     grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-1)
-
+    #in order to broadcast we add empty dim - needed becouse probability is about whole point not the each coordinate of sv id
+    rolled_probs=einops.rearrange(rolled_probs,'h w p-> h w p 1')
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
+    # print(f"grid_accepted_diffs {grid_accepted_diffs}")
+
     #get back the values of the decision as we subtracted and now add we wil get exactly the same
     # values for both entries example:
     # a=10
@@ -135,10 +138,9 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # np.array([b,a])+mask_a will give 8,8
     # np.array([b,a])+mask_b will give 10,10
     grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-1))
-    grid_accepted_diffs=grid_accepted_diffs[:,:,1]
+    res_grid_new=grid_accepted_diffs[:,:,:,1]
     
-    res_grid_new=res_grid.at[:,:,dim_stride].set(grid_accepted_diffs)
-
+    # res_grid_new=res_grid.at[:,:,dim_stride].set(grid_accepted_diffs)
     #intertwining
     res= einops.rearrange([res_grid,res_grid_new],  rearrange_to_intertwine_einops ) 
     # res=res.take(indices=jnp.arange(grid_shape[dim_stride]*2 -1) ,axis=dim_stride)

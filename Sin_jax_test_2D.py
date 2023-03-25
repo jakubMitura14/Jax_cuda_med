@@ -61,14 +61,14 @@ jax.numpy.set_printoptions(linewidth=400)
 cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
-cfg.batch_size=128
+cfg.batch_size=100
 cfg.img_size = (cfg.batch_size,1,128,128)
 cfg.label_size = (cfg.batch_size,128,128)
 cfg.num_strided_convs= 3
 cfg.r= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
 
-cfg.total_steps=500
+cfg.total_steps=8000
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -88,20 +88,21 @@ file_writer = tf.summary.create_file_writer(logdir)
 prng = jax.random.PRNGKey(42)
 model = SpixelNet(cfg)
 rng_2=jax.random.split(prng,num=jax.local_device_count() )
-rng_2=prng#
+#rng_2=prng#
 # params = model.init(prng, input,input_b) # initialize parameters by passing a template image
 
 
 
-# @functools.partial(jax.pmap,static_broadcasted_argnums=1, axis_name='ensemble')#,static_broadcasted_argnums=(2)
+@functools.partial(jax.pmap,static_broadcasted_argnums=1, axis_name='ensemble')#,static_broadcasted_argnums=(2)
 def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
   """Creates initial `TrainState`."""
   input=jnp.ones(cfg.img_size)
   input_label=jnp.ones(cfg.label_size)
-  rng_main,rng_mean,rng_var=jax.random.split(rng_2,num=3 )
+  rng_main,rng_mean=jax.random.split(rng_2)
+
   #jax.random.split(rng_2,num=1 )
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
-  params = model.init({'params': rng_main,'texture' : rng_mean}, input,input_label)['params'] # initialize parameters by passing a template image
+  params = model.init({'params': rng_main}, input,input_label)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
   tx = optax.chain(
         optax.clip_by_global_norm(3.0),  # Clip gradients at norm 1.5
         optax.adamw(learning_rate=0.000001))
@@ -111,25 +112,28 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
 
 state = create_train_state(rng_2,cfg)
 
-# @functools.partial(jax.pmap, axis_name='ensemble')
-@jax.jit
-def train_step(state, image,label):
+# @jax.jit
+@functools.partial(jax.pmap, axis_name='ensemble')
+def apply_model(state, image,label):
   """Train for a single step."""
   def loss_fn(params):
-    loss,out_image=state.apply_fn({'params': params}, image,label, rngs={'texture': random.PRNGKey(2)})
-    return loss#,(loss.copy(),out_image)
+    loss,out_image=state.apply_fn({'params': params}, image,label)#, rngs={'texture': random.PRNGKey(2)}
+    return loss,out_image #(loss.copy(),out_image)
     # loss,grid = state.apply_fn({'params': params}, image,label)
     # print(f"loss {loss} ")
     # return loss,grid 
-  grad_fn = jax.grad(loss_fn)#, has_aux=True
-  grads = grad_fn(state.params)
+  grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+  (loss, out_image), grads = grad_fn(state.params)
   # losss,grid_res=pair
-  
-  state = state.apply_gradients(grads=grads)
+  losss=jax.lax.pmean(loss, axis_name='ensemble')
+
+  # state = state.apply_gradients(grads=grads)
   # return state,(jax.lax.pmean(losss, axis_name='ensemble'), grid_res )
-  return state#,(losss,grid_res )
+  return grads, loss,out_image#,(losss,grid_res )
 
-
+@jax.pmap
+def update_model(state, grads):
+  return state.apply_gradients(grads=grads)
 
 cached_subj =get_spleen_data()[0:44]
 # toc_s=time.perf_counter()
@@ -168,44 +172,51 @@ cached_subj=list(map(lambda inn: list(map(np.concatenate,inn)),cached_subj ))
 
 for epoch in range(1, cfg.total_steps):
     losss=0
-    
+    epoch_loss = []
+    slicee=15
+
     for index,dat in enumerate(cached_subj) :
       
         batch_images,label,batch_labels=dat# here batch_labels is slic
-        batch_labels= einops.rearrange(batch_labels,'c h w b-> b h w c')
+        print(f"* {index}")
+        # batch_labels= einops.rearrange(batch_labels,'c h w b-> b h w c')
         # print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
 
-        batch_images=batch_images[:,:,64:-64,64:-64,:]
-        batch_labels=batch_labels[:,64:-64,64:-64,:]
+        batch_images=batch_images[:,:,64:-64,64:-64,14:-14]
+        batch_labels=batch_labels[14:-14,64:-64,64:-64,:]
         batch_images= einops.rearrange(batch_images, 'b c x y z-> (b z) c x y  ' )
         batch_labels= einops.rearrange(batch_labels, 'b x y z-> (b z) x y  ' )
+
+        batch_images_prim=batch_images[slicee,:,:,:]
+        batch_label_prim=batch_labels[slicee,:,:]
         print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} ")
 
-        batch_images_prim=batch_images
         # batch_images_prim,label,batch_labels=dat# here batch_labels is slic
-        # batch_images = jax_utils.replicate(batch_images_prim)
-        # batch_labels = jax_utils.replicate(batch_labels)
-        # image=subject['image'][tio.DATA].numpy()
-        # label=subject['label'][tio.DATA].numpy()
-        # print(f"#### {jnp.sum(label)} ")
-        # slic= einops.rearrange(slic,'w h d->1 w h d')
-        
-        state=train_step(state, batch_images,batch_labels) 
+        batch_images = jax_utils.replicate(batch_images)
+        batch_labels = jax_utils.replicate(batch_labels)
 
+        
+        grads, loss,out_image =apply_model(state, batch_images,batch_labels)
+        epoch_loss.append(jax_utils.unreplicate(loss)) 
+        state = update_model(state, grads)
         # losss_curr,grid_res=jax_utils.unreplicate(pair)
         # losss_curr,out_image=pair
         # losss=losss+losss_curr
 
 
         #saving only with index one
-        if(index==0):
-          slicee=15
+        if(index==0 and epoch%5==0):
 
-          loss,out_image=state.apply_fn({'params': state.params}, batch_images,batch_labels, rngs={'texture': random.PRNGKey(2)})
+          # batch_images_prim=einops.rearrange(batch_images_prim, 'c x y->1 c x y' )
+          # batch_label_prim=einops.rearrange(batch_label_prim, 'x y-> 1 x y' )
 
-          image_to_disp=batch_images_prim[slicee,0,:,:]
+          # loss,out_image=state.apply_fn({'params': state.params}, batch_images_prim,batch_label_prim)#, rngs={'texture': random.PRNGKey(2)}
+
+          image_to_disp=batch_images_prim[0,:,:]
           image_to_disp=np.rot90(np.array(image_to_disp))
           # out_image=einops.rearrange(out_image[0,:,:,0],'a b -> 1 a b 1')
+          out_image=jax_utils.unreplicate(out_image)
+          print(f"out_image {out_image.shape}")
           out_image=np.rot90(np.array(out_image[slicee,:,:,0]))
 
           image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
@@ -222,7 +233,7 @@ for epoch in range(1, cfg.total_steps):
           # with_boundaries= np.array(with_boundaries)
           # with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
           # print(f"with_boundaries {with_boundaries.shape}")
-          if(epoch==0):
+          if(epoch==2):
             with file_writer.as_default():
               tf.summary.image(f"image_to_disp{epoch}",image_to_disp , step=epoch)
 
@@ -233,7 +244,7 @@ for epoch in range(1, cfg.total_steps):
 
 
           with file_writer.as_default():
-              tf.summary.scalar(f"train loss epoch", jnp.mean(jnp.ravel(loss))/len(cached_subj), step=epoch)
+              tf.summary.scalar(f"train loss epoch", np.mean(epoch_loss), step=epoch)
 
           print(f"*** epoch {epoch} *** ")
 

@@ -33,7 +33,7 @@ class Conv_trio(nn.Module):
 
     @nn.compact
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x=nn.Conv(self.channels, kernel_size=(3,3),strides=self.strides)(x)
+        x=nn.Conv(self.channels, kernel_size=(5,5),strides=self.strides)(x)
         x=nn.LayerNorm()(x)
         return jax.nn.gelu(x)
 
@@ -176,6 +176,7 @@ def soft_equal(a,b):
     # return 1/((jnp.dot((a-b),(a-b).T))+0.0000001)
     # return jnp.dot((a-b),(a-b).T)
     return  diff_round(jnp.exp(-jnp.dot((a-b),(a-b).T)))
+    # return  jnp.exp(-jnp.dot((a-b),(a-b).T))
 
 # a= jnp.arange(1,4)
 # b= jnp.arange(3,6)
@@ -215,10 +216,10 @@ class Texture_sv(nn.Module):
 
         image_part= einops.rearrange(image_part,'x y c ->1 x y c')# add batch dim to be compatible with convolution
         image_part=jnp.multiply(image_part,mask)
-        image_part= Conv_trio(self.cfg,channels=2)(image_part)
-        image_part= Conv_trio(self.cfg,channels=4)(image_part)
-        mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
-        generated_texture_single=mask*mean[0]
+        # image_part= Conv_trio(self.cfg,channels=2)(image_part)
+        # image_part= Conv_trio(self.cfg,channels=4)(image_part)
+        # mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
+        generated_texture_single=mask*jnp.mean(image_part)
 
 
 

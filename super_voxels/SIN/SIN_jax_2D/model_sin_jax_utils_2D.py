@@ -55,7 +55,7 @@ class De_conv_not_sym(nn.Module):
         strides=tuple(strides)           
         self.convv = nn.ConvTranspose(
                 features=self.features,
-                kernel_size=(3, 3),
+                kernel_size=(5, 5),
                 strides=strides,              
                 )
 
@@ -111,7 +111,7 @@ def losss(prob_plane,label_plane):
 
 
 def harder_diff_round(x):
-    return diff_round(diff_round(diff_round(diff_round(diff_round(x)))))
+    return diff_round(diff_round(diff_round(diff_round(x))))
     # return  diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(x)))))))))))))
     # - 0.51 so all 
     # return diff_round(diff_round(nn.relu(x-0.51)))
@@ -153,6 +153,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     we will just add the  voxel id to the end and use the probability of the last prob layer as probability of this new voxel
     this id will be bigger than the max id present in original voxel grid
     """
+    num_dims=2
     #rolling and summing the same information
     rolled_probs=roll_in(probs,dim_stride,probs_shape)
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
@@ -172,12 +173,12 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # preparing the propositions to which the probabilities will be apply
     # to choose weather we want the grid id forward or back the axis
     # print(f"grid_shape {grid_shape} dim_stride {dim_stride} res_grid {res_grid.shape}")
-    grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
-    grid_back =jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]),axis=dim_stride )[:,:,dim_stride]
+    grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )
+    grid_back =jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]),axis=dim_stride )
     #now we need also to add the last 
     grid_shape_list=list(grid_shape)
     grid_shape_list[dim_stride]=1
-    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1]]))+orig_grid_shape[dim_stride]+1
+    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1],num_dims]))+orig_grid_shape[dim_stride]+1
     grid_forward= jnp.concatenate((grid_forward,to_end_grid) ,axis= dim_stride)
 
     #in order to reduce rounding error we will work on diffrences not the actual values
@@ -185,8 +186,11 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     diff_a=grid_back-grid_forward
     diff_b=grid_forward-grid_back
     grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-1)
-
+    #in order to broadcast we add empty dim - needed becouse probability is about whole point not the each coordinate of sv id
+    rolled_probs=einops.rearrange(rolled_probs,'h w p-> h w p 1')
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
+    # print(f"grid_accepted_diffs {grid_accepted_diffs}")
+
     #get back the values of the decision as we subtracted and now add we wil get exactly the same
     # values for both entries example:
     # a=10
@@ -196,9 +200,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # np.array([b,a])+mask_a will give 8,8
     # np.array([b,a])+mask_b will give 10,10
     grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-1))
-    grid_accepted_diffs=grid_accepted_diffs[:,:,1]
-    
-    res_grid_new=res_grid.at[:,:,dim_stride].set(grid_accepted_diffs)
+    res_grid_new=grid_accepted_diffs[:,:,:,1]
 
     #intertwining
     res= einops.rearrange([res_grid,res_grid_new],  rearrange_to_intertwine_einops ) 
