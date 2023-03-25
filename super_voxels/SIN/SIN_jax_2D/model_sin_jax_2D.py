@@ -90,6 +90,7 @@ class SpixelNet(nn.Module):
         out2=Conv_trio(self.cfg,channels=16,strides=(2,2))(out1)
         out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
         out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
+        # out5=Conv_trio(self.cfg,channels=128,strides=(2,2))(out4)
 
         # out5=nn.Sequential([
         #     Conv_trio(self.cfg,channels=16)
@@ -108,10 +109,11 @@ class SpixelNet(nn.Module):
         res_grid=einops.rearrange(res_grid,'p x y-> x y p')
         res_grid=einops.repeat(res_grid,'x y p-> b x y p', b=b)
         res_grid_shape=tuple(list(res_grid.shape)[1:])
-
+        # print(f"out5 {out5.shape} res_grid_shape {res_grid_shape} ")
+        # deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,64,res_grid_shape)(out5,label,res_grid)
         deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,32,res_grid_shape)(out4,label,res_grid)
         deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out3,label,res_grid)
-        deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out2,label,res_grid)
+        deconv_multi,res_grid,lossC=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out2,label,res_grid)
 
         out_image=v_Image_with_texture(self.cfg,False,False)(image,res_grid)
         out_image=v_Image_with_texture(self.cfg,True,False)(image,res_grid)+out_image
@@ -121,13 +123,13 @@ class SpixelNet(nn.Module):
         out_image=einops.rearrange(out_image,'b w h-> b w h 1') 
    
         #loss=jnp.mean(optax.l2_loss(out_image,image))
-        loss=jnp.mean(jnp.stack([lossA,lossB]))+jnp.mean(optax.l2_loss(out_image,image))
+        loss=jnp.mean(jnp.stack([lossA,lossB,lossC]))+jnp.mean(optax.l2_loss(out_image,image))
         # loss=jax.lax.pmean(jnp.stack([lossA,lossB]), axis_name='ensemble')+jax.lax.pmean(optax.l2_loss(out_image,image), axis_name='ensemble')
 
         # deconv_multi,res_grid,loss=De_conv_3_dim(self.cfg,55)(deconv_multi,label,res_grid)
 
 
-        return loss,out_image
+        return loss,out_image,res_grid
 
         # now we need to deconvolve a plane at a time and each time check weather 
         # the simmilarity to the neighbouring voxels is as should be

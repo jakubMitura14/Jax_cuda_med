@@ -219,6 +219,7 @@ class Texture_sv(nn.Module):
         # image_part= Conv_trio(self.cfg,channels=2)(image_part)
         # image_part= Conv_trio(self.cfg,channels=4)(image_part)
         # mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
+        # generated_texture_single=mask*mean
         generated_texture_single=mask*jnp.mean(image_part)
 
 

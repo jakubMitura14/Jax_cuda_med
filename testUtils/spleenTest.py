@@ -34,7 +34,7 @@ import SimpleITK as sitk
 # f.create_dataset("spleen/pat_1/image",data= jnp.ones((10,10,10,1)))
 
 # f.close()
-
+# 
 
 # slic = sitk.SLICImageFilter()
 # seg  = slic.Execute(denoised_img)
@@ -42,7 +42,7 @@ import SimpleITK as sitk
 
 
 
-spacing = (2.5,2.5,2.5)
+spacing = (1.5,1.5,1.5)
 
 def get_spleen_data():
     f = h5py.File('/workspaces/Jax_cuda_med/data/hdf5_loc/mytestfile.hdf5', 'r+')
@@ -66,7 +66,7 @@ def get_spleen_data():
         transforms = [
             tio.RescaleIntensity(out_min_max=(0, 1)),
             tio.Resample(spacing),
-            tio.transforms.CropOrPad((256,256,128)),
+            tio.transforms.CropOrPad((384,384,128)),
         ]
         transform = tio.Compose(transforms)
         subjects_dataset = tio.SubjectsDataset(subjects_list, transform=transform)

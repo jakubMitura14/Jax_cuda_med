@@ -111,7 +111,7 @@ def losss(prob_plane,label_plane):
 
 
 def harder_diff_round(x):
-    return diff_round(diff_round(diff_round(diff_round(x))))
+    return diff_round(diff_round(x))
     # return  diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(x)))))))))))))
     # - 0.51 so all 
     # return diff_round(diff_round(nn.relu(x-0.51)))
@@ -261,13 +261,15 @@ class De_conv_with_loss_fun(nn.Module):
         # probably simple boolean operation will suffice to deal with it
         lab_along=compare_up_and_down(lab_resized,dim_stride,lab_resized_shape)
 
-        not_zeros=jnp.logical_not(jnp.equal(lab_resized,0)).astype(jnp.float32)
-        not_zeros= jnp.stack([not_zeros,not_zeros],axis=-1).astype(jnp.float32)
-        not_zeros=jnp.clip(not_zeros+0.00000001,0.0,1.0)
-        bi_chan_multi=jnp.multiply(bi_channel,not_zeros.astype(jnp.float32))
-        lab_along_multi=jnp.multiply(lab_along,not_zeros).astype(jnp.float16)
+        # not_zeros=jnp.logical_not(jnp.equal(lab_resized,0)).astype(jnp.float32)
+        # not_zeros= jnp.stack([not_zeros,not_zeros],axis=-1).astype(jnp.float32)
+        # not_zeros=jnp.clip(not_zeros+0.00000001,0.0,1.0)
+        # # bi_chan_multi=jnp.multiply(bi_channel,not_zeros.astype(jnp.float32))
+        # lab_along_multi=jnp.multiply(lab_along,not_zeros).astype(jnp.float32)
 
-        loss=losss(bi_chan_multi,lab_along_multi)
+        # loss=losss(nn.softmax(bi_chan_multi,axis=-1),lab_along_multi)
+
+        loss=losss(nn.softmax(bi_channel,axis=-1),lab_along)
         #now we are creating the grid with voxel assignments based on bi_channel
 
         grid=grid_build(grid,bi_channel,dim_stride,bi_channel_shape, grid_shape,orig_grid_shape
