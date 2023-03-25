@@ -295,6 +295,9 @@ class De_conv_with_loss_fun(nn.Module):
     def __call__(self, x: jnp.ndarray, label: jnp.ndarray, grid: jnp.ndarray) -> jnp.ndarray:
         # first deconvolve with multiple channels to avoid loosing information
         deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(x)
+        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
+        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
+
         b,w,h,c= deconv_multi.shape
         gb,gw,gh,gc= grid.shape
         # now we need to reduce channels to 2 and softmax so we will have the probability that 
