@@ -48,14 +48,14 @@ class De_conv_not_sym(nn.Module):
     dim_stride:int
 
     def setup(self):
-        strides=[1,1]  
+        strides=[1,1,1]  
         if(self.dim_stride==-1):
-            strides=[2,2]
+            strides=[2,2,2]
         strides[self.dim_stride]=2 
         strides=tuple(strides)           
         self.convv = nn.ConvTranspose(
                 features=self.features,
-                kernel_size=(5, 5),
+                kernel_size=(5, 5,5),
                 strides=strides,              
                 )
 
@@ -121,6 +121,7 @@ def harder_diff_round(x):
 v_harder_diff_round=jax.vmap(harder_diff_round)
 v_v_harder_diff_round=jax.vmap(v_harder_diff_round)
 v_v_v_harder_diff_round=jax.vmap(v_v_harder_diff_round)
+v_v_v_v_harder_diff_round=jax.vmap(v_v_v_harder_diff_round)
 
 def roll_in(probs,dim_stride,probs_shape):
     """
@@ -130,16 +131,10 @@ def roll_in(probs,dim_stride,probs_shape):
     as we can see we are also getting rid here of looking back at first and looking forward at last
     becouse they are looking at nothinh - we will reuse one of those later     
     """
-    probs_back=probs[:,:,0]
-    probs_forward=probs[:,:,1]
+    probs_back=probs[:,:,:,0]
+    probs_forward=probs[:,:,:,1]
     probs_back=jnp.take(probs_back, indices=jnp.arange(1,probs_shape[dim_stride]),axis=dim_stride )
     probs_forward=jnp.take(probs_forward, indices=jnp.arange(0,probs_shape[dim_stride]-1),axis=dim_stride )
-    # print(f"to_ends {to_ends.shape} probs_back {probs_back.shape}  probs_forward {probs_forward.shape}")
-
-    # probs_back = jnp.concatenate((to_ends,probs_back) ,axis= dim_stride )
-    # probs_forward = jnp.concatenate((probs_forward,to_ends) ,axis= dim_stride )
-    # print(f"to_ends {to_ends.shape} probs_back {probs_back.shape}  probs_forward {probs_forward.shape}")
-    
     probs=jnp.stack([probs_forward,probs_back],axis=-1)
     return probs
 
@@ -153,20 +148,20 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     we will just add the  voxel id to the end and use the probability of the last prob layer as probability of this new voxel
     this id will be bigger than the max id present in original voxel grid
     """
-    num_dims=2
+    num_dims=3
     #rolling and summing the same information
     rolled_probs=roll_in(probs,dim_stride,probs_shape)
     rolled_probs = jnp.sum(rolled_probs,axis=-1)
     # retaking this last probability looking out that was discarded in roll in
     end_prob=jnp.take(probs, indices=probs_shape[dim_stride]-1,axis=dim_stride )
-    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,1]*2 #times 2 as it was not summed up
+    end_prob=jnp.expand_dims(end_prob,dim_stride)[:,:,:,1]*2 #times 2 as it was not summed up
     rolled_probs = jnp.concatenate((rolled_probs,end_prob) ,axis= dim_stride )
     #rearranging two get last dim =2 so the softmax will make sense
     rolled_probs=einops.rearrange(rolled_probs,recreate_channels_einops,c=2 ) 
     rolled_probs= nn.softmax(rolled_probs,axis=-1)
     # making it as close to 0 and 1 as possible not hampering differentiability
     # as all other results will lead to inconclusive grid id
-    rolled_probs = v_v_v_harder_diff_round(rolled_probs)
+    rolled_probs = v_v_v_v_harder_diff_round(rolled_probs)
 
     # rolled_probs = jnp.round(rolled_probs) #TODO(it is non differentiable !)  
 
@@ -187,7 +182,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     diff_b=grid_forward-grid_back
     grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-1)
     #in order to broadcast we add empty dim - needed becouse probability is about whole point not the each coordinate of sv id
-    rolled_probs=einops.rearrange(rolled_probs,'h w p-> h w p 1')
+    rolled_probs=einops.rearrange(rolled_probs,'h w d p-> h w d p 1')
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
     # print(f"grid_accepted_diffs {grid_accepted_diffs}")
 
@@ -200,10 +195,10 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # np.array([b,a])+mask_a will give 8,8
     # np.array([b,a])+mask_b will give 10,10
     grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-1))
-    res_grid_new=grid_accepted_diffs[:,:,:,1]
+    res_grid_new=grid_accepted_diffs[:,:,:,:,1]
 
     #intertwining
-    res= einops.rearrange([res_grid,res_grid_new],  rearrange_to_intertwine_einops ) 
+    res= einops.rearrange([res_grid,res_grid_new], rearrange_to_intertwine_einops ) 
     # res=res.take(indices=jnp.arange(grid_shape[dim_stride]*2 -1) ,axis=dim_stride)
     return res
     # rolled_probs= jnp.sum(rolled_probs,axis=-1)
@@ -220,7 +215,7 @@ def compare_up_and_down(label: jnp.ndarray,dim_stride:int, image_shape):
     back=label.take(indices=jnp.arange(0,image_shape[dim_stride]-2),axis=dim_stride)
     forward=label.take(indices=jnp.arange(2,image_shape[dim_stride]),axis=dim_stride)
     res=jnp.stack([jnp.equal(main,back),jnp.equal(main,forward )],axis=-1)
-    toPad=[(0,0),(0,0),(0,0)]
+    toPad=[(0,0),(0,0),(0,0),(0,0)]
     toPad[dim_stride]=(1,1)
     return jnp.pad(res, toPad)
 
@@ -298,23 +293,23 @@ class De_conv_with_loss_fun(nn.Module):
         deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
         deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
 
-        b,w,h,c= deconv_multi.shape
-        gb,gw,gh,gc= grid.shape
+        b,w,h,d,c= deconv_multi.shape
+        gb,gw,gh,gd,gc= grid.shape
         # now we need to reduce channels to 2 and softmax so we will have the probability that 
         #the voxel before is of the same supervoxel in first channel
         # and next voxel in the axis is of the same supervoxel
-        bi_channel=nn.Conv(2, kernel_size=(3,3))(deconv_multi) #we do not use here softmax or sigmoid as it will be in loss
+        bi_channel=nn.Conv(2, kernel_size=(3,3,3))(deconv_multi) #we do not use here softmax or sigmoid as it will be in loss
         # now we need to reshape the label to the same size as deconvolved image
-        lab_resized=jax.image.resize(label, (b,w,h), "nearest").astype(jnp.float16)
+        lab_resized=jax.image.resize(label, (b,w,h,d), "nearest").astype(jnp.float16)
 
         return self.batched_operate_on_depth(deconv_multi
                                             ,bi_channel
                                             ,lab_resized
                                             ,grid
                                             ,self.dim_stride
-                                            ,(w,h) 
-                                            ,(w,h,2)
-                                            ,(gw,gh,gc)
+                                            ,(w,h,d) 
+                                            ,(w,h,d,2)
+                                            ,(gw,gh,gc,gd)
                                             ,self.orig_grid_shape
                                             ,self.rearrange_to_intertwine_einops
                                             ,self.recreate_channels_einops   )
@@ -338,14 +333,21 @@ class De_conv_3_dim(nn.Module):
     @nn.compact
     def __call__(self, x: jnp.ndarray, label: jnp.ndarray, grid: jnp.ndarray) -> jnp.ndarray:
         deconv_multi,grid,loss_x=De_conv_with_loss_fun(self.cfg,self.features,0
-                                        ,rearrange_to_intertwine_einops='f h w p-> (h f) w p'
-                                        ,recreate_channels_einops='(h c) w->h w c'
+                                        ,rearrange_to_intertwine_einops='f h w d p-> (h f) w d p'
+                                        ,recreate_channels_einops='(h c) w d->h w d c'
                                         ,orig_grid_shape=self.orig_grid_shape)(x,label,grid)
+
         deconv_multi,grid,loss_y=De_conv_with_loss_fun(self.cfg,self.features,1
-                                        ,rearrange_to_intertwine_einops='f h w p-> h (w f) p'
-                                        ,recreate_channels_einops='h (w c)->h w c'
+                                        ,rearrange_to_intertwine_einops='f h w d p-> h (w f) d p'
+                                        ,recreate_channels_einops='h (w c) d ->h w d c'
                                         ,orig_grid_shape=self.orig_grid_shape)(deconv_multi,label,grid)
-        return deconv_multi,grid, jnp.mean(jnp.concatenate([loss_x,loss_y]))
+
+        deconv_multi,grid,loss_z=De_conv_with_loss_fun(self.cfg,self.features,2
+                                        ,rearrange_to_intertwine_einops='f h w d p-> h w (d f)) p'
+                                        ,recreate_channels_einops='h w (d c) ->h w d c'
+                                        ,orig_grid_shape=self.orig_grid_shape)(deconv_multi,label,grid)
+
+        return deconv_multi,grid, jnp.mean(jnp.concatenate([loss_x,loss_y,loss_z]))
 
 
 

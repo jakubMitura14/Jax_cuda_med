@@ -29,11 +29,11 @@ import chex
 class Conv_trio(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     channels: int
-    strides:Tuple[int]=(1,1)
+    strides:Tuple[int]=(1,1,1)
 
     @nn.compact
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x=nn.Conv(self.channels, kernel_size=(5,5),strides=self.strides)(x)
+        x=nn.Conv(self.channels, kernel_size=(5,5,5),strides=self.strides)(x)
         x=nn.LayerNorm()(x)
         return jax.nn.gelu(x)
 
@@ -86,21 +86,23 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
     return for_pad_beg,to_remove_from_end,axis_len_prim,axis_len,to_pad_end     
 
 
-def get_supervoxel_ids(shift_x:bool,shift_y:bool,orig_grid_shape:Tuple[int]):
+def get_supervoxel_ids(shift_x:bool,shift_y:bool,shift_z:bool,orig_grid_shape:Tuple[int]):
     """
     In order to be able to vmap through the supervoxels we need to have a way 
     to tell what id should be present in the area we have and that was given by main part of 
     divide_sv_grid function the supervoxel ids are based on the orig_grid_shape  generally 
     we have the supervoxel every r but here as we jump every 2r we need every second id
     """
-    res_grid=jnp.mgrid[1:orig_grid_shape[0]+1, 1:orig_grid_shape[1]+1]
-    res_grid=einops.rearrange(res_grid,'p x y-> x y p')
+    res_grid=jnp.mgrid[1:orig_grid_shape[0]+1, 1:orig_grid_shape[1]+1,1:orig_grid_shape[2]+1]
+    res_grid=einops.rearrange(res_grid,'p x y z -> x y z p')
     res_grid= res_grid[int(shift_x): orig_grid_shape[0]:2,
-                    int(shift_y): orig_grid_shape[1]:2, ]
+                    int(shift_y): orig_grid_shape[1]:2,                    
+                    int(shift_z): orig_grid_shape[2]:2,
+                     ]
     
-    return einops.rearrange(res_grid,'x y p -> (x y) p')                 
+    return einops.rearrange(res_grid,'x y z p -> (x y z) p')                 
 
-def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
+def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,shift_z:bool,r:int
                     ,orig_grid_shape:Tuple[int],current_grid_shape:Tuple[int]
                     ,einops_rearrange:str):
     """
@@ -116,6 +118,8 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
     """
     shift_x=int(shift_x)
     shift_y=int(shift_y)
+    shift_z=int(shift_z)
+
     #max size of the area cube of intrest
     # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
     diameter=get_diameter(r)
@@ -123,21 +127,27 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
     #TODO as there is some numpy inside it should be in precomputation
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y   =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
-    cutted=res_grid[0: current_grid_shape[0]- to_remove_from_end_x,0: current_grid_shape[1]- to_remove_from_end_y]
+    to_pad_beg_z,to_remove_from_end_z,axis_len_prim_z,axis_len_z,to_pad_end_z   =for_pad_divide_grid(current_grid_shape,2,r,shift_z,orig_grid_shape,diameter)
+
+    cutted=res_grid[0: current_grid_shape[0]- to_remove_from_end_x
+                    ,0: current_grid_shape[1]- to_remove_from_end_y
+                    ,0: current_grid_shape[2]- to_remove_from_end_z
+                    ]
     cutted= jnp.pad(cutted,(
                         (to_pad_beg_x,to_pad_end_x)
                         ,(to_pad_beg_y,to_pad_end_y )
+                        ,(to_pad_beg_z,to_pad_end_z )
                         ,(0,0)))
     cutted=einops.rearrange( cutted,einops_rearrange, x=diameter,y=diameter)
 
     # #setting to zero borders that are known to be 0
     # cutted=cutted.at[:,-1,:,:].set(0)
     # cutted=cutted.at[:,:,-1,:].set(0)
-    super_voxel_ids=get_supervoxel_ids(shift_x,shift_y,orig_grid_shape)
+    super_voxel_ids=get_supervoxel_ids(shift_x,shift_y,shift_z ,orig_grid_shape)
 
     return cutted,super_voxel_ids
 
-def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bool,r:int
+def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bool,shift_z:bool,r:int
                     ,orig_grid_shape:Tuple[int],current_grid_shape:Tuple[int]):
     """
     as in divide_sv_grid we are changing the shape for supervoxel based texture infrence
@@ -145,21 +155,32 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bo
     """
     shift_x=int(shift_x)
     shift_y=int(shift_y)
+    shift_z=int(shift_z)
+
     #max size of the area cube of intrest
     # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
     diameter=get_diameter(r)
     #first we cut out all areas not covered by current supervoxels
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
+    to_pad_beg_z,to_remove_from_end_z,axis_len_prim_z,axis_len_z,to_pad_end_z   =for_pad_divide_grid(current_grid_shape,2,r,shift_z,orig_grid_shape,diameter)
+    
+    
     # undo axis reshuffling
-    texture_information= einops.rearrange(texture_information,'(a b) x y->(a x) (b y)', a=axis_len_x//diameter,b=axis_len_y//diameter, x=diameter,y=diameter)
+    texture_information= einops.rearrange(texture_information,'(a b c) x y z->(a x) (b y) (c z)'
+                        , a=axis_len_x//diameter,b=axis_len_y//diameter,c=axis_len_z//diameter, x=diameter,y=diameter)
     # texture_information= einops.rearrange( texture_information,'a x y->(a x y)')
     #undo padding
-    texture_information= texture_information[to_pad_beg_x: axis_len_x- to_pad_end_x,to_pad_beg_y:axis_len_y- to_pad_end_y  ]
+    texture_information= texture_information[
+        to_pad_beg_x: axis_len_x- to_pad_end_x
+        ,to_pad_beg_y:axis_len_y- to_pad_end_y 
+        ,to_pad_beg_z:axis_len_z- to_pad_end_z  ]
     #undo cutting
     texture_information= jnp.pad(texture_information,(
                         (0,to_remove_from_end_x)
                         ,(0,to_remove_from_end_y )
+                        ,(0,to_remove_from_end_z )
+
                         ))
     return texture_information
 
@@ -214,7 +235,7 @@ class Texture_sv(nn.Module):
         
 
 
-        image_part= einops.rearrange(image_part,'x y c ->1 x y c')# add batch dim to be compatible with convolution
+        image_part= einops.rearrange(image_part,'x y z c ->1 x y z c')# add batch dim to be compatible with convolution
         image_part=jnp.multiply(image_part,mask)
         # image_part= Conv_trio(self.cfg,channels=2)(image_part)
         # image_part= Conv_trio(self.cfg,channels=4)(image_part)
@@ -266,14 +287,14 @@ class Image_with_texture(nn.Module):
                         ,self.cfg.r
                         ,self.cfg.orig_grid_shape
                         ,sv_shape
-                        ,'(a x) (b y) p-> (a b) x y p')
+                        ,'(a x) (b y) (c y) p-> (a b c) x y p')
         image,sv_ids=divide_sv_grid(image
                 ,self.shift_x
                 ,self.shift_y
                 ,self.cfg.r
                 ,self.cfg.orig_grid_shape
                 ,sv_shape
-                ,'(a x) (b y) p-> (a b) x y p')                
+                ,'(a x) (b y) (c y) p-> (a b c) x y p')                
         #creating textured image based on currently analyzed supervoxels
         new_textures=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids,image)
         #recreating original shape
