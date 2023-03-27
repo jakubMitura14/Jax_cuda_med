@@ -237,7 +237,7 @@ class Texture_sv(nn.Module):
 
 v_Texture_sv=nn.vmap(Texture_sv
                             ,in_axes=(0, 0,0)
-                            ,variable_axes={'params': 0} #parametters are not shared
+                            ,variable_axes={'params': None} #parametters are shared
                             ,split_rngs={'params': True,'texture' :True}
                             )
 
@@ -289,6 +289,6 @@ class Image_with_texture(nn.Module):
 #for batch dimension
 v_Image_with_texture=nn.vmap(Image_with_texture
                             ,in_axes=(0, 0)
-                            ,variable_axes={'params': 0} #parametters are not shared
+                            ,variable_axes={'params': None} #parametters are shared
                             ,split_rngs={'params': True,'texture' :True}
                             )
