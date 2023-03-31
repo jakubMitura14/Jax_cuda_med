@@ -85,6 +85,12 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
     axis_len=axis_len_prim+to_pad_end    
     return for_pad_beg,to_remove_from_end,axis_len_prim,axis_len,to_pad_end     
 
+def get_pad_divide_conf():    
+    """
+    calculte and store information required to reshape - needed for correct
+    render and learn
+    """
+    pass
 
 def get_supervoxel_ids(shift_x:bool,shift_y:bool,shift_z:bool,orig_grid_shape:Tuple[int]):
     """
@@ -163,12 +169,12 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bo
     #first we cut out all areas not covered by current supervoxels
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
-    to_pad_beg_z,to_remove_from_end_z,axis_len_prim_z,axis_len_z,to_pad_end_z   =for_pad_divide_grid(current_grid_shape,2,r,shift_z,orig_grid_shape,diameter)
+    to_pad_beg_z,to_remove_from_end_z,axis_len_prim_z,axis_len_z,to_pad_end_z =for_pad_divide_grid(current_grid_shape,2,r,shift_z,orig_grid_shape,diameter)
     
     
     # undo axis reshuffling
     texture_information= einops.rearrange(texture_information,'(a b c) x y z->(a x) (b y) (c z)'
-                        , a=axis_len_x//diameter,b=axis_len_y//diameter,c=axis_len_z//diameter, x=diameter,y=diameter)
+                        , a=axis_len_x//diameter,b=axis_len_y//diameter,c=axis_len_z//diameter, x=diameter,y=diameter,z=diameter)
     # texture_information= einops.rearrange( texture_information,'a x y->(a x y)')
     #undo padding
     texture_information= texture_information[
@@ -233,6 +239,7 @@ class Texture_sv(nn.Module):
         # generated_texture_single= jnp.multiply(generated_texture_single, mask)   
         # generated_texture_single=mask*mean[0]
         
+
 
 
         image_part= einops.rearrange(image_part,'x y z c ->1 x y z c')# add batch dim to be compatible with convolution
