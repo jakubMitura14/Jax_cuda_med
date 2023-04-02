@@ -68,7 +68,8 @@ cfg.img_size = (cfg.batch_size,1,256,256,128)
 cfg.label_size = (cfg.batch_size,256,256,128)
 
 cfg.num_strided_convs= 3
-cfg.r= 3
+cfg.r= cfg.num_strided_convs
+cfg.mainL2Importance=5#we have multiple losses - the bigger this loss the more influence L2 loss between original image and reconstruction will have
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs,cfg.img_size[4]//2**cfg.num_strided_convs  )
 
 cfg.total_steps=80
@@ -198,7 +199,7 @@ def train_epoch(epoch,slicee,index,dat,state,model):
 
       # loss,out_image=state.apply_fn({'params': state.params}, batch_images_prim,batch_label_prim)#, rngs={'texture': random.PRNGKey(2)}
 
-      image_to_disp=batch_images_prim[0,:,:]
+      image_to_disp=batch_images_prim
       image_to_disp=np.rot90(np.array(image_to_disp))
       # out_image=einops.rearrange(out_image[0,:,:,0],'a b -> 1 a b 1')
       out_image=jax_utils.unreplicate(out_image)

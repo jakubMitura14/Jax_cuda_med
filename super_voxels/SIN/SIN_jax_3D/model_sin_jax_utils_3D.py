@@ -111,7 +111,7 @@ def losss(prob_plane,label_plane):
 
 
 def harder_diff_round(x):
-    return diff_round(diff_round(x))
+    return diff_round(diff_round(diff_round(x)))
     # return  diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(x)))))))))))))
     # - 0.51 so all 
     # return diff_round(diff_round(nn.relu(x-0.51)))
@@ -180,9 +180,10 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # bellow correcting also the sign of the last in analyzed axis
     diff_a=grid_back-grid_forward
     diff_b=grid_forward-grid_back
-    grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-1)
+    grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-2)
+    # print(f"grid_proposition_diffs {grid_proposition_diffs.shape}")
     #in order to broadcast we add empty dim - needed becouse probability is about whole point not the each coordinate of sv id
-    rolled_probs=einops.repeat(rolled_probs,'h w d p-> h w d r p',r=3)
+    rolled_probs=einops.repeat(rolled_probs,'h w d p-> h w d p r',r=3)
     # print(f"grid_proposition_diffs {grid_proposition_diffs.shape} rolled_probs {rolled_probs.shape} to_end_grid {to_end_grid.shape} grid_shape {grid_shape} grid_shape_list {grid_shape_list} dim_stride {dim_stride} grid_forward {grid_forward.shape} ")
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
 
@@ -194,8 +195,8 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # mask_b=np.multiply(np.array([a-b , b-a]),np.array([0,1]))
     # np.array([b,a])+mask_a will give 8,8
     # np.array([b,a])+mask_b will give 10,10
-    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-1))
-    res_grid_new=grid_accepted_diffs[:,:,:,:,1]
+    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-2))
+    res_grid_new=grid_accepted_diffs[:,:,:,1,:]
 
     #intertwining
     res= einops.rearrange([res_grid,res_grid_new], rearrange_to_intertwine_einops ) 

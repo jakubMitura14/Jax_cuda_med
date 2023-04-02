@@ -215,6 +215,85 @@ v_soft_equal=jax.vmap(soft_equal, in_axes=(0,None))
 v_v_soft_equal=jax.vmap(v_soft_equal, in_axes=(0,None))
 v_v_v_soft_equal=jax.vmap(v_v_soft_equal, in_axes=(0,None))
 
+
+def get_3d_grating_to_scan(carried,parameters_per_wave):
+        """
+        creating 3d wave sinusoidal grating of given properties
+        X,Y,Z are taken from the meshgrid
+        """
+        #now we need to set proper possible ranges as not all parameters should be between 0 an 1
+        # angles can as theay are in radians and becouse of grating symmetry 0.1 and 1.1 look the same
+        #wavelength by experiment should be between 0.1 and 2* diameter_no_pad
+        # as images are normalized amplitude and amplitude shift between 0 and 1 are ok
+        # shifts should be no larger than diameter
+        for_correct_range= jnp.array([diameter_no_pad*2,1.0,1.0,1.0,diameter_no_pad,diameter_no_pad,diameter_no_pad, 1.0])
+        params_grating=jnp.multiply(params_grating,for_correct_range)
+
+        wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
+        X,Y,Z,wavelength_old,grating_old,diameter_no_pad =carried
+        wavelength_new=wavelength+wavelength_old
+        alpha = jnp.pi*alphaa
+        beta = jnp.pi*betaa
+        grating = (jnp.sin(
+        2*jnp.pi*(((X*jnp.cos(alpha)*jnp.cos(beta))+shift_x) + 
+                  (Y*jnp.sin(alpha)*jnp.cos(beta)+shift_y) +
+                  (Z*jnp.sin(beta)) 
+                        +shift_z)/ wavelength_new
+          )*amplitude)+shift_amplitude
+        grating_new=grating+grating_old
+        curried_new=  X,Y,Z,wavelength_new,grating_new,diameter_no_pad
+        return  curried_new,wavelength_new
+
+
+class Sinusoidal_grating_3d(nn.Module):
+        """
+        getting sinusoidal gratings added to get a exture given parameters; and those significant used parameters
+        parameters would be the directon of the grating - described by 2 angles; wavelength and amplitude
+        In order to enforce the order of the frequencies/wavelength in each grating to be decreasing (it will make later comparison easier)
+        we will not learn the frequencies themself, but the diffrences between each frequency - so the biggest frequency will be the cumulative sum
+        of all
+
+        my idea later of comparing diffrent descriptors would be to look at each grating pair - and first check how much angles 
+        are simmilar than multiply it by wavelength in the end summ all of the vector weighted by amplitude (not perfect idea but some)
+        shifts by design would not be taken into account when comparing
+        """
+        cfg: ml_collections.config_dict.config_dict.ConfigDict
+        diameter_no_pad:int
+
+        @nn.compact
+        def __call__(self,image_part: jnp.ndarray ,mask: jnp.ndarray ) -> jnp.ndarray:
+                #adding the discrete cosine transform to make learning easier
+                image_part= jnp.stack(jax.scipy.fft.dctn(image_part),image_part)
+                image_part= Conv_trio(self.cfg,channels=16)(image_part)
+                image_part= Conv_trio(self.cfg,channels=16,strides=(2,2,2))(image_part)
+                image_part= Conv_trio(self.cfg,channels=16,strides=(2,2,2))(image_part)
+
+                params_grating=nn.Dense(features=self.cfg.num_waves*8)(image_part)
+                params_grating=jnp.reshape(params_grating,(self.cfg.num_waves,8))
+                # [0] wavelength, [1] alphaa, [2 ]betaa, [3] amplitude, [4] shift_x, [5] shift_y, [6] shift_z, [7] shift_amplitude
+                # params_grating = nn.relu(self.param('params_grating',nn.initializers.lecun_normal(),(self.cfg.num_waves,8))) 
+                params_grating =nn.sigmoid(params_grating)  #  sigmoid always between 0 and 1
+ 
+                #creating required meshgrid
+                half= int(np.round(np.floor(self.diameter_no_pad/2)))
+                x = jnp.arange(-half, half)# we have 0 between so we take intentionally diameter no pad
+                X, Y,Z = jnp.meshgrid(x, x,x)
+                
+                #initial variables for scan
+                initt=(X,Y,Z,jnp.array([0.0]),jnp.zeros_like(X,dtype=float),float(self.diameter_no_pad))
+                # wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
+                curried,wavelength_news=lax.scan(get_3d_grating_to_scan, initt, params_grating)
+                X,Y,Z,wavelength_new,grating_new=curried
+                #get values between 0 and 1
+                res= nn.sigmoid(grating_new)
+                #apply mask so we will have the mask only in the area where we can find the supervoxel                
+                res=jnp.multiply(res,mask)
+                #choosing only the significant parameters we purposufully ignoring shifts
+                return res,params_grating[:,0:3],wavelength_news
+
+
+
+
 class Texture_sv(nn.Module):
     """
     the module operates on a single supervoxel each generating a texture for it
@@ -228,10 +307,10 @@ class Texture_sv(nn.Module):
 
     @nn.compact
     def __call__(self,sv_area_ids: jnp.ndarray,sv_id: jnp.ndarray,image_part: jnp.ndarray) -> jnp.ndarray:
-        mean = self.param('mean',
-                nn.initializers.lecun_normal(),(1,1))
-        var = self.param('var',
-                nn.initializers.lecun_normal(),(1,1))
+        # mean = self.param('mean',
+        #         nn.initializers.lecun_normal(),(1,1))
+        # var = self.param('var',
+        #         nn.initializers.lecun_normal(),(1,1))
         # generated_texture_single= jax.random.normal(self.make_rng("texture"),(self.diameter,self.diameter))        
         # generated_texture_single= (generated_texture_single+mean[0])*var[0]
         #masking
@@ -252,9 +331,12 @@ class Texture_sv(nn.Module):
         # image_part= Conv_trio(self.cfg,channels=4)(image_part)
         # mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
         # generated_texture_single=mask*mean
-        generated_texture_single=mask*jnp.mean(image_part)
+        # generated_texture_single=mask*jnp.mean(image_part)
+        generated_texture_single,params_grating,wavelength_news=Sinusoidal_grating_3d(self.cfg,get_diameter_no_pad(self.cfg.r))(image_part,mask)
+        generated_texture_single=jnp.multiply(generated_texture_single,mask)
+        local_loss=jnp.mean(optax.l2_loss(generated_texture_single,image_part))
 
-        return generated_texture_single
+        return generated_texture_single,local_loss
         # return jnp.zeros((16,16,16))
 
 
@@ -262,7 +344,7 @@ v_Texture_sv=nn.vmap(Texture_sv
                             ,in_axes=(0, 0,0)
                             ,out_axes=(0)
                             ,variable_axes={'params': 0} #parametters are not shared
-                            ,split_rngs={'params': True,'texture' :True}
+                            ,split_rngs={'params': True}
                             )
 
 
@@ -302,7 +384,7 @@ class Image_with_texture(nn.Module):
                 ,sv_shape
                 ,'(a x) (b y) (c z) p-> (a b c) x y z p')                
         #creating textured image based on currently analyzed supervoxels
-        new_textures=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids,image)
+        new_textures, losses=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids,image)
         #recreating original shape
         new_textures=recreate_orig_shape(new_textures
                 ,self.shift_x
@@ -312,12 +394,12 @@ class Image_with_texture(nn.Module):
                 ,self.cfg.orig_grid_shape
                 ,sv_shape)
 
-        return new_textures        
+        return new_textures,jnp.mean(losses)
 
 #for batch dimension
 v_Image_with_texture=nn.vmap(Image_with_texture
                             ,in_axes=(0, 0)
                             # ,out_axes=0
                             ,variable_axes={'params': 0} #parametters are shared
-                            ,split_rngs={'params': True,'texture' :True}
+                            ,split_rngs={'params': True}
                             )
