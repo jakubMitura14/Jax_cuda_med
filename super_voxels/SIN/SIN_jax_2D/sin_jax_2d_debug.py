@@ -26,7 +26,8 @@ from functools import partial
 import toolz
 import chex
 import pandas as pd
-
+from flax.linen import partitioning as nn_partitioning
+remat = nn_partitioning.remat
 
 from jax.config import config
 config.update('jax_platform_name', 'cpu')

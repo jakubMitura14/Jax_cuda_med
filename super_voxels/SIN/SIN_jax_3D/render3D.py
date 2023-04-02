@@ -25,6 +25,8 @@ from ml_collections import config_dict
 from functools import partial
 import toolz
 import chex
+from flax.linen import partitioning as nn_partitioning
+remat = nn_partitioning.remat
 
 class Conv_trio(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
@@ -144,7 +146,7 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,shift_z:bool,
                         ,(to_pad_beg_y,to_pad_end_y )
                         ,(to_pad_beg_z,to_pad_end_z )
                         ,(0,0)))
-    cutted=einops.rearrange( cutted,einops_rearrange, x=diameter,y=diameter)
+    cutted=einops.rearrange( cutted,einops_rearrange, x=diameter,y=diameter,z=diameter)
 
     # #setting to zero borders that are known to be 0
     # cutted=cutted.at[:,-1,:,:].set(0)
@@ -211,6 +213,7 @@ def soft_equal(a,b):
 
 v_soft_equal=jax.vmap(soft_equal, in_axes=(0,None))
 v_v_soft_equal=jax.vmap(v_soft_equal, in_axes=(0,None))
+v_v_v_soft_equal=jax.vmap(v_v_soft_equal, in_axes=(0,None))
 
 class Texture_sv(nn.Module):
     """
@@ -233,8 +236,9 @@ class Texture_sv(nn.Module):
         # generated_texture_single= (generated_texture_single+mean[0])*var[0]
         #masking
         
+        mask= v_v_v_soft_equal(sv_area_ids,sv_id )
+        # print(f"in tex single sv_area_ids{sv_area_ids.shape} sv_id {sv_id.shape}")
 
-        mask= v_v_soft_equal(sv_area_ids,sv_id )
         # print(f"mask {mask.shape} generated_texture_single {generated_texture_single.shape} ")
         # generated_texture_single= jnp.multiply(generated_texture_single, mask)   
         # generated_texture_single=mask*mean[0]
@@ -244,28 +248,20 @@ class Texture_sv(nn.Module):
 
         image_part= einops.rearrange(image_part,'x y z c ->1 x y z c')# add batch dim to be compatible with convolution
         image_part=jnp.multiply(image_part,mask)
-        # image_part= Conv_trio(self.cfg,channels=2)(image_part)
-        # image_part= Conv_trio(self.cfg,channels=4)(image_part)
-        # mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
-        # generated_texture_single=mask*mean
-        generated_texture_single=mask*jnp.mean(image_part)
-
-
-
-        #setting to zero borders that are known to be 0 as by constructions we should not be able to
-            #find there the queried supervoxel
-
-        # generated_texture_single=generated_texture_single.at[-1,:].set(0)
-        # generated_texture_single=generated_texture_single.at[:,-1].set(0)
+        image_part= Conv_trio(self.cfg,channels=2)(image_part)
+        image_part= Conv_trio(self.cfg,channels=4)(image_part)
+        mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
+        generated_texture_single=mask*mean
+        # generated_texture_single=mask*jnp.mean(image_part)
 
         return generated_texture_single
-                # generated_texture_single = self.param('shape_param_single_s_vox',
-        #         self.kernel_init,(self.diameter))
+        # return jnp.zeros((16,16,16))
 
 
 v_Texture_sv=nn.vmap(Texture_sv
                             ,in_axes=(0, 0,0)
-                            ,variable_axes={'params': None} #parametters are shared
+                            ,out_axes=(0)
+                            ,variable_axes={'params': 0} #parametters are not shared
                             ,split_rngs={'params': True,'texture' :True}
                             )
 
@@ -280,6 +276,7 @@ class Image_with_texture(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     shift_x:bool
     shift_y:bool
+    shift_z:bool
 
     # cfg: ml_collections.config_dict.config_dict.ConfigDict
     # diameter:int
@@ -291,23 +288,26 @@ class Image_with_texture(nn.Module):
         sv_area_ids,sv_ids=divide_sv_grid(sv_area_ids
                         ,self.shift_x
                         ,self.shift_y
+                        ,self.shift_z
                         ,self.cfg.r
                         ,self.cfg.orig_grid_shape
                         ,sv_shape
-                        ,'(a x) (b y) (c y) p-> (a b c) x y p')
+                        ,'(a x) (b y) (c z) p-> (a b c) x y z p')
         image,sv_ids=divide_sv_grid(image
                 ,self.shift_x
                 ,self.shift_y
+                ,self.shift_z
                 ,self.cfg.r
                 ,self.cfg.orig_grid_shape
                 ,sv_shape
-                ,'(a x) (b y) (c y) p-> (a b c) x y p')                
+                ,'(a x) (b y) (c z) p-> (a b c) x y z p')                
         #creating textured image based on currently analyzed supervoxels
         new_textures=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids,image)
         #recreating original shape
         new_textures=recreate_orig_shape(new_textures
                 ,self.shift_x
                 ,self.shift_y
+                ,self.shift_z
                 ,self.cfg.r
                 ,self.cfg.orig_grid_shape
                 ,sv_shape)
@@ -317,6 +317,7 @@ class Image_with_texture(nn.Module):
 #for batch dimension
 v_Image_with_texture=nn.vmap(Image_with_texture
                             ,in_axes=(0, 0)
-                            ,variable_axes={'params': None} #parametters are shared
+                            # ,out_axes=0
+                            ,variable_axes={'params': 0} #parametters are shared
                             ,split_rngs={'params': True,'texture' :True}
                             )

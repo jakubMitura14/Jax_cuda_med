@@ -125,37 +125,6 @@ def train_step(state, image,label):
 
 
 cached_subj =get_spleen_data()[0:44]
-# toc_s=time.perf_counter()
-# print(f"loading {toc_s - tic_s:0.4f} seconds")
-
-
-import more_itertools
-import toolz
-
-cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
-cached_subj=list(map(toolz.sandbox.core.unzip,cached_subj ))
-cached_subj=list(map(lambda inn: list(map(list,inn)),cached_subj ))
-cached_subj=list(map(lambda inn: list(map(lambda aa: aa[:,:,64:-64,64:-64],inn)),cached_subj ))
-# len(unipped[0][0][0])
-cached_subj=list(map(lambda inn: list(map(np.concatenate,inn)),cached_subj ))
-
-
-# jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
-#tensorboard --logdir=/workspaces/Jax_cuda_med/tensor_board
-#jax.profiler.start_server(9999)
-
-
-
-
-# tic_loop = time.perf_counter()
-
-
-    # batch_images = jax_utils.replicate(train_ds['image'][perm, ...])
-    # batch_labels = jax_utils.replicate(train_ds['label'][perm, ...])
-    # grads, loss, accuracy = apply_model(state, batch_images, batch_labels)
-    # state = update_model(state, grads)
-    # epoch_loss.append(jax_utils.unreplicate(loss))
-    # epoch_accuracy.append(jax_utils.unreplicate(accuracy))
 
 
 for epoch in range(1, cfg.total_steps):

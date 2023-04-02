@@ -25,7 +25,7 @@ from ml_collections import config_dict
 from functools import partial
 import toolz
 import chex
-from .render2D import diff_round,Conv_trio
+from .render3D import diff_round,Conv_trio
 # class Predict_prob(nn.Module):
 #     cfg: ml_collections.config_dict.config_dict.ConfigDict
 
@@ -173,7 +173,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     #now we need also to add the last 
     grid_shape_list=list(grid_shape)
     grid_shape_list[dim_stride]=1
-    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1],num_dims]))+orig_grid_shape[dim_stride]+1
+    to_end_grid=jnp.zeros(tuple([grid_shape_list[0],grid_shape_list[1],grid_shape_list[2],num_dims]))+orig_grid_shape[dim_stride]+1
     grid_forward= jnp.concatenate((grid_forward,to_end_grid) ,axis= dim_stride)
 
     #in order to reduce rounding error we will work on diffrences not the actual values
@@ -182,9 +182,9 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     diff_b=grid_forward-grid_back
     grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-1)
     #in order to broadcast we add empty dim - needed becouse probability is about whole point not the each coordinate of sv id
-    rolled_probs=einops.rearrange(rolled_probs,'h w d p-> h w d p 1')
+    rolled_probs=einops.repeat(rolled_probs,'h w d p-> h w d r p',r=3)
+    # print(f"grid_proposition_diffs {grid_proposition_diffs.shape} rolled_probs {rolled_probs.shape} to_end_grid {to_end_grid.shape} grid_shape {grid_shape} grid_shape_list {grid_shape_list} dim_stride {dim_stride} grid_forward {grid_forward.shape} ")
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
-    # print(f"grid_accepted_diffs {grid_accepted_diffs}")
 
     #get back the values of the decision as we subtracted and now add we wil get exactly the same
     # values for both entries example:
@@ -301,7 +301,7 @@ class De_conv_with_loss_fun(nn.Module):
         bi_channel=nn.Conv(2, kernel_size=(3,3,3))(deconv_multi) #we do not use here softmax or sigmoid as it will be in loss
         # now we need to reshape the label to the same size as deconvolved image
         lab_resized=jax.image.resize(label, (b,w,h,d), "nearest").astype(jnp.float16)
-
+        # print(f"(w,h,d) {(w,h,d)  }")
         return self.batched_operate_on_depth(deconv_multi
                                             ,bi_channel
                                             ,lab_resized
@@ -309,7 +309,7 @@ class De_conv_with_loss_fun(nn.Module):
                                             ,self.dim_stride
                                             ,(w,h,d) 
                                             ,(w,h,d,2)
-                                            ,(gw,gh,gc,gd)
+                                            ,(gw,gh,gd,gc)
                                             ,self.orig_grid_shape
                                             ,self.rearrange_to_intertwine_einops
                                             ,self.recreate_channels_einops   )
@@ -343,7 +343,7 @@ class De_conv_3_dim(nn.Module):
                                         ,orig_grid_shape=self.orig_grid_shape)(deconv_multi,label,grid)
 
         deconv_multi,grid,loss_z=De_conv_with_loss_fun(self.cfg,self.features,2
-                                        ,rearrange_to_intertwine_einops='f h w d p-> h w (d f)) p'
+                                        ,rearrange_to_intertwine_einops='f h w d p-> h w (d f) p'
                                         ,recreate_channels_einops='h w (d c) ->h w d c'
                                         ,orig_grid_shape=self.orig_grid_shape)(deconv_multi,label,grid)
 
