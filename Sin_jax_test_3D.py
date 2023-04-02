@@ -71,7 +71,7 @@ cfg.num_strided_convs= 3
 cfg.r= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs,cfg.img_size[4]//2**cfg.num_strided_convs  )
 
-cfg.total_steps=200
+cfg.total_steps=80
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -159,6 +159,7 @@ def update_model(state, grads):
 
 def train_epoch(epoch,slicee,index,dat,state,model):    
   batch_images,label,batch_labels=dat# here batch_labels is slic
+  epoch_loss=[]
   if(batch_images.shape[0]%jax.local_device_count()==0):
     print(f"* {index}  epoch {epoch}")
 
@@ -176,12 +177,12 @@ def train_epoch(epoch,slicee,index,dat,state,model):
     # batch_images= einops.rearrange(batch_images, 'b c x y z-> (b z) c x y  ' )
     # batch_labels= einops.rearrange(batch_labels, 'b x y z-> (b z) x y  ' )
 
-    batch_images_prim=batch_images[0,0,:,:,slicee]
+    batch_images_prim=batch_images[0,0,0,:,:,slicee]
     batch_label_prim=batch_labels[0,:,:,slicee]
 
     
     grads, loss,out_image,res_grid =apply_model(state, batch_images,batch_labels,model)
-    # epoch_loss.append(jax_utils.unreplicate(loss)) 
+    epoch_loss.append(jnp.mean(jax_utils.unreplicate(loss))) 
     state = update_model(state, grads)
     # losss_curr,grid_res=jax_utils.unreplicate(pair)
     # losss_curr,out_image=pair
@@ -189,8 +190,8 @@ def train_epoch(epoch,slicee,index,dat,state,model):
 
 
     #saving only with index one
-    #if(index==0 and epoch%2==0):
-    if(False):
+    if(index==0 and epoch%3==0):
+    # if(False):
 
       # batch_images_prim=einops.rearrange(batch_images_prim, 'c x y->1 c x y' )
       # batch_label_prim=einops.rearrange(batch_label_prim, 'x y-> 1 x y' )
@@ -228,7 +229,7 @@ def train_epoch(epoch,slicee,index,dat,state,model):
       # with_boundaries= np.array(with_boundaries)
       # with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
       # print(f"with_boundaries {with_boundaries.shape}")
-      if(epoch==5):
+      if(epoch==3):
         with file_writer.as_default():
           tf.summary.image(f"image_to_disp{epoch}",image_to_disp , step=epoch)
 

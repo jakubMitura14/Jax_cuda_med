@@ -292,6 +292,7 @@ class De_conv_with_loss_fun(nn.Module):
         deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(x)
         deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
         deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
+        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
 
         b,w,h,d,c= deconv_multi.shape
         gb,gw,gh,gd,gc= grid.shape
