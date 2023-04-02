@@ -66,7 +66,6 @@ cfg = config_dict.ConfigDict()
 cfg.batch_size=jax.local_device_count()
 cfg.img_size = (cfg.batch_size,1,256,256,128)
 cfg.label_size = (cfg.batch_size,256,256,128)
-cfg.total_steps=2
 
 cfg.num_strided_convs= 3
 cfg.r= 3
@@ -160,17 +159,18 @@ def update_model(state, grads):
 
 def train_epoch(epoch,slicee,index,dat,state,model):    
   batch_images,label,batch_labels=dat# here batch_labels is slic
-  if(batch_images.shape[0]==jax.local_device_count()):
+  if(batch_images.shape[0]%jax.local_device_count()==0):
     print(f"* {index}  epoch {epoch}")
 
     batch_images=batch_images[:,:,64:-64,64:-64,:]
     batch_labels=batch_labels[:,64:-64,64:-64,:]
 
-    batch_labels= einops.rearrange(batch_labels,'pm h w d ->pm 1 h w d')
-    batch_images= einops.rearrange(batch_images,'pm c h w d ->pm 1 c h w d')
-
-
     # print(f"ccc batch_images {batch_images.shape} batch_labels {batch_labels.shape}")# batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}
+
+    batch_labels= einops.rearrange(batch_labels,'(pm b) h w d ->pm b h w d',pm=jax.local_device_count() )
+    batch_images= einops.rearrange(batch_images,'(pm b) c h w d ->pm b c h w d',pm=jax.local_device_count() )
+
+
 
 
     # batch_images= einops.rearrange(batch_images, 'b c x y z-> (b z) c x y  ' )

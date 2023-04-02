@@ -117,7 +117,7 @@ class SpixelNet(nn.Module):
         deconv_multi,res_grid,lossB=remat(De_conv_3_dim)(self.cfg,16,res_grid_shape)(deconv_multi+out3,label,res_grid)
         deconv_multi,res_grid,lossC=remat(De_conv_3_dim)(self.cfg,16,res_grid_shape)(deconv_multi+out2,label,res_grid)
 
-        out_image=remat(v_Image_with_texture)(self.cfg,False,False,False)(image,res_grid)
+        out_image=v_Image_with_texture(self.cfg,False,False,False)(image,res_grid)
         out_image=remat(v_Image_with_texture)(self.cfg,True,False,False)(image,res_grid)+out_image
         out_image=remat(v_Image_with_texture)(self.cfg,False,True,False)(image,res_grid)+out_image
         out_image=remat(v_Image_with_texture)(self.cfg,True,True,False)(image,res_grid)+out_image
