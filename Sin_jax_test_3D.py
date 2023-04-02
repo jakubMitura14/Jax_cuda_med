@@ -48,6 +48,8 @@ import tensorflow as tf
 from jax_smi import initialise_tracking
 import ml_collections
 
+import more_itertools
+import toolz
 
 
 
@@ -93,8 +95,8 @@ file_writer = tf.summary.create_file_writer(logdir)
 
 
 
-@functools.partial(jax.pmap,static_broadcasted_argnums=1, axis_name='ensemble')#,static_broadcasted_argnums=(2)
-def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
+@functools.partial(jax.pmap,static_broadcasted_argnums=(1,2), axis_name='ensemble')#,static_broadcasted_argnums=(2)
+def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model):
   """Creates initial `TrainState`."""
   img_size=list(cfg.img_size)
   lab_size=list(cfg.label_size)
@@ -118,8 +120,8 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict):
 
 
 # @jax.jit
-@functools.partial(jax.pmap, axis_name='ensemble')
-def apply_model(state, image,label):
+@functools.partial(jax.pmap,static_broadcasted_argnums=3, axis_name='ensemble')
+def apply_model(state, image,label,model):
   """Train for a single step."""
   def loss_fn(params):
     loss,out_image,res_grid=state.apply_fn({'params': params}, image,label)#, rngs={'texture': random.PRNGKey(2)}
@@ -147,14 +149,8 @@ def update_model(state, grads):
 # print(f"loading {toc_s - tic_s:0.4f} seconds")
 
 
-import more_itertools
-import toolz
 
 # cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
-cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
-cached_subj=list(map(toolz.sandbox.core.unzip,cached_subj ))
-cached_subj=list(map(lambda inn: list(map(list,inn)),cached_subj ))
-cached_subj=list(map(lambda inn: list(map(np.concatenate,inn)),cached_subj ))
 
 
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
@@ -162,10 +158,10 @@ cached_subj=list(map(lambda inn: list(map(np.concatenate,inn)),cached_subj ))
 #jax.profiler.start_server(9999)
 
 
-def train_epoch(epoch,slicee,index,dat,state ):    
+def train_epoch(epoch,slicee,index,dat,state,model):    
   batch_images,label,batch_labels=dat# here batch_labels is slic
   if(batch_images.shape[0]==jax.local_device_count()):
-    print(f"* {index} of {len(cached_subj)} epoch {epoch}")
+    print(f"* {index}  epoch {epoch}")
 
     batch_images=batch_images[:,:,64:-64,64:-64,:]
     batch_labels=batch_labels[:,64:-64,64:-64,:]
@@ -184,8 +180,8 @@ def train_epoch(epoch,slicee,index,dat,state ):
     batch_label_prim=batch_labels[0,:,:,slicee]
 
     
-    grads, loss,out_image,res_grid =apply_model(state, batch_images,batch_labels)
-    epoch_loss.append(jax_utils.unreplicate(loss)) 
+    grads, loss,out_image,res_grid =apply_model(state, batch_images,batch_labels,model)
+    # epoch_loss.append(jax_utils.unreplicate(loss)) 
     state = update_model(state, grads)
     # losss_curr,grid_res=jax_utils.unreplicate(pair)
     # losss_curr,out_image=pair
@@ -247,26 +243,44 @@ def train_epoch(epoch,slicee,index,dat,state ):
           tf.summary.scalar(f"train loss epoch", np.mean(epoch_loss), step=epoch)
 
       print(f"*** epoch {epoch} *** ")
-      return state
+  return state
 
 
 
 
-prng = jax.random.PRNGKey(42)
-model = SpixelNet(cfg)
-rng_2=jax.random.split(prng,num=jax.local_device_count() )
-cached_subj =get_spleen_data()[0:43]
-state = create_train_state(rng_2,cfg)
+def add_batches(cached_subj,cfg):
+  cached_subj=list(more_itertools.chunked(cached_subj, cfg.batch_size))
+  cached_subj=list(map(toolz.sandbox.core.unzip,cached_subj ))
+  cached_subj=list(map(lambda inn: list(map(list,inn)),cached_subj ))
+  cached_subj=list(map(lambda inn: list(map(np.concatenate,inn)),cached_subj ))
+  return cached_subj
 
-def main_train(cfg,cached_subj, state):
+
+
+
+
+
+def main_train(cfg):
+
+  prng = jax.random.PRNGKey(42)
+  model = SpixelNet(cfg)
+  rng_2=jax.random.split(prng,num=jax.local_device_count() )
+
+  cached_subj =get_spleen_data()[0:43]
+  cached_subj= add_batches(cached_subj,cfg)
+  state = create_train_state(rng_2,cfg,model)
+
   for epoch in range(1, cfg.total_steps):
       losss=0
       slicee=15
       for index,dat in enumerate(cached_subj) :
-        state=train_epoch(epoch,slicee,index,dat )
+        state=train_epoch(epoch,slicee,index,dat,state,model )
  
 
-main_train(cfg,cached_subj, state)
+
+
+
+main_train(cfg)
 
 
 
