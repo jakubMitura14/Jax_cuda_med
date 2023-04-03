@@ -47,10 +47,11 @@ import flax.jax_utils as jax_utils
 import tensorflow as tf
 from jax_smi import initialise_tracking
 import ml_collections
-
+import SimpleITK as sitk
 import more_itertools
 import toolz
-
+import time
+import SimpleITK as sitk
 
 
 jax.numpy.set_printoptions(linewidth=400)
@@ -66,13 +67,12 @@ cfg = config_dict.ConfigDict()
 cfg.batch_size=jax.local_device_count()
 cfg.img_size = (cfg.batch_size,1,256,256,128)
 cfg.label_size = (cfg.batch_size,256,256,128)
-
 cfg.num_strided_convs= 3
 cfg.r= cfg.num_strided_convs
-cfg.mainL2Importance=5#we have multiple losses - the bigger this loss the more influence L2 loss between original image and reconstruction will have
+cfg.mainL2Importance=1#we have multiple losses - the bigger this loss the more influence L2 loss between original image and reconstruction will have
+cfg.num_waves=25# the number of sinusoidal gratings that will be used to try recreate best the texture of the single supervoxel 
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs,cfg.img_size[4]//2**cfg.num_strided_convs  )
-
-cfg.total_steps=80
+cfg.total_steps=800
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -113,7 +113,7 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   cosine_decay_scheduler = optax.cosine_decay_schedule(0.0001, decay_steps=cfg.total_steps, alpha=0.95)
   tx = optax.chain(
         optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
-        optax.adamw(learning_rate=cosine_decay_scheduler))
+        optax.lion(learning_rate=cosine_decay_scheduler))
   return train_state.TrainState.create(
       apply_fn=model.apply, params=params, tx=tx)
 
@@ -192,6 +192,7 @@ def train_epoch(epoch,slicee,index,dat,state,model):
 
     #saving only with index one
     if(index==0 and epoch%3==0):
+    # if(index==0):
     # if(False):
 
       # batch_images_prim=einops.rearrange(batch_images_prim, 'c x y->1 c x y' )
@@ -205,6 +206,11 @@ def train_epoch(epoch,slicee,index,dat,state,model):
       out_image=jax_utils.unreplicate(out_image)
       # res_grid=jax_utils.unreplicate(res_grid)
       print(f"out_image {out_image.shape} ")
+
+      to_save= np.array(out_image[0,:,:,:,0])
+      to_save = sitk.GetImageFromArray(np.moveaxis(to_save,2,0))
+      sitk.WriteImage(to_save, f"/workspaces/Jax_cuda_med/data/explore/result{epoch}.nii.gz")
+
       out_image=np.rot90(np.array(out_image[0,:,:,slicee,0]))
 
       # res_grid=np.array(res_grid[slicee,:,:,:])
@@ -258,10 +264,6 @@ def add_batches(cached_subj,cfg):
   return cached_subj
 
 
-
-
-
-
 def main_train(cfg):
 
   prng = jax.random.PRNGKey(42)
@@ -280,19 +282,20 @@ def main_train(cfg):
  
 
 
-
+# jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
+# tensorboard --logdir=/workspaces/Jax_cuda_med/tensor_board
+# jax.profiler.start_server(9999)
+tic_loop = time.perf_counter()
 
 main_train(cfg)
 
-
-
-# x = random.uniform(random.PRNGKey(0), (1000, 1000))
-# jnp.dot(x, x).block_until_ready() 
-# toc_loop = time.perf_counter()
-# print(f"loop {toc_loop - tic_loop:0.4f} seconds")
+x = random.uniform(random.PRNGKey(0), (1000, 1000))
+jnp.dot(x, x).block_until_ready() 
+toc_loop = time.perf_counter()
+print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 
 # jax.profiler.stop_trace()
-
+# jax.profiler.save_device_memory_profile("memory.prof")
 
 # aaa=model.apply(params, sample_3d_ct,sample_3d_label)
 

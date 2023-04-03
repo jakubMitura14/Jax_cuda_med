@@ -26,6 +26,11 @@ from functools import partial
 import toolz
 import chex
 from .render3D import diff_round,Conv_trio
+from flax.linen import partitioning as nn_partitioning
+remat = nn_partitioning.remat
+
+
+
 # class Predict_prob(nn.Module):
 #     cfg: ml_collections.config_dict.config_dict.ConfigDict
 
@@ -290,10 +295,10 @@ class De_conv_with_loss_fun(nn.Module):
     @nn.compact
     def __call__(self, x: jnp.ndarray, label: jnp.ndarray, grid: jnp.ndarray) -> jnp.ndarray:
         # first deconvolve with multiple channels to avoid loosing information
-        deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(x)
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
+        deconv_multi=remat(De_conv_not_sym)(self.cfg,self.features,self.dim_stride)(x)
+        deconv_multi=remat(Conv_trio)(self.cfg,self.features)(deconv_multi)#no stride
+        deconv_multi=remat(Conv_trio)(self.cfg,self.features)(deconv_multi)#no stride
+        deconv_multi=remat(Conv_trio)(self.cfg,self.features)(deconv_multi)#no stride
 
         b,w,h,d,c= deconv_multi.shape
         gb,gw,gh,gd,gc= grid.shape

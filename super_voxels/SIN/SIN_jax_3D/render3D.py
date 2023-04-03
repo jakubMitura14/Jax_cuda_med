@@ -223,15 +223,22 @@ def get_3d_grating_to_scan(carried,parameters_per_wave):
         """
         #now we need to set proper possible ranges as not all parameters should be between 0 an 1
         # angles can as theay are in radians and becouse of grating symmetry 0.1 and 1.1 look the same
-        #wavelength by experiment should be between 0.1 and 2* diameter_no_pad
+        #wavelength by experiment should be between 0.1 and 2* diameter
         # as images are normalized amplitude and amplitude shift between 0 and 1 are ok
         # shifts should be no larger than diameter
-        for_correct_range= jnp.array([diameter_no_pad*2,1.0,1.0,1.0,diameter_no_pad,diameter_no_pad,diameter_no_pad, 1.0])
-        params_grating=jnp.multiply(params_grating,for_correct_range)
+
+        # [0] wavelength, [1] alphaa, [2 ]betaa, [3] amplitude, [4] shift_x, [5] shift_y, [6] shift_z, [7] shift_amplitude
 
         wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
-        X,Y,Z,wavelength_old,grating_old,diameter_no_pad =carried
-        wavelength_new=wavelength+wavelength_old
+
+        for_correct_range= jnp.array([diameter*2,1.0,1.0,1.0,wavelength*2,wavelength*2,wavelength*2, 1.0])
+        parameters_per_wave=jnp.multiply(parameters_per_wave,for_correct_range)
+        parameters_per_wave=parameters_per_wave-jnp.array([0.0,0.0,0.0,0.0,wavelength,wavelength,wavelength, 1.0])
+
+        wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
+        X,Y,Z,wavelength_old,grating_old,diameter =carried
+
+        wavelength_new=wavelength#+wavelength_old
         alpha = jnp.pi*alphaa
         beta = jnp.pi*betaa
         grating = (jnp.sin(
@@ -241,7 +248,7 @@ def get_3d_grating_to_scan(carried,parameters_per_wave):
                         +shift_z)/ wavelength_new
           )*amplitude)+shift_amplitude
         grating_new=grating+grating_old
-        curried_new=  X,Y,Z,wavelength_new,grating_new,diameter_no_pad
+        curried_new=  X,Y,Z,wavelength_new,grating_new,diameter
         return  curried_new,wavelength_new
 
 
@@ -258,35 +265,39 @@ class Sinusoidal_grating_3d(nn.Module):
         shifts by design would not be taken into account when comparing
         """
         cfg: ml_collections.config_dict.config_dict.ConfigDict
-        diameter_no_pad:int
+        diameter:int
 
         @nn.compact
         def __call__(self,image_part: jnp.ndarray ,mask: jnp.ndarray ) -> jnp.ndarray:
                 #adding the discrete cosine transform to make learning easier
-                image_part= jnp.stack(jax.scipy.fft.dctn(image_part),image_part)
-                image_part= Conv_trio(self.cfg,channels=16)(image_part)
-                image_part= Conv_trio(self.cfg,channels=16,strides=(2,2,2))(image_part)
-                image_part= Conv_trio(self.cfg,channels=16,strides=(2,2,2))(image_part)
+                # print(f"fft {jax.scipy.fft.dctn(image_part).shape} {type(jax.scipy.fft.dctn(image_part))}  image_part {image_part.shape} ")
+                image_mean=jnp.mean(image_part)
+                fft=jax.scipy.fft.dctn(image_part)
+                image_part= jnp.stack([image_part,fft],axis=-1)
+                image_part=einops.rearrange(image_part,'x y z c-> 1 x y z c')
+                image_part= remat(Conv_trio)(self.cfg,channels=8,strides=(2,2,2))(image_part)
+                image_part= remat(Conv_trio)(self.cfg,channels=4,strides=(2,2,2))(image_part)
+                image_part= remat(Conv_trio)(self.cfg,channels=4,strides=(2,2,2))(image_part)
 
-                params_grating=nn.Dense(features=self.cfg.num_waves*8)(image_part)
+                params_grating=remat(nn.Dense)(features=self.cfg.num_waves*8)(jnp.ravel(image_part))
                 params_grating=jnp.reshape(params_grating,(self.cfg.num_waves,8))
                 # [0] wavelength, [1] alphaa, [2 ]betaa, [3] amplitude, [4] shift_x, [5] shift_y, [6] shift_z, [7] shift_amplitude
                 # params_grating = nn.relu(self.param('params_grating',nn.initializers.lecun_normal(),(self.cfg.num_waves,8))) 
                 params_grating =nn.sigmoid(params_grating)  #  sigmoid always between 0 and 1
  
                 #creating required meshgrid
-                half= int(np.round(np.floor(self.diameter_no_pad/2)))
+                half= int(np.round(np.floor(self.diameter/2)))
                 x = jnp.arange(-half, half)# we have 0 between so we take intentionally diameter no pad
                 X, Y,Z = jnp.meshgrid(x, x,x)
                 
                 #initial variables for scan
-                initt=(X,Y,Z,jnp.array([0.0]),jnp.zeros_like(X,dtype=float),float(self.diameter_no_pad))
+                initt=(X,Y,Z,jnp.array([0.0]),jnp.zeros_like(X,dtype=float),float(self.diameter))
                 # wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
                 curried,wavelength_news=lax.scan(get_3d_grating_to_scan, initt, params_grating)
-                X,Y,Z,wavelength_new,grating_new=curried
+                X,Y,Z,wavelength_new,grating_new,diameter=curried
                 #get values between 0 and 1
-                res= nn.sigmoid(grating_new)
-                #apply mask so we will have the mask only in the area where we can find the supervoxel                
+                res= nn.sigmoid(grating_new+image_mean)
+                #apply mask so we will have the mask only in the area where we can find the supervoxel   
                 res=jnp.multiply(res,mask)
                 #choosing only the significant parameters we purposufully ignoring shifts
                 return res,params_grating[:,0:3],wavelength_news
@@ -316,6 +327,7 @@ class Texture_sv(nn.Module):
         #masking
         
         mask= v_v_v_soft_equal(sv_area_ids,sv_id )
+
         # print(f"in tex single sv_area_ids{sv_area_ids.shape} sv_id {sv_id.shape}")
 
         # print(f"mask {mask.shape} generated_texture_single {generated_texture_single.shape} ")
@@ -325,15 +337,19 @@ class Texture_sv(nn.Module):
 
 
 
-        image_part= einops.rearrange(image_part,'x y z c ->1 x y z c')# add batch dim to be compatible with convolution
-        image_part=jnp.multiply(image_part,mask)
+        # image_part= einops.rearrange(image_part,'x y z c ->1 x y z c')# add batch dim to be compatible with convolution
+        chex.assert_shape(image_part,(self.diameter,self.diameter,self.diameter,1))# we assume single channel
+        image_part=jnp.multiply(image_part[:,:,:,1],mask)
+        # print(f"bb image_part {image_part.shape}")
+
         # image_part= Conv_trio(self.cfg,channels=2)(image_part)
         # image_part= Conv_trio(self.cfg,channels=4)(image_part)
         # mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
         # generated_texture_single=mask*mean
         # generated_texture_single=mask*jnp.mean(image_part)
-        generated_texture_single,params_grating,wavelength_news=Sinusoidal_grating_3d(self.cfg,get_diameter_no_pad(self.cfg.r))(image_part,mask)
+        generated_texture_single,params_grating,wavelength_news=Sinusoidal_grating_3d(self.cfg,get_diameter(self.cfg.r))(image_part,mask)
         generated_texture_single=jnp.multiply(generated_texture_single,mask)
+        # print(f"generated_texture_single {generated_texture_single.shape} image_part {image_part.shape} ")
         local_loss=jnp.mean(optax.l2_loss(generated_texture_single,image_part))
 
         return generated_texture_single,local_loss
@@ -364,7 +380,7 @@ class Image_with_texture(nn.Module):
     # diameter:int
 
     @nn.compact
-    def __call__(self,image: jnp.ndarray ,sv_area_ids: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self,image: jnp.ndarray ,sv_area_ids: jnp.ndarray, old_textures: jnp.ndarray) -> jnp.ndarray:
         # first we need to reshape it to make it ameneable to vmapped Texture_sv
         sv_shape=sv_area_ids.shape
         sv_area_ids,sv_ids=divide_sv_grid(sv_area_ids
@@ -394,11 +410,11 @@ class Image_with_texture(nn.Module):
                 ,self.cfg.orig_grid_shape
                 ,sv_shape)
 
-        return new_textures,jnp.mean(losses)
+        return new_textures+old_textures,jnp.mean(losses)
 
 #for batch dimension
 v_Image_with_texture=nn.vmap(Image_with_texture
-                            ,in_axes=(0, 0)
+                            ,in_axes=(0, 0,0)
                             # ,out_axes=0
                             ,variable_axes={'params': 0} #parametters are shared
                             ,split_rngs={'params': True}

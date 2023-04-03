@@ -125,7 +125,9 @@ RUN python3 -m  pip install \
     scikit-image==0.20.0 \
     imageio==2.26.0 \
     jax-cosmo==0.1.0 \
-    more-itertools 
+    more-itertools
+
+#  RUN python3 -m  pip install optax==0.1.4
     # torch-tb-profiler
 # RUN python3 -m  pip install \
 #     absl-py==1.0.0 \
@@ -185,6 +187,11 @@ RUN python3 -m  pip install \
 RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \
     cd ${HOME}/externalRepos/numPyro && \
     pip install -e .[dev] 
+
+RUN python3 -m  pip install git+https://github.com/deepmind/optax.git
+# RUN git clone https://github.com/deepmind/optax.git ${HOME}/externalRepos/optax && \
+#     cd ${HOME}/externalRepos/optax && \
+#     pip install -e
 
 RUN git clone https://github.com/flpgrz/fractal-jax.git ${HOME}/externalRepos/fractal_jax 
 
