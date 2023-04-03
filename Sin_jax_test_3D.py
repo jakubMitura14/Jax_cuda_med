@@ -69,10 +69,10 @@ cfg.img_size = (cfg.batch_size,1,256,256,128)
 cfg.label_size = (cfg.batch_size,256,256,128)
 cfg.num_strided_convs= 3
 cfg.r= cfg.num_strided_convs
-cfg.mainL2Importance=1#we have multiple losses - the bigger this loss the more influence L2 loss between original image and reconstruction will have
-cfg.num_waves=25# the number of sinusoidal gratings that will be used to try recreate best the texture of the single supervoxel 
+cfg.mainL2Importance=4#we have multiple losses - the bigger this loss the more influence L2 loss between original image and reconstruction will have
+cfg.num_waves=10# the number of sinusoidal gratings that will be used to try recreate best the texture of the single supervoxel 
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs,cfg.img_size[4]//2**cfg.num_strided_convs  )
-cfg.total_steps=800
+cfg.total_steps=50
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -110,7 +110,7 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   #jax.random.split(rng_2,num=1 )
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
   params = model.init({'params': rng_main}, input,input_label)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
-  cosine_decay_scheduler = optax.cosine_decay_schedule(0.0001, decay_steps=cfg.total_steps, alpha=0.95)
+  cosine_decay_scheduler = optax.cosine_decay_schedule(0.00001, decay_steps=cfg.total_steps, alpha=0.95)
   tx = optax.chain(
         optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
         optax.lion(learning_rate=cosine_decay_scheduler))
@@ -191,7 +191,7 @@ def train_epoch(epoch,slicee,index,dat,state,model):
 
 
     #saving only with index one
-    if(index==0 and epoch%3==0):
+    if(index==0 and epoch%5==0):
     # if(index==0):
     # if(False):
 

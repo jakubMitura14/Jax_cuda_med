@@ -230,15 +230,15 @@ def get_3d_grating_to_scan(carried,parameters_per_wave):
         # [0] wavelength, [1] alphaa, [2 ]betaa, [3] amplitude, [4] shift_x, [5] shift_y, [6] shift_z, [7] shift_amplitude
 
         wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
-
-        for_correct_range= jnp.array([diameter*2,1.0,1.0,1.0,wavelength*2,wavelength*2,wavelength*2, 1.0])
-        parameters_per_wave=jnp.multiply(parameters_per_wave,for_correct_range)
-        parameters_per_wave=parameters_per_wave-jnp.array([0.0,0.0,0.0,0.0,wavelength,wavelength,wavelength, 1.0])
-
-        wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
         X,Y,Z,wavelength_old,grating_old,diameter =carried
 
-        wavelength_new=wavelength#+wavelength_old
+        for_correct_range= jnp.array([diameter*2,1.0,1.0,1.0,wavelength,wavelength,wavelength, 2.0])
+        parameters_per_wave=jnp.multiply(parameters_per_wave,for_correct_range)
+        parameters_per_wave=parameters_per_wave-jnp.array([0.0,0.0,0.0,0.0,wavelength/2,wavelength/2,wavelength/2, 1.0])
+
+        wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
+
+        wavelength_new=wavelength+jnp.array([0.0])#+wavelength_old
         alpha = jnp.pi*alphaa
         beta = jnp.pi*betaa
         grating = (jnp.sin(
@@ -249,6 +249,7 @@ def get_3d_grating_to_scan(carried,parameters_per_wave):
           )*amplitude)+shift_amplitude
         grating_new=grating+grating_old
         curried_new=  X,Y,Z,wavelength_new,grating_new,diameter
+        # print(f" wavelength_old {wavelength_old.shape} wavelength_new {wavelength_new.shape} ")
         return  curried_new,wavelength_new
 
 
@@ -273,11 +274,17 @@ class Sinusoidal_grating_3d(nn.Module):
                 # print(f"fft {jax.scipy.fft.dctn(image_part).shape} {type(jax.scipy.fft.dctn(image_part))}  image_part {image_part.shape} ")
                 image_mean=jnp.mean(image_part)
                 fft=jax.scipy.fft.dctn(image_part)
-                image_part= jnp.stack([image_part,fft],axis=-1)
-                image_part=einops.rearrange(image_part,'x y z c-> 1 x y z c')
-                image_part= remat(Conv_trio)(self.cfg,channels=8,strides=(2,2,2))(image_part)
+                # image_part= jnp.stack([image_part,fft],axis=-1)
+                image_part=einops.rearrange(image_part,'x y z-> 1 x y z 1')
                 image_part= remat(Conv_trio)(self.cfg,channels=4,strides=(2,2,2))(image_part)
-                image_part= remat(Conv_trio)(self.cfg,channels=4,strides=(2,2,2))(image_part)
+                image_part= remat(Conv_trio)(self.cfg,channels=2,strides=(2,2,2))(image_part)
+                image_part= remat(Conv_trio)(self.cfg,channels=2,strides=(2,2,2))(image_part)
+                fft=einops.rearrange(fft,'x y z-> 1 x y z 1')
+                fft= remat(Conv_trio)(self.cfg,channels=4,strides=(2,2,2))(fft)
+                fft= remat(Conv_trio)(self.cfg,channels=2,strides=(2,2,2))(fft)
+                fft= remat(Conv_trio)(self.cfg,channels=2,strides=(2,2,2))(fft)               
+                image_part= remat(Conv_trio)(self.cfg,channels=2)(jnp.concatenate([image_part,fft],axis=-1))
+
 
                 params_grating=remat(nn.Dense)(features=self.cfg.num_waves*8)(jnp.ravel(image_part))
                 params_grating=jnp.reshape(params_grating,(self.cfg.num_waves,8))
