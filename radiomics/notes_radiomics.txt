@@ -1,0 +1,14 @@
+paper about radiomics stability !
+
+https://www.researchgate.net/publication/353057032_Impact_of_Lesion_Delineation_and_Intensity_Quantisation_on_the_Stability_of_Texture_Features_from_Lung_Nodules_on_CT_A_Reproducible_Study
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6261192/
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8468357/
+
+Radiomics baysian glcm 
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6706247/
+
+Some new radiomics but no code
+https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8487040

@@ -125,7 +125,8 @@ RUN python3 -m  pip install \
     scikit-image==0.20.0 \
     imageio==2.26.0 \
     jax-cosmo==0.1.0 \
-    more-itertools
+    more-itertools \
+    pyradiomics==3.0.1
 
 #  RUN python3 -m  pip install optax==0.1.4
     # torch-tb-profiler
