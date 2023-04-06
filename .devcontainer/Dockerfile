@@ -97,8 +97,8 @@ RUN python3 -m  pip install \
     # intensity-normalization[ants] \
     warp-lang \
     report_guided_annotation==0.2.7
-RUN python3 -m  pip install flax==0.6.8 \
-    git+https://github.com/deepmind/optax.git \
+
+RUN python3 -m  pip install \
     # ott-jax \ 
     # evojax[extra] \
     # jraph \
@@ -124,7 +124,9 @@ RUN python3 -m  pip install flax==0.6.8 \
     PyWavelets==1.4.1 \
     Pillow==9.4.0 \
     scikit-image==0.20.0 \
-    imageio==2.26.0 
+    imageio==2.26.0 \
+    flax==0.6.6\
+    optax==0.1.4
     # jax-cosmo==0.1.0 \
     # more-itertools \
     # optax
@@ -137,18 +139,17 @@ RUN python3 -m  pip install flax==0.6.8 \
 
 
 
+# RUN python3 -m  pip install git+https://github.com/google/flax.git
+
+# RUN python3 -m  pip install git+https://github.com/deepmind/optax.git 
+
+
+# RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \
+#     cd ${HOME}/externalRepos/numPyro && \
+#     pip install -e .[dev] 
 
 
 
-
-
-
-
-
-
-RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \
-    cd ${HOME}/externalRepos/numPyro && \
-    pip install -e .[dev] 
 
 # RUN python3 -m  pip install git+https://github.com/deepmind/optax.git
 
