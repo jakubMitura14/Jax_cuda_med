@@ -18,6 +18,11 @@ copied from https://github.com/shinaji/texture_analysis/blob/1beb4c887d20eb011f0
     Date: 2016/01/31
 
 """
+from jax.config import config
+
+config.update('jax_platform_name', 'cpu')
+# config.update("jax_debug_nans", True)
+config.update("jax_disable_jit", True)
 
 from jax import lax, random, numpy as jnp
 from matplotlib import pyplot as plt
@@ -30,14 +35,8 @@ image=cached_subj =get_spleen_data()[0][0][0,0,64:96,64:96,64:96]*256
 obj=ngtdm_jax.NGTDM_3D()
 obj_orig=ngtdm.NGTDM_3D(image,d=2)
 
-obj.print_features(image)
+obj.print_features(image,0,256)
 obj_orig.print_features()
 
 #  print(f"my \n {obj.print_features()} \n   original \n {obj_orig.print_features()} ")
 
-python3 
-
-import jax
-
-from jax.lib import xla_bridge
-print(xla_bridge.get_backend().platform)

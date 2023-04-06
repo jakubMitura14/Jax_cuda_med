@@ -126,7 +126,8 @@ RUN python3 -m  pip install \
     scikit-image==0.20.0 \
     imageio==2.26.0 \
     flax==0.6.6\
-    optax==0.1.4
+    optax==0.1.4 \
+    more-itertools
     # jax-cosmo==0.1.0 \
     # more-itertools \
     # optax
