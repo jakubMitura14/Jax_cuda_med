@@ -27,7 +27,7 @@ from jax.scipy.signal import convolve
 
 
 
-def normalize(img, level_min=1, level_max=256, threshold=None):
+def normalize(img, level_min=1, level_max=256, threshold=0):
     """
     normalize the given image
 
@@ -40,10 +40,10 @@ def normalize(img, level_min=1, level_max=256, threshold=None):
     """
 
     tmp_img = jnp.array(img)
-    if threshold is None:
-        threshold = tmp_img.min()
-    tmp_img=tmp_img.at[tmp_img<threshold].set(-1)
-    assert level_min < level_max, "level_min must be smaller than level_max"
+    # if threshold is None:
+    #     threshold = tmp_img.min()
+    # tmp_img=tmp_img.at[tmp_img<threshold].set(-1)
+    # assert level_min < level_max, "level_min must be smaller than level_max"
     slope = (level_max - level_min) / (img.max() - threshold)
     intercept = - threshold * slope
     tmp_img = tmp_img * slope + intercept + level_min

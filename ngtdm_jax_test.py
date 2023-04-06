@@ -26,7 +26,10 @@ from jax.scipy.signal import convolve
 from testUtils.spleenTest import get_spleen_data
 from radiomics_my import ngtdm_jax
 from radiomics_my.originals import ngtdm
-image=cached_subj =get_spleen_data()[0][0][0,0,64:96,64:96,64:96]
+image=cached_subj =get_spleen_data()[0][0][0,0,64:96,64:96,64:96]*256
 obj=ngtdm_jax.NGTDM_3D(image)
 obj_orig=ngtdm.NGTDM_3D(image)
-print(f"my \n {obj.print_features()} \n   original \n {obj_orig.print_features()} ")
+
+obj.print_features()
+obj_orig.print_features()
+# print(f"my \n {obj.print_features()} \n   original \n {obj_orig.print_features()} ")
