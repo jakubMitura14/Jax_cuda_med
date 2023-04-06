@@ -23,7 +23,6 @@ from jax import lax, random, numpy as jnp
 from matplotlib import pyplot as plt
 # from TextureAnalysis.Utils import normalize
 from jax.scipy.signal import convolve
-from .testUtils.spleenTest import get_spleen_data
 
 
 
@@ -43,7 +42,7 @@ def normalize(img, level_min=1, level_max=256, threshold=None):
     tmp_img = jnp.array(img)
     if threshold is None:
         threshold = tmp_img.min()
-    tmp_img[tmp_img<threshold] = -1
+    tmp_img=tmp_img.at[tmp_img<threshold].set(-1)
     assert level_min < level_max, "level_min must be smaller than level_max"
     slope = (level_max - level_min) / (img.max() - threshold)
     intercept = - threshold * slope
@@ -70,7 +69,7 @@ class NGTDM_3D:
 
         self.img, self.slope, self.intercept = \
             normalize(img, level_min, level_max, threshold)
-        self.img[self.img<level_min] = 0
+        self.img=self.img.at[self.img<level_min].set(0)
         self.n_level = (level_max - level_min) + 1
         self.level_min = level_min
         self.level_max = level_max
@@ -152,9 +151,9 @@ class NGTDM_3D:
         """
 
         kernel = jnp.ones((2*self.d+1, 2*self.d+1, 2*self.d+1))
-        kernel[self.d, self.d, self.d] = 0
+        kernel=kernel.at[self.d, self.d, self.d].set(0)
         d, h, w = self.img.shape
-        A = convolve(self.img.astype(float), kernel, mode='constant')
+        A = convolve(self.img.astype(float), kernel, mode='same')
         A *= (1./((2 * self.d + 1)**3-1))
         s = jnp.zeros(self.n_level)
         p = jnp.zeros_like(s)
@@ -165,14 +164,14 @@ class NGTDM_3D:
             indices = jnp.argwhere(crop_img == i) + jnp.array([self.d,
                                                              self.d,
                                                              self.d])
-            s[i-self.level_min] = \
+            s=s.at[i-self.level_min].set( \
                 jnp.abs(i - A[indices[:, 0],
                              indices[:, 1],
-                             indices[:, 2]]).sum()
-            p[i-self.level_min] = float(len(indices)) / jnp.prod(crop_img.shape)
+                             indices[:, 2]]).sum())
+            p=p.at[i-self.level_min].set(float(len(indices)) / jnp.prod(jnp.array(list(crop_img.shape))))
 
         ng = jnp.sum(jnp.unique(crop_img)>0)
-        n2 = jnp.prod(crop_img.shape)
+        n2 = jnp.prod(jnp.array(list(crop_img.shape)))
         return s, p, ng, n2
 
 

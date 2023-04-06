@@ -24,6 +24,9 @@ from matplotlib import pyplot as plt
 # from TextureAnalysis.Utils import normalize
 from jax.scipy.signal import convolve
 from testUtils.spleenTest import get_spleen_data
-import radiomics.jax_radiomics.ngtdm_jax
-image=cached_subj =get_spleen_data()[0][0][0,0,:,:,:]
-
+from radiomics_my import ngtdm_jax
+from radiomics_my.originals import ngtdm
+image=cached_subj =get_spleen_data()[0][0][0,0,64:96,64:96,64:96]
+obj=ngtdm_jax.NGTDM_3D(image)
+obj_orig=ngtdm.NGTDM_3D(image)
+print(f"my \n {obj.print_features()} \n   original \n {obj_orig.print_features()} ")
