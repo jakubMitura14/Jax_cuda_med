@@ -23,11 +23,15 @@ from jax import lax, random, numpy as jnp
 from matplotlib import pyplot as plt
 # from TextureAnalysis.Utils import normalize
 from jax.scipy.signal import convolve
+import numpy as np
+def diff_round(x):
+    """
+    differentiable version of round function
+    """
+    return x - jnp.sin(2*jnp.pi*x)/(2*jnp.pi)
 
 
-
-
-def normalize(img, level_min=1, level_max=256, threshold=0):
+def normalize(img, level_min:float=1.0, level_max:float=256.0, threshold:float=0.0):
     """
     normalize the given image
 
@@ -40,60 +44,56 @@ def normalize(img, level_min=1, level_max=256, threshold=0):
     """
 
     tmp_img = jnp.array(img)
-    # if threshold is None:
-    #     threshold = tmp_img.min()
-    # tmp_img=tmp_img.at[tmp_img<threshold].set(-1)
-    # assert level_min < level_max, "level_min must be smaller than level_max"
+
     slope = (level_max - level_min) / (img.max() - threshold)
     intercept = - threshold * slope
     tmp_img = tmp_img * slope + intercept + level_min
-    return jnp.round(tmp_img, decimals=0).astype(jnp.int32), slope, intercept
+    # return diff_round(diff_round(tmp_img)), slope, intercept
+    return diff_round(diff_round(diff_round(tmp_img))), slope, intercept
 
+
+# x= np.random.random((10))*256
+# xb=diff_round(diff_round(diff_round(diff_round(x))))
+# print(f"x {x} \nxb {xb}  ")
 
 class NGTDM_3D:
     """
     Neighbourhood Gray-Tone-Difference Matrix
     """
-    def __init__(self, img, d=1, level_min=1, level_max=127, threshold=None):
-        """
-        initialize
+    # def __init__(self, img, d=2, level_min=1, level_max=127, threshold=0.0):
+    #     """
+    #     initialize
 
-        :param img: 3D image
-        :param d: distance
-        :param level_min: min intensity of normalized image
-        :param level_max: max intensity of normalized image
-        :param threshold: threshold of the minimal value
-        """
+    #     :param img: 3D image
+    #     :param d: distance
+    #     :param level_min: min intensity of normalized image
+    #     :param level_max: max intensity of normalized image
+    #     :param threshold: threshold of the minimal value
+    #     """
+    #     self.img, self.slope, self.intercept = \
+    #         normalize(img, level_min, level_max, threshold)
+    #     self.img=self.img.at[self.img<level_min].set(0)
+    #     self.n_level = (level_max - level_min) + 1
+    #     self.level_min = level_min
+    #     self.level_max = level_max
+    #     self.d = d
+    #     self.s, self.p, self.ng, self.n2 = self._construct_matrix()
+    #     self.features = self._calc_features()
 
-        assert len(img.shape) == 3, 'image must be 3D'
-
+    def _calc_features(self,img,d=2, level_min=1, level_max=127, threshold=0.0):
         self.img, self.slope, self.intercept = \
             normalize(img, level_min, level_max, threshold)
         self.img=self.img.at[self.img<level_min].set(0)
         self.n_level = (level_max - level_min) + 1
         self.level_min = level_min
         self.level_max = level_max
-        assert self.level_min > 0, 'lower level must be greater than 0'
         self.d = d
-        assert self.d > 0, 'd must be grater than 0'
         self.s, self.p, self.ng, self.n2 = self._construct_matrix()
-        self.features = self._calc_features()
-
-    def _calc_features(self):
-        """
-        calculate feature values
-
-        :return: feature values
-        """
         features = {}
         I, J = jnp.ogrid[self.level_min:self.level_max+1,
                         self.level_min:self.level_max+1]
         pi = jnp.hstack((self.p[:, jnp.newaxis],)*len(self.p))
         pj = jnp.vstack((self.p[jnp.newaxis, :],)*len(self.p))
-        # ipi = self.p*jnp.arange(self.level_min, self.level_max+1)[:, jnp.newaxis]
-        # jpj = self.p*jnp.arange(self.level_min, self.level_max+1)[jnp.newaxis, :]
-        # ipi = pi * jnp.hstack((jnp.arange(self.level_min, self.level_max+1)[:, jnp.newaxis],)*len(self.p))
-        # jpj = pj * jnp.vstack((jnp.arange(self.level_min, self.level_max+1)[jnp.newaxis, :],)*len(self.p))
         ipi = jnp.hstack(
             ((self.p * jnp.arange(1, len(self.p) + 1))[:, jnp.newaxis],) * len(
                 self.p))
@@ -121,20 +121,20 @@ class NGTDM_3D:
         features['strength'] = fstr
         return features
 
-    def print_features(self, show_figure=False):
+    def print_features(self, img,show_figure=False):
         """
         print features
 
         :param show_figure: if True, show figure
         """
-
+        features = self._calc_features(img)
         print("----NGTDM 3D-----")
         feature_labels = []
         feature_values = []
-        for key in sorted(self.features.keys()):
-            print("{}: {}".format(key, self.features[key]))
+        for key in sorted(features.keys()):
+            print("{}: {}".format(key, features[key]))
             feature_labels.append(key)
-            feature_values.append(self.features[key])
+            feature_values.append(features[key])
 
         if show_figure:
             plt.plot(range(self.level_min, self.level_max+1),

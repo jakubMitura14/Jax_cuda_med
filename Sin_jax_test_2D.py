@@ -33,8 +33,8 @@ from swinTransformer.swin_transformer import SwinTransformer
 from swinTransformer.losses import focal_loss
 from swinTransformer.metrics import dice_metr
 from swinTransformer.optimasation import get_optimiser
-import augmentations.simpleTransforms
-from augmentations.simpleTransforms import main_augment
+# import augmentations.simpleTransforms
+# from augmentations.simpleTransforms import main_augment
 from testUtils.spleenTest import get_spleen_data
 from jax.config import config
 from skimage.segmentation import mark_boundaries
@@ -68,7 +68,7 @@ cfg.num_strided_convs= 3
 cfg.r= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
 
-cfg.total_steps=8000
+cfg.total_steps=200
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 

@@ -1,4 +1,4 @@
-FROM nvcr.io/nvdlfwea/jax/jax:23.02-py3
+FROM nvcr.io/nvdlfwea/jax/jax:23.03-py3
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -76,14 +76,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 
 
+RUN python3 -m  pip  install torch torchvision torchaudio torch-geometric --extra-index-url https://download.pytorch.org/whl/cpu
 # RUN python3 -m  pip  install torch torchvision torchaudio torch-geometric --extra-index-url https://download.pytorch.org/whl/cpu
-# RUN python3 -m  pip  install torch torchvision torchaudio torch-geometric --extra-index-url https://download.pytorch.org/whl/cpu
-RUN python3 -m pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu118
+# RUN python3 -m pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu118
 # # RUN python3 -m pip install jaxlib --upgrade
 # # RUN python3 -m pip install jax --upgrade
 
 RUN python3 -m  pip install \
-    numba==0.56.4+1.g772622d0d\
+    # numba==0.56.4+1.g772622d0d\
     # cupy \
     black==23.1.0\
     pandas==1.5.2 \
@@ -96,11 +96,12 @@ RUN python3 -m  pip install \
     nibabel==5.0.0\
     # intensity-normalization[ants] \
     warp-lang \
-    report_guided_annotation==0.2.7\
-    ott-jax \ 
-    evojax[extra] \
-    jraph \
-    flax==0.6.7 \
+    report_guided_annotation==0.2.7
+RUN python3 -m  pip install flax==0.6.8 \
+    git+https://github.com/deepmind/optax.git \
+    # ott-jax \ 
+    # evojax[extra] \
+    # jraph \
     toolz==0.12.0\
     ipyparallel==8.4.1\
     optuna==3.1.0\
@@ -123,55 +124,15 @@ RUN python3 -m  pip install \
     PyWavelets==1.4.1 \
     Pillow==9.4.0 \
     scikit-image==0.20.0 \
-    imageio==2.26.0 \
-    jax-cosmo==0.1.0 \
-    more-itertools \
-    pyradiomics==3.0.1
+    imageio==2.26.0 
+    # jax-cosmo==0.1.0 \
+    # more-itertools \
+    # optax
 
-#  RUN python3 -m  pip install optax==0.1.4
-    # torch-tb-profiler
-# RUN python3 -m  pip install \
-#     absl-py==1.0.0 \
-#     cloudpickle==2.0.0 \
-#     cycler==0.11.0 \
-#     cytoolz==0.11.0 \
-#     # dask-core==2021.10.0 \
-#     fsspec==2022.1.0 \
-#     imagecodecs==2021.8.26 \
-#     imageio==2.9.0 \
-#     intel-openmp==2021.4.0 \
-#     kiwisolver==1.3.1 \
-#     # krb5==1.19.2 \
-#     locket==0.2.1 \
-#     mkl-service==2.4.0 \
-#     mkl_fft==1.3.1 \
-#     mkl_random==1.2.2 \
-#     munkres==1.1.4 \
-#     networkx==2.6.3 \
-#     olefile==0.46 \
-#     opt_einsum==3.3.0 \
-#     packaging==21.3 \
-#     partd==1.2.0 \
-#     pillow==8.4.0 \
-#     polyscope==1.3.0 \
-#     pyparsing==3.0.4 \
-#     # pyqt==5.9.2 \
-#     # dateutil \
-#     flatbuffers \
-#     # abi \
-#     pywavelets==1.1.1 \
-#     pyyaml==6.0 \
-#     scikit-image==0.18.3 \
-#     scipy==1.7.3 \
-#     setuptools==58.0.4 \
-#     # sip==4.19.13 \
-#     six==1.16.0 \
-#     # snappy==1.1.8 \
-#     tifffile==2021.7.2 \
-#     tornado==6.1 \
-#     typing_extensions==4.0.1
-#     # tzdata==2021e \
-#     # wheel==0.37.1 
+
+    # git+https://github.com/deepmind/optax.git
+# RUN python3 -m  pip install optax    
+    
 
 
 
@@ -189,12 +150,13 @@ RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numP
     cd ${HOME}/externalRepos/numPyro && \
     pip install -e .[dev] 
 
-RUN python3 -m  pip install git+https://github.com/deepmind/optax.git
-# RUN git clone https://github.com/deepmind/optax.git ${HOME}/externalRepos/optax && \
-#     cd ${HOME}/externalRepos/optax && \
-#     pip install -e
+# RUN python3 -m  pip install git+https://github.com/deepmind/optax.git
 
-RUN git clone https://github.com/flpgrz/fractal-jax.git ${HOME}/externalRepos/fractal_jax 
+# # RUN git clone https://github.com/deepmind/optax.git ${HOME}/externalRepos/optax && \
+# #     cd ${HOME}/externalRepos/optax && \
+# #     pip install -e
+
+# RUN git clone https://github.com/flpgrz/fractal-jax.git ${HOME}/externalRepos/fractal_jax 
 
 # RUN git clone https://github.com/flpgrz/fractal-jax.git ${HOME}/externalRepos/fractal_jax && \
 #     cd ${HOME}/externalRepos/fractal_jax/fractal-jax && \

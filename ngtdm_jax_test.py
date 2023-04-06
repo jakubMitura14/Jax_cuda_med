@@ -27,9 +27,17 @@ from testUtils.spleenTest import get_spleen_data
 from radiomics_my import ngtdm_jax
 from radiomics_my.originals import ngtdm
 image=cached_subj =get_spleen_data()[0][0][0,0,64:96,64:96,64:96]*256
-obj=ngtdm_jax.NGTDM_3D(image)
-obj_orig=ngtdm.NGTDM_3D(image)
+obj=ngtdm_jax.NGTDM_3D()
+obj_orig=ngtdm.NGTDM_3D(image,d=2)
 
-obj.print_features()
+obj.print_features(image)
 obj_orig.print_features()
-# print(f"my \n {obj.print_features()} \n   original \n {obj_orig.print_features()} ")
+
+#  print(f"my \n {obj.print_features()} \n   original \n {obj_orig.print_features()} ")
+
+python3 
+
+import jax
+
+from jax.lib import xla_bridge
+print(xla_bridge.get_backend().platform)
