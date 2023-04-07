@@ -172,7 +172,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
 
     # preparing the propositions to which the probabilities will be apply
     # to choose weather we want the grid id forward or back the axis
-    # print(f"grid_shape {grid_shape} dim_stride {dim_stride} res_grid {res_grid.shape}")
     grid_forward=jnp.take(res_grid, indices=jnp.arange(1,grid_shape[dim_stride]),axis=dim_stride )
     grid_back =jnp.take(res_grid, indices=jnp.arange(0,grid_shape[dim_stride]),axis=dim_stride )
     #now we need also to add the last 
@@ -186,10 +185,9 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     diff_a=grid_back-grid_forward
     diff_b=grid_forward-grid_back
     grid_proposition_diffs=jnp.stack([diff_a,diff_b],axis=-2)
-    # print(f"grid_proposition_diffs {grid_proposition_diffs.shape}")
     #in order to broadcast we add empty dim - needed becouse probability is about whole point not the each coordinate of sv id
     rolled_probs=einops.repeat(rolled_probs,'h w d p-> h w d p r',r=3)
-    # print(f"grid_proposition_diffs {grid_proposition_diffs.shape} rolled_probs {rolled_probs.shape} to_end_grid {to_end_grid.shape} grid_shape {grid_shape} grid_shape_list {grid_shape_list} dim_stride {dim_stride} grid_forward {grid_forward.shape} ")
+
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
 
     #get back the values of the decision as we subtracted and now add we wil get exactly the same
@@ -336,6 +334,7 @@ class De_conv_3_dim(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     features: int
     orig_grid_shape :Tuple[int]
+    index:int
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, label: jnp.ndarray, grid: jnp.ndarray) -> jnp.ndarray:
@@ -348,11 +347,12 @@ class De_conv_3_dim(nn.Module):
                                         ,rearrange_to_intertwine_einops='f h w d p-> h (w f) d p'
                                         ,recreate_channels_einops='h (w c) d ->h w d c'
                                         ,orig_grid_shape=self.orig_grid_shape)(deconv_multi,label,grid)
-
-        deconv_multi,grid,loss_z=De_conv_with_loss_fun(self.cfg,self.features,2
-                                        ,rearrange_to_intertwine_einops='f h w d p-> h w (d f) p'
-                                        ,recreate_channels_einops='h w (d c) ->h w d c'
-                                        ,orig_grid_shape=self.orig_grid_shape)(deconv_multi,label,grid)
+        loss_z= jnp.array([0])
+        if(self.index<3):
+            deconv_multi,grid,loss_z=De_conv_with_loss_fun(self.cfg,self.features,2
+                                            ,rearrange_to_intertwine_einops='f h w d p-> h w (d f) p'
+                                            ,recreate_channels_einops='h w (d c) ->h w d c'
+                                            ,orig_grid_shape=self.orig_grid_shape)(deconv_multi,label,grid)
 
         return deconv_multi,grid, jnp.mean(jnp.concatenate([loss_x,loss_y,loss_z]))
 

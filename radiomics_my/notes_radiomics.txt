@@ -12,3 +12,6 @@ https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6706247/
 
 Some new radiomics but no code
 https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8487040
+
+Radiomics GLCM approximations
+https://iopscience.iop.org/article/10.1088/1361-6560/aad8ec

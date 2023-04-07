@@ -105,7 +105,7 @@ def get_supervoxel_ids(shift_x:bool,shift_y:bool,shift_z:bool,orig_grid_shape:Tu
     res_grid=einops.rearrange(res_grid,'p x y z -> x y z p')
     res_grid= res_grid[int(shift_x): orig_grid_shape[0]:2,
                     int(shift_y): orig_grid_shape[1]:2,                    
-                    int(shift_z): orig_grid_shape[2]:2,
+                    int(shift_z): orig_grid_shape[2]:2,#
                      ]
     
     return einops.rearrange(res_grid,'x y z p -> (x y z) p')                 
@@ -131,11 +131,12 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,shift_z:bool,
     #max size of the area cube of intrest
     # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
     diameter=get_diameter(r)
+    diameter_z=get_diameter(r-1)
     #first we cut out all areas not covered by current supervoxels
     #TODO as there is some numpy inside it should be in precomputation
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y   =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
-    to_pad_beg_z,to_remove_from_end_z,axis_len_prim_z,axis_len_z,to_pad_end_z   =for_pad_divide_grid(current_grid_shape,2,r,shift_z,orig_grid_shape,diameter)
+    to_pad_beg_z,to_remove_from_end_z,axis_len_prim_z,axis_len_z,to_pad_end_z   =for_pad_divide_grid(current_grid_shape,2,r,shift_z,orig_grid_shape,diameter_z)
 
     cutted=res_grid[0: current_grid_shape[0]- to_remove_from_end_x
                     ,0: current_grid_shape[1]- to_remove_from_end_y
@@ -146,7 +147,7 @@ def divide_sv_grid(res_grid: jnp.ndarray,shift_x:bool,shift_y:bool,shift_z:bool,
                         ,(to_pad_beg_y,to_pad_end_y )
                         ,(to_pad_beg_z,to_pad_end_z )
                         ,(0,0)))
-    cutted=einops.rearrange( cutted,einops_rearrange, x=diameter,y=diameter,z=diameter)
+    cutted=einops.rearrange( cutted,einops_rearrange, x=diameter,y=diameter,z=diameter_z)
 
     # #setting to zero borders that are known to be 0
     # cutted=cutted.at[:,-1,:,:].set(0)
@@ -168,15 +169,16 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shift_x:bool,shift_y:bo
     #max size of the area cube of intrest
     # we add 1 for the begining center spot and additional 1 for next center in order to get even divisions
     diameter=get_diameter(r)
+    diameter_z=get_diameter(r-1)
     #first we cut out all areas not covered by current supervoxels
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x =for_pad_divide_grid(current_grid_shape,0,r,shift_x,orig_grid_shape,diameter)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y =for_pad_divide_grid(current_grid_shape,1,r,shift_y,orig_grid_shape,diameter)
-    to_pad_beg_z,to_remove_from_end_z,axis_len_prim_z,axis_len_z,to_pad_end_z =for_pad_divide_grid(current_grid_shape,2,r,shift_z,orig_grid_shape,diameter)
+    to_pad_beg_z,to_remove_from_end_z,axis_len_prim_z,axis_len_z,to_pad_end_z =for_pad_divide_grid(current_grid_shape,2,r,shift_z,orig_grid_shape,diameter_z)
     
     
     # undo axis reshuffling
     texture_information= einops.rearrange(texture_information,'(a b c) x y z->(a x) (b y) (c z)'
-                        , a=axis_len_x//diameter,b=axis_len_y//diameter,c=axis_len_z//diameter, x=diameter,y=diameter,z=diameter)
+                        , a=axis_len_x//diameter,b=axis_len_y//diameter,c=axis_len_z//diameter_z, x=diameter,y=diameter,z=diameter_z)
     # texture_information= einops.rearrange( texture_information,'a x y->(a x y)')
     #undo padding
     texture_information= texture_information[
@@ -207,9 +209,6 @@ def soft_equal(a,b):
     return  diff_round(jnp.exp(-jnp.dot((a-b),(a-b).T)))
     # return  jnp.exp(-jnp.dot((a-b),(a-b).T))
 
-# a= jnp.arange(1,4)
-# b= jnp.arange(3,6)
-# jnp.dot(a,a.T)
 
 v_soft_equal=jax.vmap(soft_equal, in_axes=(0,None))
 v_v_soft_equal=jax.vmap(v_soft_equal, in_axes=(0,None))
@@ -249,7 +248,6 @@ def get_3d_grating_to_scan(carried,parameters_per_wave):
           )*amplitude)+shift_amplitude
         grating_new=grating+grating_old
         curried_new=  X,Y,Z,wavelength_new,grating_new,diameter
-        # print(f" wavelength_old {wavelength_old.shape} wavelength_new {wavelength_new.shape} ")
         return  curried_new,wavelength_new
 
 
@@ -271,7 +269,6 @@ class Sinusoidal_grating_3d(nn.Module):
         @nn.compact
         def __call__(self,image_part: jnp.ndarray ,mask: jnp.ndarray ) -> jnp.ndarray:
                 #adding the discrete cosine transform to make learning easier
-                # print(f"fft {jax.scipy.fft.dctn(image_part).shape} {type(jax.scipy.fft.dctn(image_part))}  image_part {image_part.shape} ")
                 image_mean=jnp.mean(image_part)
                 fft=jax.scipy.fft.dctn(image_part)
                 # image_part= jnp.stack([image_part,fft],axis=-1)
@@ -310,8 +307,6 @@ class Sinusoidal_grating_3d(nn.Module):
                 return res,params_grating[:,0:3],wavelength_news
 
 
-
-
 class Texture_sv(nn.Module):
     """
     the module operates on a single supervoxel each generating a texture for it
@@ -321,6 +316,7 @@ class Texture_sv(nn.Module):
     """
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     diameter:int
+    diameter_z:int
     # kernel_init: Callable = nn.initializers.lecun_normal()
 
     @nn.compact
@@ -335,32 +331,18 @@ class Texture_sv(nn.Module):
         
         mask= v_v_v_soft_equal(sv_area_ids,sv_id )
 
-        # print(f"in tex single sv_area_ids{sv_area_ids.shape} sv_id {sv_id.shape}")
 
-        # print(f"mask {mask.shape} generated_texture_single {generated_texture_single.shape} ")
-        # generated_texture_single= jnp.multiply(generated_texture_single, mask)   
-        # generated_texture_single=mask*mean[0]
-        
-
-
-
-        # image_part= einops.rearrange(image_part,'x y z c ->1 x y z c')# add batch dim to be compatible with convolution
-        chex.assert_shape(image_part,(self.diameter,self.diameter,self.diameter,1))# we assume single channel
+        chex.assert_shape(image_part,(self.diameter,self.diameter,self.diameter_z,1))# we assume single channel
         image_part=jnp.multiply(image_part[:,:,:,1],mask)
-        # print(f"bb image_part {image_part.shape}")
 
-        # image_part= Conv_trio(self.cfg,channels=2)(image_part)
-        # image_part= Conv_trio(self.cfg,channels=4)(image_part)
-        # mean= nn.sigmoid(nn.Dense(1)(jnp.ravel(image_part)))
-        # generated_texture_single=mask*mean
-        # generated_texture_single=mask*jnp.mean(image_part)
-        generated_texture_single,params_grating,wavelength_news=Sinusoidal_grating_3d(self.cfg,get_diameter(self.cfg.r))(image_part,mask)
-        generated_texture_single=jnp.multiply(generated_texture_single,mask)
-        # print(f"generated_texture_single {generated_texture_single.shape} image_part {image_part.shape} ")
+
+        generated_texture_single=mask*jnp.mean(jnp.ravel(image_part))
+
+        # generated_texture_single,params_grating,wavelength_news=Sinusoidal_grating_3d(self.cfg,get_diameter(self.cfg.r))(image_part,mask)
+        # generated_texture_single=jnp.multiply(generated_texture_single,mask)
         local_loss=jnp.mean(optax.l2_loss(generated_texture_single,image_part))
 
         return generated_texture_single,local_loss
-        # return jnp.zeros((16,16,16))
 
 
 v_Texture_sv=nn.vmap(Texture_sv
@@ -407,7 +389,7 @@ class Image_with_texture(nn.Module):
                 ,sv_shape
                 ,'(a x) (b y) (c z) p-> (a b c) x y z p')                
         #creating textured image based on currently analyzed supervoxels
-        new_textures, losses=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids,image)
+        new_textures, losses=v_Texture_sv(self.cfg,get_diameter(self.cfg.r),get_diameter(self.cfg.r-1))(sv_area_ids,sv_ids,image)
         #recreating original shape
         new_textures=recreate_orig_shape(new_textures
                 ,self.shift_x

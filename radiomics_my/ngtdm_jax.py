@@ -164,7 +164,7 @@ class NGTDM_3D:
 
         :return: NGTD-Matrix
         """
-
+    
         kernel = jnp.ones((2*dd+1, 2*dd+1, 2*dd+1))
         kernel=kernel.at[dd, dd, dd].set(0)
         d, h, w = img.shape

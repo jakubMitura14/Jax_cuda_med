@@ -126,7 +126,7 @@ RUN python3 -m  pip install \
     scikit-image==0.20.0 \
     imageio==2.26.0 \
     flax==0.6.6\
-    optax==0.1.4 \
+    # optax==git+https://github.com/deepmind/optax.git \
     more-itertools
     # jax-cosmo==0.1.0 \
     # more-itertools \
@@ -142,7 +142,7 @@ RUN python3 -m  pip install \
 
 # RUN python3 -m  pip install git+https://github.com/google/flax.git
 
-# RUN python3 -m  pip install git+https://github.com/deepmind/optax.git 
+RUN python3 -m  pip install git+https://github.com/deepmind/optax.git 
 
 
 # RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \

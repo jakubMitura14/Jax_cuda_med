@@ -89,7 +89,7 @@ class SpixelNet(nn.Module):
         #first we do a convolution - mostly strided convolution to get the reduced representation
         image=einops.rearrange(image,'b c w h d-> b w h d c')
         out1=remat(Conv_trio)(self.cfg,channels=16)(image)
-        out2=remat(Conv_trio)(self.cfg,channels=16,strides=(2,2,2))(out1)
+        out2=remat(Conv_trio)(self.cfg,channels=16,strides=(2,2,1))(out1)
         out3=remat(Conv_trio)(self.cfg,channels=32,strides=(2,2,2))(out2)
         out4=remat(Conv_trio)(self.cfg,channels=64,strides=(2,2,2))(out3)
         # out5=Conv_trio(self.cfg,channels=128,strides=(2,2))(out4)
@@ -111,11 +111,10 @@ class SpixelNet(nn.Module):
         res_grid=einops.rearrange(res_grid,'p x y z-> x y z p')
         res_grid=einops.repeat(res_grid,'x y z p-> b x y z p', b=b)
         res_grid_shape=tuple(list(res_grid.shape)[1:])
-        # print(f"out5 {out5.shape} res_grid_shape {res_grid_shape} ")
         # deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,64,res_grid_shape)(out5,label,res_grid)
-        deconv_multi,res_grid,lossA=remat(De_conv_3_dim)(self.cfg,32,res_grid_shape)(out4,label,res_grid)
-        deconv_multi,res_grid,lossB=remat(De_conv_3_dim)(self.cfg,16,res_grid_shape)(deconv_multi+out3,label,res_grid)
-        deconv_multi,res_grid,lossC=remat(De_conv_3_dim)(self.cfg,16,res_grid_shape)(deconv_multi+out2,label,res_grid)
+        deconv_multi,res_grid,lossA=remat(De_conv_3_dim)(self.cfg,32,res_grid_shape,1)(out4,label,res_grid)
+        deconv_multi,res_grid,lossB=remat(De_conv_3_dim)(self.cfg,16,res_grid_shape,2)(deconv_multi,label,res_grid) #out3
+        deconv_multi,res_grid,lossC=remat(De_conv_3_dim)(self.cfg,16,res_grid_shape,3)(deconv_multi,label,res_grid) #+out2
 
         out_image,loss1=remat(v_Image_with_texture)(self.cfg,False,False,False)(image,res_grid, jnp.zeros((bi,wi,hi,di)))
         out_image,loss2=remat(v_Image_with_texture)(self.cfg,True,False,False)(image,res_grid,out_image)
@@ -130,8 +129,8 @@ class SpixelNet(nn.Module):
 
         out_image=einops.rearrange(out_image,'b w h d-> b w h d 1') 
    
-        #loss=jnp.mean(optax.l2_loss(out_image,image))
-        loss=jnp.mean(jnp.stack([lossA,lossB,lossC]))+jnp.mean(optax.l2_loss(out_image,image))*self.cfg.mainL2Importance+jnp.mean(jnp.ravel(jnp.stack([loss1,loss2,loss3,loss4,loss5,loss6,loss7,loss8])))
+        loss=jnp.mean(optax.l2_loss(out_image,image))
+        # loss=jnp.mean(jnp.stack([lossA,lossB,lossC]))+jnp.mean(optax.l2_loss(out_image,image))*self.cfg.mainL2Importance+jnp.mean(jnp.ravel(jnp.stack([loss1,loss2,loss3,loss4,loss5,loss6,loss7,loss8])))
         # loss=jax.lax.pmean(jnp.stack([lossA,lossB]), axis_name='ensemble')+jax.lax.pmean(optax.l2_loss(out_image,image), axis_name='ensemble')
 
         return loss,out_image,res_grid
