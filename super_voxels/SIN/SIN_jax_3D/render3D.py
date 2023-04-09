@@ -338,11 +338,13 @@ class Texture_sv(nn.Module):
 
         generated_texture_single=mask*jnp.mean(jnp.ravel(image_part))
 
-        # generated_texture_single,params_grating,wavelength_news=Sinusoidal_grating_3d(self.cfg,get_diameter(self.cfg.r))(image_part,mask)
-        # generated_texture_single=jnp.multiply(generated_texture_single,mask)
-        local_loss=jnp.mean(optax.l2_loss(generated_texture_single,image_part))
+        # # generated_texture_single,params_grating,wavelength_news=Sinusoidal_grating_3d(self.cfg,get_diameter(self.cfg.r))(image_part,mask)
+        # # generated_texture_single=jnp.multiply(generated_texture_single,mask)
+        # # local_loss=jnp.mean(optax.l2_loss(generated_texture_single,image_part))
+        local_loss=jnp.var(image_part)
 
         return generated_texture_single,local_loss
+        # return mask,local_loss
 
 
 v_Texture_sv=nn.vmap(Texture_sv

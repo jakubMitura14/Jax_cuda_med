@@ -22,10 +22,8 @@ import jax.profiler
 import ml_collections
 from ml_collections import config_dict
 # from Jax_cuda_med.super_voxels.SIN.SIN_jax.model_sin_jax_utils import *
-from .model_sin_jax_utils_3D import *
-from .render3D import v_Texture_sv,get_supervoxel_ids,divide_sv_grid,recreate_orig_shape,v_Image_with_texture
-from flax.linen import partitioning as nn_partitioning
-remat = nn_partitioning.remat
+from .model_sin_jax_utils_2D import *
+from .render2D import v_Texture_sv,get_supervoxel_ids,divide_sv_grid,recreate_orig_shape,v_Image_with_texture
 
 class Render_from_grid(nn.Module):
     """
@@ -87,11 +85,11 @@ class SpixelNet(nn.Module):
     @nn.compact
     def __call__(self, image: jnp.ndarray, label: jnp.ndarray) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
-        image=einops.rearrange(image,'b c w h d-> b w h d c')
-        out1=remat(Conv_trio)(self.cfg,channels=16)(image)
-        out2=remat(Conv_trio)(self.cfg,channels=16,strides=(2,2,1))(out1)
-        out3=remat(Conv_trio)(self.cfg,channels=32,strides=(2,2,2))(out2)
-        out4=remat(Conv_trio)(self.cfg,channels=64,strides=(2,2,2))(out3)
+        image=einops.rearrange(image,'b c w h-> b w h c')
+        out1=Conv_trio(self.cfg,channels=16)(image)
+        out2=Conv_trio(self.cfg,channels=16,strides=(2,2))(out1)
+        out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
+        out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
         # out5=Conv_trio(self.cfg,channels=128,strides=(2,2))(out4)
 
         # out5=nn.Sequential([
@@ -104,39 +102,43 @@ class SpixelNet(nn.Module):
         #     # ,Conv_trio(channels=32,strides=(2,2,2))     
         #     ])(image)
         # grid of
-        b, w, h,d ,c=out4.shape 
-        bi, wi, hi,di, ci,=image.shape
+        b, w, h,c=out4.shape 
+        bi, wi, hi, ci,=image.shape
         #creating grid where each supervoxel is described by 3 coordinates
-        res_grid=jnp.mgrid[1:w+1, 1:h+1,1:d+1].astype(jnp.float16)
-        res_grid=einops.rearrange(res_grid,'p x y z-> x y z p')
-        res_grid=einops.repeat(res_grid,'x y z p-> b x y z p', b=b)
+        res_grid=jnp.mgrid[1:w+1, 1:h+1].astype(jnp.float16)
+        res_grid=einops.rearrange(res_grid,'p x y-> x y p')
+        res_grid=einops.repeat(res_grid,'x y p-> b x y p', b=b)
         res_grid_shape=tuple(list(res_grid.shape)[1:])
+        # print(f"out5 {out5.shape} res_grid_shape {res_grid_shape} ")
         # deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,64,res_grid_shape)(out5,label,res_grid)
-        deconv_multi,res_grid,lossA=remat(De_conv_3_dim)(self.cfg,32,res_grid_shape,1)(out4,label,res_grid)
-        deconv_multi,res_grid,lossB=remat(De_conv_3_dim)(self.cfg,16,res_grid_shape,2)(deconv_multi,label,res_grid) #out3
-        deconv_multi,res_grid,lossC=remat(De_conv_3_dim)(self.cfg,16,res_grid_shape,3)(deconv_multi,label,res_grid) #+out2
+        deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,32,res_grid_shape)(out4,label,res_grid)
+        deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out3,label,res_grid)
+        deconv_multi,res_grid,lossC=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out2,label,res_grid)
 
-        out_image,loss1=remat(v_Image_with_texture)(self.cfg,False,False,False)(image,res_grid, jnp.zeros((bi,wi,hi,di)))
-        out_image,loss2=remat(v_Image_with_texture)(self.cfg,True,False,False)(image,res_grid,out_image)
-        out_image,loss3=remat(v_Image_with_texture)(self.cfg,False,True,False)(image,res_grid,out_image)
-        out_image,loss4=remat(v_Image_with_texture)(self.cfg,True,True,False)(image,res_grid,out_image)
+        out_image=v_Image_with_texture(self.cfg,False,False)(image,res_grid)
+        out_image=v_Image_with_texture(self.cfg,True,False)(image,res_grid)+out_image
+        out_image=v_Image_with_texture(self.cfg,False,True)(image,res_grid)+out_image
+        out_image=v_Image_with_texture(self.cfg,True,True)(image,res_grid)+out_image
         
-        out_image,loss5=remat(v_Image_with_texture)(self.cfg,False,False,True)(image,res_grid,out_image)
-        out_image,loss6=remat(v_Image_with_texture)(self.cfg,True,False,True)(image,res_grid,out_image)
-        out_image,loss7=remat(v_Image_with_texture)(self.cfg,False,True,True)(image,res_grid,out_image)
-        out_image,loss8=remat(v_Image_with_texture)(self.cfg,True,True,True)(image,res_grid,out_image)
-        
-
-        out_image=einops.rearrange(out_image,'b w h d-> b w h d 1') 
+        out_image=einops.rearrange(out_image,'b w h-> b w h 1') 
    
-        loss=jnp.mean(optax.l2_loss(out_image,image))+jnp.mean(jnp.ravel(jnp.stack([loss1,loss2,loss3,loss4,loss5,loss6,loss7,loss8])))
-        #+jnp.mean(jnp.ravel(jnp.stack([loss1,loss2,loss3,loss4,loss5,loss6,loss7,loss8])))
-        # loss=jnp.mean(jnp.stack([lossA,lossB,lossC]))+jnp.mean(optax.l2_loss(out_image,image))*self.cfg.mainL2Importance+jnp.mean(jnp.ravel(jnp.stack([loss1,loss2,loss3,loss4,loss5,loss6,loss7,loss8])))
-        # loss=jax.lax.pmean(jnp.stack([lossA,lossB]), axis_name='ensemble')+jax.lax.pmean(optax.l2_loss(out_image,image), axis_name='ensemble')
+        loss=jnp.mean(optax.l2_loss(out_image,image))
+        # loss=jnp.mean(jnp.stack([lossA,lossB,lossC]))+jnp.mean(optax.l2_loss(out_image,image))
+        
+
 
         return loss,out_image,res_grid
 
+        # now we need to deconvolve a plane at a time and each time check weather 
+        # the simmilarity to the neighbouring voxels is as should be
+         
+        # we can basically do a unet type architecture to avoid loosing information 
 
 
 
         #TODO in original learning rate for biases in convolutions is 0 - good to try omitting biases
+        # deconv_z_3,prob_x_3,prob_y_3,prob_z_3=De_conv_3_dim(64)(out5)
+        # deconv_z_2,prob_x_2,prob_y_2,prob_z_2=De_conv_3_dim(32)(deconv_z_3)
+        # deconv_z_1,prob_x_1,prob_y_1,prob_z_1=De_conv_3_dim(16)(deconv_z_2)
+
+        # return prob_x_3,prob_y_3, prob_z_3 , prob_x_2, prob_y_2, prob_z_2,prob_x_1,prob_y_1,prob_z_1

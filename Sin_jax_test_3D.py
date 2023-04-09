@@ -72,7 +72,7 @@ cfg.r= cfg.num_strided_convs
 cfg.mainL2Importance=4#we have multiple losses - the bigger this loss the more influence L2 loss between original image and reconstruction will have
 cfg.num_waves=10# the number of sinusoidal gratings that will be used to try recreate best the texture of the single supervoxel 
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs,cfg.img_size[4]//2**(cfg.num_strided_convs-1))  
-cfg.total_steps=30
+cfg.total_steps=809
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -110,10 +110,16 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   #jax.random.split(rng_2,num=1 )
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
   params = model.init({'params': rng_main}, input,input_label)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
-  cosine_decay_scheduler = optax.cosine_decay_schedule(0.00001, decay_steps=cfg.total_steps, alpha=0.95)
+  # cosine_decay_scheduler = optax.cosine_decay_schedule(0.001, decay_steps=cfg.total_steps, alpha=0.95)
+  # tx = optax.chain(
+  #       optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
+  #       optax.lion(learning_rate=cosine_decay_scheduler))
+
+  cosine_decay_scheduler = optax.cosine_decay_schedule(0.0001, decay_steps=cfg.total_steps, alpha=0.95)
   tx = optax.chain(
         optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
-        optax.lion(learning_rate=cosine_decay_scheduler))
+        optax.adamw(learning_rate=cosine_decay_scheduler))
+
   return train_state.TrainState.create(
       apply_fn=model.apply, params=params, tx=tx)
 
@@ -275,7 +281,6 @@ def main_train(cfg):
   state = create_train_state(rng_2,cfg,model)
 
   for epoch in range(1, cfg.total_steps):
-      losss=0
       slicee=15
       for index,dat in enumerate(cached_subj) :
         state=train_epoch(epoch,slicee,index,dat,state,model )
