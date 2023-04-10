@@ -135,6 +135,7 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     """
     num_dims=2
     rolled_probs= nn.softmax(probs,axis=-1)
+    rolled_probs= v_v_v_harder_diff_round(rolled_probs)
     # making it as close to 0 and 1 as possible not hampering differentiability
     # as all other results will lead to inconclusive grid id
     # rolled_probs = v_v_v_harder_diff_round(rolled_probs)
@@ -222,7 +223,6 @@ class De_conv_with_loss_fun(nn.Module):
                                             ,self.orig_grid_shape
                                             ,self.rearrange_to_intertwine_einops
                                             ,self.recreate_channels_einops)
-        print(f"batched grid {grid.shape}")
         deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(deconv_multi)
 
         """
