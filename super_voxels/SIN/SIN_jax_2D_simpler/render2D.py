@@ -230,7 +230,8 @@ class Texture_sv(nn.Module):
         # generated_texture_single=generated_texture_single.at[-1,:].set(0)
         # generated_texture_single=generated_texture_single.at[:,-1].set(0)
 
-        return generated_texture_single
+        return generated_texture_single, jnp.var(jnp.ravel(generated_texture_single))
+
                 # generated_texture_single = self.param('shape_param_single_s_vox',
         #         self.kernel_init,(self.diameter))
 
@@ -257,7 +258,7 @@ class Image_with_texture(nn.Module):
     # diameter:int
 
     @nn.compact
-    def __call__(self,image: jnp.ndarray ,sv_area_ids: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self,image: jnp.ndarray ,sv_area_ids: jnp.ndarray,previous_out: jnp.ndarray) -> jnp.ndarray:
         # first we need to reshape it to make it ameneable to vmapped Texture_sv
         sv_shape=sv_area_ids.shape
         sv_area_ids,sv_ids=divide_sv_grid(sv_area_ids
@@ -275,7 +276,7 @@ class Image_with_texture(nn.Module):
                 ,sv_shape
                 ,'(a x) (b y) p-> (a b) x y p')                
         #creating textured image based on currently analyzed supervoxels
-        new_textures=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids,image)
+        new_textures,local_loss=v_Texture_sv(self.cfg,get_diameter(self.cfg.r))(sv_area_ids,sv_ids,image)
         #recreating original shape
         new_textures=recreate_orig_shape(new_textures
                 ,self.shift_x
@@ -284,11 +285,11 @@ class Image_with_texture(nn.Module):
                 ,self.cfg.orig_grid_shape
                 ,sv_shape)
 
-        return new_textures        
+        return (new_textures+previous_out),jnp.mean(local_loss)       
 
 #for batch dimension
 v_Image_with_texture=nn.vmap(Image_with_texture
-                            ,in_axes=(0, 0)
+                            ,in_axes=(0, 0,0)
                             ,variable_axes={'params': 0} #parametters are shared
                             ,split_rngs={'params': True,'texture' :True}
                             )

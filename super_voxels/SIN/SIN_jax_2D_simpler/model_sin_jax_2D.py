@@ -115,14 +115,14 @@ class SpixelNet(nn.Module):
         deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out3,label,res_grid)
         deconv_multi,res_grid,lossC=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out2,label,res_grid)
 
-        out_image=v_Image_with_texture(self.cfg,False,False)(image,res_grid)
-        out_image=v_Image_with_texture(self.cfg,True,False)(image,res_grid)+out_image
-        out_image=v_Image_with_texture(self.cfg,False,True)(image,res_grid)+out_image
-        out_image=v_Image_with_texture(self.cfg,True,True)(image,res_grid)+out_image
+        out_image,loc_loss1=v_Image_with_texture(self.cfg,False,False)(image,res_grid, jnp.zeros((bi,wi,hi)))
+        out_image,loc_loss2=v_Image_with_texture(self.cfg,True,False)(image,res_grid,out_image)
+        out_image,loc_loss3=v_Image_with_texture(self.cfg,False,True)(image,res_grid,out_image)
+        out_image,loc_loss4=v_Image_with_texture(self.cfg,True,True)(image,res_grid,out_image)
         
         out_image=einops.rearrange(out_image,'b w h-> b w h 1') 
    
-        loss=jnp.mean(optax.l2_loss(out_image,image))
+        loss=jnp.mean(optax.l2_loss(out_image,image))+jnp.mean(jnp.ravel(jnp.stack([loc_loss1,loc_loss2,loc_loss3,loc_loss4])))+jnp.mean(jnp.ravel(jnp.stack([lossA,lossB,lossC])))
         # loss=jnp.mean(jnp.stack([lossA,lossB,lossC]))+jnp.mean(optax.l2_loss(out_image,image))
         
 

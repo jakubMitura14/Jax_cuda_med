@@ -26,7 +26,7 @@ import h5py
 import jax
 from testUtils.spleenTest import get_spleen_data
 from ml_collections import config_dict
-from super_voxels.SIN.SIN_jax_2D.model_sin_jax_2D import SpixelNet
+from super_voxels.SIN.SIN_jax_2D_simpler.model_sin_jax_2D import SpixelNet
 from swinTransformer.optimasation import get_optimiser
 import swinTransformer.swin_transformer as swin_transformer
 from swinTransformer.swin_transformer import SwinTransformer
@@ -67,8 +67,7 @@ cfg.label_size = (cfg.batch_size,256,256)
 cfg.num_strided_convs= 3
 cfg.r= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
-
-cfg.total_steps=200
+cfg.total_steps=80
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
