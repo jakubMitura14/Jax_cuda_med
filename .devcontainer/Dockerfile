@@ -127,7 +127,8 @@ RUN python3 -m  pip install \
     imageio==2.26.0 \
     flax==0.6.6\
     # optax==git+https://github.com/deepmind/optax.git \
-    more-itertools
+    more-itertools \
+    seaborn
     # jax-cosmo==0.1.0 \
     # more-itertools \
     # optax

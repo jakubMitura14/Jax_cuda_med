@@ -122,7 +122,7 @@ class SpixelNet(nn.Module):
         
         out_image=einops.rearrange(out_image,'b w h-> b w h 1') 
    
-        loss=jnp.mean(optax.l2_loss(out_image,image))+jnp.mean(jnp.ravel(jnp.stack([loc_loss1,loc_loss2,loc_loss3,loc_loss4])))+jnp.mean(jnp.ravel(jnp.stack([lossA,lossB,lossC])))
+        loss=jnp.mean(optax.l2_loss(out_image,image))#+jnp.mean(jnp.ravel(jnp.stack([loc_loss1,loc_loss2,loc_loss3,loc_loss4])))#+jnp.mean(jnp.ravel(jnp.stack([lossA,lossB,lossC])))
         # loss=jnp.mean(jnp.stack([lossA,lossB,lossC]))+jnp.mean(optax.l2_loss(out_image,image))
         
 

@@ -185,6 +185,25 @@ def soft_equal(a,b):
 v_soft_equal=jax.vmap(soft_equal, in_axes=(0,None))
 v_v_soft_equal=jax.vmap(v_soft_equal, in_axes=(0,None))
 
+def translate_mask_in_axis(mask:jnp.ndarray, axis:int,is_forward:int,translation_val:int,mask_shape:Tuple[int]):
+    """
+    translates the mask in a given axis 
+    also forward or backward it perform it by padding and
+    take
+    value of translation is described by translation_val
+    """
+    # mask_shape_list=list(mask_shape)
+    # mask_shape_list[axis]=translation_val
+    # to_end=jnp.zeros(tuple(mask_shape_list))
+
+    mask= jnp.take(mask, indices=jnp.arange(translation_val*(1-is_forward),mask_shape[axis]-translation_val* is_forward),axis=axis )
+    to_pad=[[0.0,0.0],[0.0,0.0]]
+    to_pad[axis,(1-is_forward)]=translation_val
+    to_pad= list(map(tuple,to_pad))
+    mask= jnp.pad(mask,tuple(to_pad))
+    return mask
+
+
 class Texture_sv(nn.Module):
     """
     the module operates on a single supervoxel each generating a texture for it
@@ -227,10 +246,13 @@ class Texture_sv(nn.Module):
         #setting to zero borders that are known to be 0 as by constructions we should not be able to
             #find there the queried supervoxel
 
-        # generated_texture_single=generated_texture_single.at[-1,:].set(0)
-        # generated_texture_single=generated_texture_single.at[:,-1].set(0)
+        mask=mask.at[-1,:].set(0)
+        mask=mask.at[:,-1].set(0)
 
-        return generated_texture_single, jnp.var(jnp.ravel(generated_texture_single))
+
+
+        # return generated_texture_single, jnp.var(jnp.ravel(generated_texture_single))
+        return mask, jnp.var(jnp.ravel(generated_texture_single))
 
                 # generated_texture_single = self.param('shape_param_single_s_vox',
         #         self.kernel_init,(self.diameter))

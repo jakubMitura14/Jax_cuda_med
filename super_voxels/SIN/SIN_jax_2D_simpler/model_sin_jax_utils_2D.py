@@ -135,11 +135,18 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     """
     num_dims=2
     rolled_probs= nn.softmax(probs,axis=-1)
-    rolled_probs= v_v_v_harder_diff_round(rolled_probs)
+
     # making it as close to 0 and 1 as possible not hampering differentiability
     # as all other results will lead to inconclusive grid id
     # rolled_probs = v_v_v_harder_diff_round(rolled_probs)
+    # rolled_probs = jnp.round(rolled_probs)
+    rolled_probs=rolled_probs.at[:,:,0].set(1.0)#TODO remove
+    rolled_probs=rolled_probs.at[:,:,1].set(0.0)#TODO remove
+    
     rounding_loss=jnp.mean((-1)*jnp.power(rolled_probs[:,:,0]-rolled_probs[:,:,1],2) )
+
+
+
     # rolled_probs = jnp.round(rolled_probs) #TODO(it is non differentiable !)  
     # preparing the propositions to which the probabilities will be apply
     # to choose weather we want the grid id forward or back the axis

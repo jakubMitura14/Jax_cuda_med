@@ -21,3 +21,8 @@ Gabor
 
 in jax
 https://github.com/google/neural-tangents/blob/9cfdc2878f7270bb02973cc2b438c81a7a39c315/neural_tangents/_src/stax/elementwise.py#L123
+
+
+differentiable histogram 
+https://arxiv.org/pdf/2012.06311.pdf
+https://github.com/Liamkuo/SAIR/blob/0fb289cd975b5a196b58e7d16bac00e31fd41d39/loss/histogram.py#L11

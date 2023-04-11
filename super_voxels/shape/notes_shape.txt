@@ -1,0 +1,26 @@
+We can get the enclosing mesh by first adding all entries in given direction to get primary vertices that would be perfect for sphere and then learn the displacement field that will maximize the amount of points that are inside the mesh; test for being inside or not probably could be done by analyzing local mesh normals; probably we would also want to maximize the distance between verticies
+
+Then we can add loss of the current shape  that would be indicated by minimizing the difference between current mesh and the target possible shape distributions using appointed metrics maybe in kendall shape space 
+
+math - How to calculate the volume of a 3D mesh object the surface of which is made up triangles - Stack Overflow
+https://stackoverflow.com/questions/1406029/how-to-calculate-the-volume-of-a-3d-mesh-object-the-surface-of-which-is-made-up
+ 
+
+Calculating the volume of a mesh – Nervous System blog
+https://n-e-r-v-o-u-s.com/blog/?p=4415
+
+Compute volume of polygonal mesh (volume enclosed by the surface)
+https://www.google.com/url?sa=t&source=web&rct=j&url=https://discourse.paraview.org/t/compute-volume-of-polygonal-mesh-volume-enclosed-by-the-surface/10880&ved=2ahUKEwiG3PCwlIn-AhWSHXcKHSh-CoI4FBAWegQIBRAB&usg=AOvVaw3gDRwS0IrmBI5WWDAw01L6
+
+Voxel Structure-based Mesh Reconstruction from a 3D Point Cloud
+https://www.google.com/url?sa=t&source=web&rct=j&url=https://arxiv.org/pdf/2104.10622&ved=2ahUKEwib_vP5lIn-AhWHAxAIHQ9KAfQ4ChAWegQICBAB&usg=AOvVaw1ZVR7rQuKug16Q5qtuacca
+
+ CircNet: Meshing 3D Point Clouds with Circumcenter Detection
+https://www.google.com/url?sa=t&source=web&rct=j&url=https://arxiv.org/abs/2301.09253&ved=2ahUKEwib_vP5lIn-AhWHAxAIHQ9KAfQ4ChAWegQIGhAB&usg=AOvVaw0WitsGqGSjAtT_0b3yLCq0
+ 
+ Differentiable Surface Triangulation - arXiv
+https://www.google.com/url?sa=t&source=web&rct=j&url=https://arxiv.org/abs/2109.10695&ved=2ahUKEwiX0P2YlYn-AhXSnosKHf51Ab8QFnoECAsQAQ&usg=AOvVaw2JVCP_MMh64I9nzoaTbq2s
+
+
+
+

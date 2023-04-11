@@ -235,6 +235,8 @@ def get_3d_grating_to_scan(carried,parameters_per_wave):
         parameters_per_wave=jnp.multiply(parameters_per_wave,for_correct_range)
         parameters_per_wave=parameters_per_wave-jnp.array([0.0,0.0,0.0,0.0,wavelength/2,wavelength/2,wavelength/2, 1.0])
 
+
+
         wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
 
         wavelength_new=wavelength+jnp.array([0.0])#+wavelength_old

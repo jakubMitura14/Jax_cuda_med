@@ -68,7 +68,7 @@ cfg.label_size = (cfg.batch_size,256,256)
 cfg.num_strided_convs= 3
 cfg.r= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
-cfg.total_steps=40
+cfg.total_steps=2
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -176,7 +176,7 @@ def train_epoch(epoch,slicee,index,dat,state,model):
 
 
     #saving only with index one
-    if(index==0 and epoch%5==0):
+    if(index==0 and epoch%1==0):
 
       # batch_images_prim=einops.rearrange(batch_images_prim, 'c x y->1 c x y' )
       # batch_label_prim=einops.rearrange(batch_label_prim, 'x y-> 1 x y' )
@@ -266,7 +266,7 @@ tic_loop = time.perf_counter()
 
 main_train(cfg)
 
-x = random.uniform(random.PRNGKey(0), (1000, 1000))
+x = random.uniform(random.PRNGKey(0), (100, 100))
 jnp.dot(x, x).block_until_ready() 
 toc_loop = time.perf_counter()
 print(f"loop {toc_loop - tic_loop:0.4f} seconds")
