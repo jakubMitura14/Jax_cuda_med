@@ -80,15 +80,17 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # making it as close to 0 and 1 as possible not hampering differentiability
     # as all other results will lead to inconclusive grid id
     # rolled_probs = v_v_v_harder_diff_round(rolled_probs)
-    # rolled_probs = jnp.round(rolled_probs)
-    rolled_probs=rolled_probs.at[:,:,0].set(1.0)#TODO remove
-    rolled_probs=rolled_probs.at[:,:,1].set(0.0)#TODO remove
+    rolled_probs = jnp.round(rolled_probs)#TODO remove
+    summed=jnp.sum(rolled_probs,axis=-1)#TODO remove
+    # print(f"rrrrrolled_probs {jnp.min(summed)} {jnp.max(summed)} \n summed {summed}")
+
+    rolled_probs=rolled_probs.at[:,:,0].set(0.0)#TODO remove
+    rolled_probs=rolled_probs.at[:,:,1].set(1.0)#TODO remove
     
     rounding_loss=jnp.mean((-1)*jnp.power(rolled_probs[:,:,0]-rolled_probs[:,:,1],2) )
 
 
 
-    # rolled_probs = jnp.round(rolled_probs) #TODO(it is non differentiable !)  
     # preparing the propositions to which the probabilities will be apply
     # to choose weather we want the grid id forward or back the axis
     # print(f"grid_shape {grid_shape} dim_stride {dim_stride} res_grid {res_grid.shape}")
@@ -249,7 +251,7 @@ def soft_equal(a,b):
     # return 1/(jax.numpy.linalg.norm(a-b,ord=2)+0.0000001)
     # return 1/((jnp.dot((a-b),(a-b).T))+0.0000001)
     # return jnp.dot((a-b),(a-b).T)
-    return  diff_round(jnp.exp(-jnp.dot((a-b),(a-b).T)))
+    return  diff_round(diff_round(diff_round(jnp.exp(-jnp.dot((a-b),(a-b).T)))))
 
 
 v_soft_equal=jax.vmap(soft_equal, in_axes=(0,None))
@@ -276,8 +278,8 @@ def get_texture_single(sv_area_ids: jnp.ndarray,sv_id: jnp.ndarray,image_part: j
     #setting to zero borders that are known to be 0 as by constructions we should not be able to
         #find there the queried supervoxel
 
-    mask=mask.at[-1,:].set(0)
-    mask=mask.at[:,-1].set(0)
+    # mask=mask.at[-1,:].set(0)
+    # mask=mask.at[:,-1].set(0)
 
 
 
@@ -324,13 +326,19 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
 def image_with_texture(shape_reshape_cfg,image,sv_area_ids,previous_out):
     sv_ids=get_supervoxel_ids(shape_reshape_cfg)
     sv_area_ids=divide_sv_grid(sv_area_ids,shape_reshape_cfg)
+    print(f"ggggg {sv_ids.shape} sv_area_ids {sv_area_ids.shape} ")
+
     image=divide_sv_grid(image,shape_reshape_cfg)
    
     texture_information=v_get_texture_single(sv_area_ids,sv_ids,image)
 
+    texture_information_debug=get_texture_single(sv_area_ids[10,:,:,:],sv_ids[10,:],image[10,:,:])
+    print(f"iddd \n{sv_ids[10,:]}  \n sv_area_ids \n{disp_to_pandas_curr_shape(sv_area_ids[10,:,:,:] )} \n {jnp.round(texture_information_debug,1)}")
+
 
     texture_information=recreate_orig_shape(texture_information,shape_reshape_cfg)
-    return texture_information+previous_out
+
+    return (texture_information+previous_out),sv_ids,sv_area_ids,image
 
 
 
@@ -339,8 +347,8 @@ def image_with_texture(shape_reshape_cfg,image,sv_area_ids,previous_out):
 
 # w=32
 # h=32
-w=32
-h=32
+w=8
+h=8
 r=3
 dim_stride=0
 grid_shape=(w//2,h//2)
@@ -470,7 +478,7 @@ rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_s
 ,'f h w p-> h (w f) p','h (w c)->h w c')
 # print_example_part(rolled_w,example_part,3)
 # print_example_part(rolled_w,example_part_b,3)
-# print(disp_to_pandas_curr_shape(rolled_w))
+print(f"grid final \n {disp_to_pandas_curr_shape(rolled_w)}")
 
 rolled_w_shape=rolled_w.shape
 image_shape=(rolled_w_shape[0],rolled_w_shape[1],1)
@@ -494,10 +502,31 @@ image_shape=(rolled_w_shape[0],rolled_w_shape[1],1)
 rng,rng_b=jax.random.split(new_rng)
 image= jax.random.normal(rng_b,image_shape)
 res_grid=rolled_w
-out_image=image_with_texture(ttcfg,image,res_grid,jnp.zeros((image_shape[0],image_shape[1])))
-out_image=image_with_texture(tfcfg,image,res_grid,out_image)
-out_image=image_with_texture(ftcfg,image,res_grid,out_image)
-out_image=image_with_texture(ffcfg,image,res_grid,out_image)
+out_image,sv_ids_a,sv_area_ids_a,image_a=image_with_texture(ttcfg,image,res_grid,jnp.zeros((image_shape[0],image_shape[1])))
+out_image,sv_ids_b,sv_area_ids_b,image_b=image_with_texture(tfcfg,image,res_grid,out_image)
+out_image,sv_ids_c,sv_area_ids_c,image_c=image_with_texture(ftcfg,image,res_grid,out_image)
+out_image,sv_ids_d,sv_area_ids_d,image_d=image_with_texture(ffcfg,image,res_grid,out_image)
+
+sv_ids_all= jnp.concatenate([sv_ids_a,sv_ids_b,sv_ids_c,sv_ids_d],axis=0)
+sv_area_ids_all= jnp.stack([sv_area_ids_a,sv_area_ids_b,sv_area_ids_c,sv_area_ids_d],axis=0)
+
+sv_area_ids_all= einops.rearrange(sv_area_ids_all,'m s x y p-> s (m x y) p')
+
+# sv_ids_all=jnp.sort(sv_ids_all,axis=0)
+
+# sv_ids_orig=jnp.mgrid[1:cfg.orig_grid_shape[0]+1, 1:cfg.orig_grid_shape[1]+1]
+
+# sv_ids_orig=einops.rearrange(sv_ids_orig,'p x y-> (x y) p')
+
+
+# sv_ids_orig=jnp.sort(sv_ids_orig,axis=0)
+
+# print(f"a3 sv_ids_orig {sv_ids_orig.shape} sv_ids_all {sv_ids_all.shape}")
+
+
+# ids_complete=jnp.allclose(sv_ids_orig,sv_ids_all )
+
+# print(f"iiiiiiiiiiiiiiii ds complete {ids_complete}")
 
 import seaborn as sns
 import matplotlib.pylab as plt
@@ -506,6 +535,53 @@ ax = sns.heatmap(out_image)
 # fig = ax.get_figure()
 print("aaaa")
 plt.savefig("/workspaces/Jax_cuda_med/data/explore/foo.png")
+
+
+
+
+
+
+
+"""
+now we want to establish wheather we have analyzed sv ids only in the 
+"""
+
+def get_ids_equal(area,id):
+    area= jnp.round(area).astype(int)
+    id= jnp.round(id).astype(int)
+    area_a=area[:,0]==id[0]
+    area_b=area[:,1]==id[1]
+    res=jnp.sum(jnp.logical_and(area_a,area_b))
+    print(f"********************************** \n get_ids_equal \n id {id} sum {res} \n area {area} \n area_a {area_a} \n area_b {area_b} \n and \n {jnp.logical_and(area_a,area_b)} ")
+
+
+    return res
+
+v_get_ids_equal=jax.vmap(get_ids_equal, in_axes=(0,0))
+v_get_ids_complete=jax.vmap(get_ids_equal, in_axes=(None,0))
+
+print(f"sv_area_ids_all {sv_area_ids_all.shape}")
+
+sv_ids_all
+sv_area_ids_all
+
+
+sv_ids_a
+sv_area_ids_a
+sv_area_ids_a= einops.rearrange(sv_area_ids_a,'s x y p-> s (x y) p')
+
+el=0
+get_ids_equal(sv_area_ids_a[el,:,:],sv_ids_a[el,:])
+
+# single_cut= v_get_ids_equal(sv_area_ids_a,sv_ids_a)
+# sv_area_ids_a= einops.rearrange(sv_area_ids_a,'s a p->(s a) p')
+# print(f"sv_area_ids_a {sv_area_ids_a.shape}")
+# single_cut_total= v_get_ids_complete(sv_area_ids_a,sv_ids_a)
+
+
+
+
+# print(f"sssssssssingle_cut per area \n {single_cut} \n total \n {single_cut_total}")
 # ax.savefig("/workspaces/Jax_cuda_med/data/explore/foo.png") 
 # print(f"out_image.shape {out_image.shape}")
 # plt.figure(figsize=(20, 10))
