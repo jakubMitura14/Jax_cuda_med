@@ -24,6 +24,8 @@ not the masks themself and recompute the masks using it - it may be slow but wil
         and add all so we will have high values in a dilatated mask - we can now invert it (1 - morpho dilatated) multiply by deconvolved and sum
         we will have then values big when in deconvolved we have high values outside the possible max dilatation
     to strengthen we can also element wise multiply by this dilatated mask
+    we can think also in that way that new entries in the mask should be similar to the neighbours from back and front - basically to their average
+
 4) crucially we need to check with resized appropriately image the variability of the features in the indicated area
     we want to minimize 
     a) we need to take into account which deconvolution it is - in the bagining as areas are very small basically nothing usefull can be measured
