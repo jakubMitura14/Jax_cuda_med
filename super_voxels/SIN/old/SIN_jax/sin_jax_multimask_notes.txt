@@ -1,0 +1,37 @@
+
+"""
+now we need to initialize the series of masks with center in the super voxel of intrest
+by construction we have at the begining just ones 
+for each dilatation we first interpolate with zeros and the learned probs will tell the probability
+of given voxel being the current supervoxel - Hovewer we need to take into account the current voxel size so  we need to 
+take into consideration the surrounding supervoxels from previous mask - we may possibly take it as the convolution ...
+we need to add loss function that will penalize new entries that are close to 1 if the neighbour is not 1
+also we should penalize the very soft entries so around 0.5 we want generally to make them either close to 0 or to 1 
+with this construction overlapping is possible we should penalize it by appropriate loss function 
+
+now as in the bigger image requirement to store 8 masks may be prohibitive we can also try to store just the parameters of the convolutions that lead to the masks 
+not the masks themself and recompute the masks using it - it may be slow but will make the computation possible
+
+
+1) initialize the masks for each shift configuration taking shifts into consideration we need to have appropriate padding
+    for 2D we will have 4 such for 3D 8 such
+2) then we deconvolve
+    at each deconvolution we will first 
+    intertwine adding zeros into mask from previous run to increase the size
+    apply convolution taking the intertwined mask and the deconvolved main learnable represantations (basic non interpretable convs)
+3) we apply loss functions to deconvolved
+    a) we need to check weather the deconvolved is consistent with previous mask - we can get potentially enlarged old mask by shift forward and back the axis 
+        and add all so we will have high values in a dilatated mask - we can now invert it (1 - morpho dilatated) multiply by deconvolved and sum
+        we will have then values big when in deconvolved we have high values outside the possible max dilatation
+    to strengthen we can also element wise multiply by this dilatated mask
+4) crucially we need to check with resized appropriately image the variability of the features in the indicated area
+    we want to minimize 
+    a) we need to take into account which deconvolution it is - in the bagining as areas are very small basically nothing usefull can be measured
+    b) as the mask increases we can now analyze the mask by shifting mask in all directions over the axes calculate features in each shifted area
+        and return variance between all of those partitions as loss
+    c) additionally the image derivative (sobel) should be similar to mask derivative (will be big on the edge of the mask) 
+        as we already have in debug 2d ipynb sobel filters - we can use it and get cross entrophy of sobel filtered main image and our mask   
+
+5) we add all masks - to penalize all places that we are above 1 - possibly just -1 -> relu -> sum
+6) we add all reconstructed from masks images and compare to original image (L2 loss ... )
+"""

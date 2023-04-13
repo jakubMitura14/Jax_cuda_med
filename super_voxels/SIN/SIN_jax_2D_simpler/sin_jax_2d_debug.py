@@ -113,9 +113,10 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     #in order to broadcast we add empty dim - needed becouse probability is about whole point not the each coordinate of sv id
     # rolled_probs=einops.rearrange(rolled_probs,'h w p-> h w p 1')
     rolled_probs=einops.repeat(rolled_probs,'h w p-> h w p r',r=2)
+    # rolled_probs=einops.rearrange(rolled_probs,'h w p-> h w p 1')
     grid_accepted_diffs= jnp.multiply(grid_proposition_diffs, rolled_probs)
 
-    # print(f"grid_accepted_diffs {grid_accepted_diffs}")
+    print(f"grid_accepted_diffs \n 1111111 \n {disp_to_pandas_curr_shape(grid_accepted_diffs[:,:,:,1])} \n 000000 \n {disp_to_pandas_curr_shape(grid_accepted_diffs[:,:,:,0])} \n ************")
 
     #get back the values of the decision as we subtracted and now add we wil get exactly the same
     # values for both entries example:
@@ -125,8 +126,10 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # mask_b=np.multiply(np.array([a-b , b-a]),np.array([0,1]))
     # np.array([b,a])+mask_a will give 8,8
     # np.array([b,a])+mask_b will give 10,10
-    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-2))
-    res_grid_new=grid_accepted_diffs[:,:,1,:]
+    grid_accepted_diffs=(grid_accepted_diffs+jnp.stack([grid_forward,grid_back],axis=-1))
+    print(f"grid_accepted_diffs summed \n 1111111 \n {disp_to_pandas_curr_shape(grid_accepted_diffs[:,:,:,1])} \n 000000 \n {disp_to_pandas_curr_shape(grid_accepted_diffs[:,:,:,0])} \n ************")
+
+    res_grid_new=grid_accepted_diffs[:,:,:,1]
     #intertwining
     res= einops.rearrange([res_grid,res_grid_new],  rearrange_to_intertwine_einops ) 
 
@@ -420,6 +423,7 @@ probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(res_grid,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
 # print_example_part(rolled_h,example_part,1)
+print(disp_to_pandas_curr_shape(rolled_h))
 
 
 # print( disp_to_pandas(rolled_h,(rolled_h.shape[0],rolled_h.shape[1])))
@@ -432,7 +436,7 @@ rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_s
 ,'f h w p-> h (w f) p','h (w c)->h w c')
 # print_example_part(rolled_w,example_part,1)
 # print_example_part(rolled_w,example_part_b,1)
-# print(disp_to_pandas_curr_shape(rolled_w))
+print(disp_to_pandas_curr_shape(rolled_w))
 
 
 print("grid_build both c")
@@ -443,7 +447,7 @@ probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(rolled_w,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
 # print_example_part(rolled_h,example_part,2)
-# print(disp_to_pandas_curr_shape(rolled_h))
+print(disp_to_pandas_curr_shape(rolled_h))
 
 
 print("grid_build both d")
@@ -455,7 +459,7 @@ rolled_w=grid_build(rolled_h,probs,dim_stride,probs_shape,grid_shape,orig_grid_s
 ,'f h w p-> h (w f) p','h (w c)->h w c')
 # print_example_part(rolled_w,example_part,2)
 # print_example_part(rolled_w,example_part_b,2)
-# print(disp_to_pandas_curr_shape(rolled_w))
+print(disp_to_pandas_curr_shape(rolled_w))
 
 
 print("grid_build both e")
@@ -466,7 +470,7 @@ probs,probs_shape=get_probs_from_shape(dim_stride,grid_shape,new_rng)
 rolled_h=grid_build(rolled_w,probs,dim_stride,probs_shape,grid_shape,orig_grid_shape
 ,'f h w p-> (h f) w p','(h c) w->h w c')
 # print_example_part(rolled_h,example_part,3)
-# print(disp_to_pandas_curr_shape(rolled_h))
+print(disp_to_pandas_curr_shape(rolled_h))
 
 
 print("grid_build both f")
@@ -552,7 +556,7 @@ def get_ids_equal(area,id):
     area_a=area[:,0]==id[0]
     area_b=area[:,1]==id[1]
     res=jnp.sum(jnp.logical_and(area_a,area_b))
-    print(f"********************************** \n get_ids_equal \n id {id} sum {res} \n area {area} \n area_a {area_a} \n area_b {area_b} \n and \n {jnp.logical_and(area_a,area_b)} ")
+    # print(f"********************************** \n get_ids_equal \n id {id} sum {res} \n area {area} \n area_a {area_a} \n area_b {area_b} \n and \n {jnp.logical_and(area_a,area_b)} ")
 
 
     return res
@@ -568,27 +572,20 @@ sv_area_ids_all
 
 sv_ids_a
 sv_area_ids_a
-sv_area_ids_a= einops.rearrange(sv_area_ids_a,'s x y p-> s (x y) p')
+sv_area_ids_d= einops.rearrange(sv_area_ids_d,'s x y p-> s (x y) p')
 
 el=0
-get_ids_equal(sv_area_ids_a[el,:,:],sv_ids_a[el,:])
+get_ids_equal(sv_area_ids_d[el,:,:],sv_ids_d[el,:])
 
-# single_cut= v_get_ids_equal(sv_area_ids_a,sv_ids_a)
-# sv_area_ids_a= einops.rearrange(sv_area_ids_a,'s a p->(s a) p')
-# print(f"sv_area_ids_a {sv_area_ids_a.shape}")
-# single_cut_total= v_get_ids_complete(sv_area_ids_a,sv_ids_a)
-
-
+single_cut= v_get_ids_equal(sv_area_ids_d,sv_ids_d)
+sv_area_ids_d= einops.rearrange(sv_area_ids_d,'s a p->(s a) p')
+print(f"sv_area_ids_d {sv_area_ids_d.shape}")
+single_cut_total= v_get_ids_complete(sv_area_ids_d,sv_ids_d)
 
 
-# print(f"sssssssssingle_cut per area \n {single_cut} \n total \n {single_cut_total}")
-# ax.savefig("/workspaces/Jax_cuda_med/data/explore/foo.png") 
-# print(f"out_image.shape {out_image.shape}")
-# plt.figure(figsize=(20, 10))
-# plt.style.use('grayscale')
-# plt.plot(out_image)
+print(f"sssssssssingle_cut per area \n {single_cut} \n total \n {single_cut_total} \n sv_area_ids_d \n {sv_ids_d}")
 
-# plt.savefig('/workspaces/Jax_cuda_med/data/explore/foo.png')
+
 
 # print(f"a {a.shape} \n b {b.shape}")
 # print(f"b 0 {b[0,:]} \n a {disp_to_pandas_curr_shape(a[0,:,:,:])}")
