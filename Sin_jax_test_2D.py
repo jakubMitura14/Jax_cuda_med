@@ -65,9 +65,9 @@ cfg = config_dict.ConfigDict()
 cfg.batch_size=200
 cfg.img_size = (cfg.batch_size,1,256,256)
 cfg.label_size = (cfg.batch_size,256,256)
-cfg.num_strided_convs= 3
-cfg.r= 3
-cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.num_strided_convs,cfg.img_size[3]//2**cfg.num_strided_convs  )
+cfg.r_x_total= 3
+cfg.r_y_total= 3
+cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total)
 cfg.total_steps=2
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
