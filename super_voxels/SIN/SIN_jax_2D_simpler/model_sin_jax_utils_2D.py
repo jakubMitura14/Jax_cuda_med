@@ -441,6 +441,8 @@ class De_conv_non_batched(nn.Module):
         """
         image should be in original size - here we will downsample it via linear interpolation
         """  
+        print(f" r_x {self.r_x} r_y {self.r_y} deconved_shape {self.deconved_shape} current_shape {self.current_shape}")
+
         #resisizing image to the deconvolved - increased shape
         resized_image= jax.image.resize(image, (self.deconved_shape[0],self.deconved_shape[1]), "linear")
         #concatenating resized image and convolving it to get a single channel new mask
@@ -572,7 +574,7 @@ class De_conv_3_dim(nn.Module):
         deconv_multi,masks,loss_a=De_conv_batched_multimasks(self.cfg
                                    ,0#dim_stride
                                    ,self.r_x
-                                   ,self.r_y
+                                   ,self.r_y-1
                                    ,'f h w-> (h f) w'#rearrange_to_intertwine_einops
                                    ,self.translation_val
                                    ,self.features)(image,masks,deconv_multi)
