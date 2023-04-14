@@ -43,50 +43,21 @@ class SpixelNet(nn.Module):
         out2=Conv_trio(self.cfg,channels=16,strides=(2,2))(out1)
         out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
         out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
-        # out5=nn.Sequential([
-        #     Conv_trio(self.cfg,channels=16)
-        #     ,Conv_trio(self.cfg,channels=16,strides=(2,2))
-        #     ,Conv_trio(self.cfg,channels=32,strides=(2,2))
-        #     ,Conv_trio(self.cfg,channels=64,strides=(2,2))
-        #     # ,Conv_trio(self.cfg,channels=32,strides=(2,2))
 
-        #     # ,Conv_trio(channels=32,strides=(2,2,2))     
-        #     ])(image)
-        # grid of
-        b, w, h,c=out4.shape 
-        bi, wi, hi, ci,=image.shape
-        
-        res_grid_shape=tuple(list(res_grid.shape)[1:])
-        # print(f"out5 {out5.shape} res_grid_shape {res_grid_shape} ")
-        # deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,64,res_grid_shape)(out5,label,res_grid)
-        deconv_multi,res_grid,lossA=De_conv_3_dim(self.cfg,32,res_grid_shape)(out4,label,res_grid)
-        deconv_multi,res_grid,lossB=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out3,label,res_grid)
-        deconv_multi,res_grid,lossC=De_conv_3_dim(self.cfg,16,res_grid_shape)(deconv_multi+out2,label,res_grid)
+        deconv_multi,masks,loss1=De_conv_3_dim(self.cfg
+                       ,64
+                      ,1#r_x
+                      ,1#r_y
+                      ,translation_val=1)(image,self.initial_masks,out4 )
+        deconv_multi,masks,loss2=De_conv_3_dim(self.cfg,32
+                      ,2#r_x
+                      ,2#r_y
+                      ,translation_val=2)(image,masks,deconv_multi )
+        deconv_multi,masks,loss3=De_conv_3_dim(self.cfg,16
+                      ,3#r_x
+                      ,3#r_y
+                      ,translation_val=4)(image,masks,deconv_multi )
 
-        out_image,loc_loss1=v_Image_with_texture(self.cfg,False,False)(image,res_grid, jnp.zeros((bi,wi,hi)))
-        out_image,loc_loss2=v_Image_with_texture(self.cfg,True,False)(image,res_grid,out_image)
-        out_image,loc_loss3=v_Image_with_texture(self.cfg,False,True)(image,res_grid,out_image)
-        out_image,loc_loss4=v_Image_with_texture(self.cfg,True,True)(image,res_grid,out_image)
-        
-        out_image=einops.rearrange(out_image,'b w h-> b w h 1') 
-   
-        loss=jnp.mean(optax.l2_loss(out_image,image))#+jnp.mean(jnp.ravel(jnp.stack([loc_loss1,loc_loss2,loc_loss3,loc_loss4])))#+jnp.mean(jnp.ravel(jnp.stack([lossA,lossB,lossC])))
-        # loss=jnp.mean(jnp.stack([lossA,lossB,lossC]))+jnp.mean(optax.l2_loss(out_image,image))
-        
-
-
-        return loss,out_image,res_grid
-
-        # now we need to deconvolve a plane at a time and each time check weather 
-        # the simmilarity to the neighbouring voxels is as should be
-         
-        # we can basically do a unet type architecture to avoid loosing information 
-
-
+        return jnp.mean(jnp.stack([loss1,loss2,loss3]).flatten()),masks
 
         #TODO in original learning rate for biases in convolutions is 0 - good to try omitting biases
-        # deconv_z_3,prob_x_3,prob_y_3,prob_z_3=De_conv_3_dim(64)(out5)
-        # deconv_z_2,prob_x_2,prob_y_2,prob_z_2=De_conv_3_dim(32)(deconv_z_3)
-        # deconv_z_1,prob_x_1,prob_y_1,prob_z_1=De_conv_3_dim(16)(deconv_z_2)
-
-        # return prob_x_3,prob_y_3, prob_z_3 , prob_x_2, prob_y_2, prob_z_2,prob_x_1,prob_y_1,prob_z_1

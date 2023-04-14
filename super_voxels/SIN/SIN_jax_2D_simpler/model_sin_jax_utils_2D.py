@@ -402,8 +402,6 @@ class Shape_apply_reshape(nn.Module):
 
         return mask_combined,jnp.mean(loss)
 
-
-
 def consistency_between_masks(masks):
     """
     as we have diffrent mask for each shift configuration
@@ -448,7 +446,12 @@ class De_conv_non_batched(nn.Module):
         #concatenating resized image and convolving it to get a single channel new mask
         mask=einops.rearrange(mask,'h w -> h w 1')
         cat_conv_multi= jnp.concatenate(mask,deconv_multi, axis=-1)
+
+        cat_conv_multi=einops.rearrange(cat_conv_multi,'h w c -> 1 h w c')
         mask_new=Conv_trio(self.cfg,1)(cat_conv_multi)
+        mask_new=einops.rearrange(mask_new,'b h w c -> (b h) (w c)')
+
+
         #we want to interpret it as probabilities so sigmoid
         mask_new = nn.sigmoid(mask_new)
         chex.assert_equal_shape(mask_new,mask )
@@ -465,10 +468,12 @@ class De_conv_non_batched(nn.Module):
         return mask,jnp.mean(loss)
     
 De_conv_batched=nn.vmap(De_conv_non_batched
-                            ,in_axes=(0, 0,0)
+                            ,in_axes=(0, None,0)# not batching mask
                             ,variable_axes={'params': 0} #parametters are shared
                             ,split_rngs={'params': True}
                             )
+
+
 
 class De_conv_batched_multimasks(nn.Module):
     """
@@ -486,9 +491,7 @@ class De_conv_batched_multimasks(nn.Module):
     r_y:int
     rearrange_to_intertwine_einops:str
     translation_val:int
-
-    def setup(self):
-        pass
+    features:int
 
     @nn.compact
     def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray ) -> jnp.ndarray:
@@ -550,29 +553,40 @@ class De_conv_batched_multimasks(nn.Module):
         #after we got through all shift configuration we need to check consistency between masks
         consistency_loss=consistency_between_masks(masks)
         
-        return masks,(ff_loss+tf_loss+ft_loss+tt_loss+jnp.mean(consistency_loss))
+        return deconv_multi,masks,jnp.mean(jnp.stack([ff_loss+tf_loss,ft_loss,tt_loss+jnp.mean(consistency_loss)]).flatten())
 
 
 class De_conv_3_dim(nn.Module):
     """
-    asymetric deconvolution plus mask prediction and softmax
+    applying De_conv_batched_multimasks for all axes
     """
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     features: int
+    r_x:int
+    r_y:int
+    translation_val:int
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray, label: jnp.ndarray, grid: jnp.ndarray) -> jnp.ndarray:
-        deconv_multi,grid,loss_x=De_conv_with_loss_fun(self.cfg,self.features,0
-                                        ,rearrange_to_intertwine_einops='f h w p-> (h f) w'
-                                        ,recreate_channels_einops='(h c) w->h w c'
-                                        ,orig_grid_shape=self.orig_grid_shape)(x,label,grid)
+    def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray ) -> jnp.ndarray:
+        
+        deconv_multi,masks,loss_a=De_conv_batched_multimasks(self.cfg
+                                   ,0#dim_stride
+                                   ,self.r_x
+                                   ,self.r_y
+                                   ,'f h w-> (h f) w'#rearrange_to_intertwine_einops
+                                   ,self.translation_val
+                                   ,self.features)(image,masks,deconv_multi)
+        
+        deconv_multi,masks,loss_b=De_conv_batched_multimasks(self.cfg
+                                   ,1#dim_stride
+                                   ,self.r_x
+                                   ,self.r_y
+                                   ,'f h w -> h (w f)'#rearrange_to_intertwine_einops
+                                   ,self.translation_val
+                                   ,self.features)(image,masks,deconv_multi)
 
-        deconv_multi,grid,loss_y=De_conv_with_loss_fun(self.cfg,self.features,1
-                                        ,rearrange_to_intertwine_einops='f h w p-> h (w f)'
-                                        ,recreate_channels_einops='h (w c)->h w c'
-                                        ,orig_grid_shape=self.orig_grid_shape)(deconv_multi,label,grid)
-        return deconv_multi,grid, jnp.mean(jnp.concatenate([loss_x,loss_y]))
 
+        return deconv_multi,masks, jnp.mean(jnp.stack([loss_a,loss_b]))
 
 
 
