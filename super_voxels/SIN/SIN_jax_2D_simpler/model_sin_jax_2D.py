@@ -38,7 +38,7 @@ class SpixelNet(nn.Module):
         self.initial_masks= einops.repeat(initial_masks,'c w h-> b c w h',b=self.cfg.batch_size//jax.local_device_count())
     
     @nn.compact
-    def __call__(self, image: jnp.ndarray, label: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, image: jnp.ndarray) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
         image=einops.rearrange(image,'b c w h-> b w h c')
         out1=Conv_trio(self.cfg,channels=16)(image)

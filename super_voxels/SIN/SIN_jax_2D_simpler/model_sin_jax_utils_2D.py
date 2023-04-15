@@ -285,9 +285,9 @@ def translate_mask_in_axis(mask:jnp.ndarray, axis:int,is_forward:int,translation
     value of translation is described by translation_val
     """
     mask= jnp.take(mask, indices=jnp.arange(translation_val*(1-is_forward),mask_shape[axis]-translation_val* is_forward),axis=axis )
-    to_pad=jnp.array([[0,0],[0,0]])
+    to_pad=np.array([[0,0],[0,0]])
     is_back=1-is_forward
-    to_pad=to_pad.at[axis,is_back].set(translation_val)
+    to_pad[axis,is_back]=translation_val
     mask= jnp.pad(mask,to_pad)
     return mask
 
@@ -311,7 +311,6 @@ def get_translated_mask_variance(image:jnp.ndarray
     generally the same supervoxel should have the same image features in all of its subregions
     so we want the variance here to be small 
     """
-    print(f"get_translated_mask_variance image {image.shape} mask {mask.shape} mask_shape {mask_shape}  ")
     features=jnp.stack([
         get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape)),
         get_image_features(image,translate_mask_in_axis(mask,0,1,translation_val,mask_shape)),
