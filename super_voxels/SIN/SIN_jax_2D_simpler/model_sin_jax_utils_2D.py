@@ -186,8 +186,8 @@ def divide_sv_grid(res_grid: jnp.ndarray,shape_reshape_cfg):
     in case no shift is present all padding should go at the end
     """
     #first we cut out all areas not covered by current supervoxels
-    cutted=res_grid[0: shape_reshape_cfg.img_size[0]- shape_reshape_cfg.to_remove_from_end_x
-                    ,0: shape_reshape_cfg.img_size[1]- shape_reshape_cfg.to_remove_from_end_y]
+    cutted=res_grid[0: shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
+                    ,0: shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y]
     cutted= jnp.pad(cutted,(
                         (shape_reshape_cfg.to_pad_beg_x,shape_reshape_cfg.to_pad_end_x)
                         ,(shape_reshape_cfg.to_pad_beg_y,shape_reshape_cfg.to_pad_end_y )
@@ -224,11 +224,12 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
     """
     diameter_x=get_diameter(r_x)
     diameter_y=get_diameter(r_y)
+    curr_image_shape= (cfg.img_size[2]//2**(cfg.r_x_total-r_x),cfg.img_size[3]//2**(cfg.r_y_total-r_y))
     shift_x=int(shift_x)
     shift_y=int(shift_y)
-    to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(cfg.img_size,0,r_x,shift_x,cfg.orig_grid_shape,diameter_x)
-    to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y   =for_pad_divide_grid(cfg.img_size,1,r_y,shift_y,cfg.orig_grid_shape,diameter_y)
-    
+    to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(curr_image_shape,0,r_x,shift_x,cfg.orig_grid_shape,diameter_x)
+    to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y   =for_pad_divide_grid(curr_image_shape,1,r_y,shift_y,cfg.orig_grid_shape,diameter_y)
+
     res_cfg = config_dict.ConfigDict()
     res_cfg.to_pad_beg_x=to_pad_beg_x
     res_cfg.to_remove_from_end_x=to_remove_from_end_x
@@ -246,6 +247,7 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
     res_cfg.diameter_x=diameter_x
     res_cfg.diameter_y=diameter_y
     res_cfg.img_size=cfg.img_size
+    res_cfg.curr_image_shape=curr_image_shape
     res_cfg = ml_collections.config_dict.FrozenConfigDict(res_cfg)
 
     return res_cfg
@@ -262,6 +264,7 @@ def check_mask_consistency(mask_old,mask_new,axis):
     old_mask_padded= jnp.pad(mask_old,((1,1),(1,1)))
     #as some entries will be negative oter positive we square it
     grad = jnp.power(jnp.gradient(old_mask_padded,axis=axis),2)
+    grad= grad[1:-1,1:-1]
     #we multiply to make sure that we will get values above 1 - we will relu later so exact values do not matter
     #we have here the old mask dilatated in place of edges in a chosen axis
     sum_grads= grad*5+mask_old*5
@@ -385,7 +388,7 @@ class Shape_apply_reshape(nn.Module):
     def __call__(self, resized_image:jnp.ndarray
                  ,mask:jnp.ndarray
                  ,mask_new:jnp.ndarray) -> jnp.ndarray:
-        
+        print(f"Shape_apply_reshape mask {mask.shape} mask_new {mask_new.shape} resized_image {resized_image.shape}")
         resized_image=divide_sv_grid(resized_image,self.shape_reshape_cfg)
         mask_new=divide_sv_grid(mask_new,self.shape_reshape_cfg_old)
         mask_old=divide_sv_grid(mask,self.shape_reshape_cfg_old)
@@ -410,6 +413,7 @@ def consistency_between_masks(masks):
     """
     summed= jnp.sum(masks,axis=0)
     return optax.l2_loss(jnp.ones_like(summed), summed)
+
 
 class De_conv_non_batched(nn.Module):
     """ 
@@ -441,22 +445,25 @@ class De_conv_non_batched(nn.Module):
         """
         image should be in original size - here we will downsample it via linear interpolation
         """  
-        print(f" r_x {self.r_x} r_y {self.r_y} deconved_shape {self.deconved_shape} current_shape {self.current_shape}")
+        print(f" r_x {self.r_x} r_y {self.r_y} deconved_shape {self.deconved_shape} current_shape {self.current_shape} mask {mask.shape}")
 
         #resisizing image to the deconvolved - increased shape
+        # we assume single channel
+        image= einops.rearrange(image,'w h c-> w (h c)',c=1)
         resized_image= jax.image.resize(image, (self.deconved_shape[0],self.deconved_shape[1]), "linear")
         #concatenating resized image and convolving it to get a single channel new mask
         mask=einops.rearrange(mask,'h w -> h w 1')
-        cat_conv_multi= jnp.concatenate(mask,deconv_multi, axis=-1)
+        cat_conv_multi= jnp.concatenate([mask,deconv_multi], axis=-1)
 
         cat_conv_multi=einops.rearrange(cat_conv_multi,'h w c -> 1 h w c')
         mask_new=Conv_trio(self.cfg,1)(cat_conv_multi)
         mask_new=einops.rearrange(mask_new,'b h w c -> (b h) (w c)')
+        mask=einops.rearrange(mask,'h w c -> h (w c)')
 
 
         #we want to interpret it as probabilities so sigmoid
         mask_new = nn.sigmoid(mask_new)
-        chex.assert_equal_shape(mask_new,mask )
+
         mask,loss=Shape_apply_reshape(self.cfg
                             ,self.dim_stride
                             ,self.r_x
@@ -469,11 +476,41 @@ class De_conv_non_batched(nn.Module):
                             ,self.translation_val)(resized_image,mask,mask_new)
         return mask,jnp.mean(loss)
     
-De_conv_batched=nn.vmap(De_conv_non_batched
-                            ,in_axes=(0, None,0)# not batching mask
-                            ,variable_axes={'params': 0} #parametters are shared
-                            ,split_rngs={'params': True}
-                            )
+
+
+class De_conv_non_batched_first(nn.Module):
+    """ 
+    simplified version of De_conv_non_batched for the first pass
+    """
+    cfg: ml_collections.config_dict.config_dict.ConfigDict
+    dim_stride:int
+    r_x:int
+    r_y:int
+    shift_x:int
+    shift_y:int
+    rearrange_to_intertwine_einops:str
+    translation_val:int
+
+
+    @nn.compact
+    def __call__(self, image:jnp.ndarray, mask:jnp.ndarray,deconv_multi:jnp.ndarray) -> jnp.ndarray:           
+      
+        
+        #concatenating resized image and convolving it to get a single channel new mask
+        mask=einops.rearrange(mask,'h w -> h w 1')
+        cat_conv_multi= jnp.concatenate([mask,deconv_multi], axis=-1)
+        cat_conv_multi=einops.rearrange(cat_conv_multi,'h w c -> 1 h w c')
+        mask_new=Conv_trio(self.cfg,1)(cat_conv_multi)
+        mask_new=einops.rearrange(mask_new,'b h w c -> (b h) (w c)')
+        mask=einops.rearrange(mask,'h w c -> h (w c)')
+        #we want to interpret it as probabilities so sigmoid
+        mask_new = nn.sigmoid(mask_new)
+        mask_combined=einops.rearrange([mask_new,mask],self.rearrange_to_intertwine_einops)
+
+
+        return mask_combined,jnp.zeros((1,))
+
+
 
 
 
@@ -487,6 +524,7 @@ class De_conv_batched_multimasks(nn.Module):
     2) 0 1
     3) 1 1
     """
+    
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     dim_stride:int
     r_x:int
@@ -494,64 +532,64 @@ class De_conv_batched_multimasks(nn.Module):
     rearrange_to_intertwine_einops:str
     translation_val:int
     features:int
+    module_to_use_non_batched:nn.Module
+    
+    def setup(self):
+        self.module_to_use_batched=nn.vmap(self.module_to_use_non_batched
+                            ,in_axes=(0, 0,0)
+                            ,variable_axes={'params': 0} #parametters are shared
+                            ,split_rngs={'params': True}
+                            )
 
     @nn.compact
     def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray ) -> jnp.ndarray:
         
         deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
         deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride   
-        ff_mask,ff_loss=De_conv_batched(self.cfg
+        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride   
+        ff_mask,ff_loss=self.module_to_use_batched(self.cfg
                         ,self.dim_stride
                         ,self.r_x
                         ,self.r_y
                         ,0#shift_x
                         ,0#shift_y
                         ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,masks[0,:,:],deconv_multi)   
-        deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(deconv_multi)
+                        ,self.translation_val)(image,masks[:,0,:,:],deconv_multi)   
         
-
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride         
-        tf_mask,tf_loss=De_conv_batched(self.cfg
+      
+        tf_mask,tf_loss=self.module_to_use_batched(self.cfg
                         ,self.dim_stride
                         ,self.r_x
                         ,self.r_y
                         ,1#shift_x
                         ,0#shift_y
                         ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,masks[1,:,:],deconv_multi)   
-        deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(deconv_multi)
+                        ,self.translation_val)(image,masks[:,1,:,:],deconv_multi)   
         
 
-
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride 
-        ft_mask,ft_loss=De_conv_batched(self.cfg
+        ft_mask,ft_loss=self.module_to_use_batched(self.cfg
                         ,self.dim_stride
                         ,self.r_x
                         ,self.r_y
                         ,0#shift_x
                         ,1#shift_y
                         ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,masks[2,:,:],deconv_multi)   
-        deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(deconv_multi)
+                        ,self.translation_val)(image,masks[:,2,:,:],deconv_multi)   
     
     
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
-        deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride 
-        tt_mask,tt_loss=De_conv_batched(self.cfg
+
+        tt_mask,tt_loss=self.module_to_use_batched(self.cfg
                         ,self.dim_stride
                         ,self.r_x
                         ,self.r_y
                         ,1#shift_x
                         ,1#shift_y
                         ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,masks[3,:,:],deconv_multi)   
+                        ,self.translation_val)(image,masks[:,3,:,:],deconv_multi)   
         deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(deconv_multi)
 
 
-        masks= jnp.stack([ff_mask,tf_mask,ft_mask,tt_mask],axis=0)       
+        masks= jnp.stack([ff_mask,tf_mask,ft_mask,tt_mask],axis=1)       
         #after we got through all shift configuration we need to check consistency between masks
         consistency_loss=consistency_between_masks(masks)
         
@@ -561,31 +599,35 @@ class De_conv_batched_multimasks(nn.Module):
 class De_conv_3_dim(nn.Module):
     """
     applying De_conv_batched_multimasks for all axes
+    r_x,r_y tell about 
     """
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     features: int
     r_x:int
     r_y:int
     translation_val:int
+    module_to_use_non_batched:nn.Module
 
     @nn.compact
     def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray ) -> jnp.ndarray:
         
+        print(f"aa input mask {masks.shape}")
         deconv_multi,masks,loss_a=De_conv_batched_multimasks(self.cfg
                                    ,0#dim_stride
                                    ,self.r_x
                                    ,self.r_y-1
                                    ,'f h w-> (h f) w'#rearrange_to_intertwine_einops
                                    ,self.translation_val
-                                   ,self.features)(image,masks,deconv_multi)
+                                   ,self.features,self.module_to_use_non_batched)(image,masks,deconv_multi)
         
+        print(f"bb input mask {masks.shape}")
         deconv_multi,masks,loss_b=De_conv_batched_multimasks(self.cfg
                                    ,1#dim_stride
                                    ,self.r_x
                                    ,self.r_y
                                    ,'f h w -> h (w f)'#rearrange_to_intertwine_einops
                                    ,self.translation_val
-                                   ,self.features)(image,masks,deconv_multi)
+                                   ,self.features,self.module_to_use_non_batched)(image,masks,deconv_multi)
 
 
         return deconv_multi,masks, jnp.mean(jnp.stack([loss_a,loss_b]))
