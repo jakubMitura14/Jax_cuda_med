@@ -68,7 +68,7 @@ cfg.label_size = (cfg.batch_size,256,256)
 cfg.r_x_total= 3
 cfg.r_y_total= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total)
-cfg.total_steps=2
+cfg.total_steps=200
 
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
@@ -170,7 +170,6 @@ def train_epoch(epoch,slicee,index,dat,state,model):
 
     # batch_images = jax_utils.replicate(batch_images)
     # batch_labels = jax_utils.replicate(batch_labels)
-    print(f"iiiiin loop {batch_images.shape}")
   
     
     grads, loss,masks =apply_model(state, batch_images)
@@ -183,17 +182,22 @@ def train_epoch(epoch,slicee,index,dat,state,model):
 
     #saving only with index one
     if(index==0 and epoch%1==0):
+      print(f"batch_images_prim {batch_images_prim.shape}")
+      # loss,masks=state.apply_fn({'params': params}, batch_images_prim)
 
-      batch_images_prim=einops.rearrange(batch_images_prim, 'c x y->1 c x y' )
-      batch_label_prim=einops.rearrange(batch_label_prim, 'x y-> 1 x y' )
 
-      loss,out_image=state.apply_fn({'params': state.params}, batch_images_prim)#, rngs={'texture': random.PRNGKey(2)}
+
+      # batch_images_prim=einops.rearrange(batch_images_prim, 'c x y->1 c x y' )
+      # batch_label_prim=einops.rearrange(batch_label_prim, 'x y-> 1 x y' )
+
 
       image_to_disp=batch_images_prim[0,:,:]
+      print(f"image_to_disp {image_to_disp.shape}")
       image_to_disp=np.rot90(np.array(image_to_disp))
 
-      masks =masks[1,:,:,:]
+      masks =masks[0,0,:,:,:]
       masks=jnp.sum(masks,axis=0)
+      print(f"summed mask {masks.shape}")
       out_image=einops.rearrange(masks,'a b -> 1 a b 1')
       # # out_image=einops.rearrange(out_image[0,:,:,0],'a b -> 1 a b 1')
       # out_image=jax_utils.unreplicate(out_image)
