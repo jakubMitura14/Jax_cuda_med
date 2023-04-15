@@ -264,6 +264,7 @@ def check_mask_consistency(mask_old,mask_new,axis):
     old_mask_padded= jnp.pad(mask_old,((1,1),(1,1)))
     #as some entries will be negative oter positive we square it
     grad = jnp.power(jnp.gradient(old_mask_padded,axis=axis),2)
+    #removing unnecessery padding
     grad= grad[1:-1,1:-1]
     #we multiply to make sure that we will get values above 1 - we will relu later so exact values do not matter
     #we have here the old mask dilatated in place of edges in a chosen axis
@@ -310,7 +311,7 @@ def get_translated_mask_variance(image:jnp.ndarray
     generally the same supervoxel should have the same image features in all of its subregions
     so we want the variance here to be small 
     """
-    # return get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape))
+    print(f"get_translated_mask_variance image {image.shape} mask {mask.shape} mask_shape {mask_shape}  ")
     features=jnp.stack([
         get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape)),
         get_image_features(image,translate_mask_in_axis(mask,0,1,translation_val,mask_shape)),
@@ -333,6 +334,8 @@ class Apply_on_single_area(nn.Module):
     curr_shape:Tuple[int]
     deconved_shape:Tuple[int]
     translation_val:int
+    shape_reshape_cfg: ml_collections.config_dict.config_dict.ConfigDict
+
     @nn.compact
     def __call__(self
                  ,resized_image:jnp.ndarray
@@ -348,9 +351,11 @@ class Apply_on_single_area(nn.Module):
         rounding_loss=jnp.mean((-1)*jnp.power(mask_combined-(1-mask_combined),2) )       
         #calculate image feature variance in the supervoxel itself
         feature_variance_loss=get_translated_mask_variance(resized_image, mask_combined
-                                                           ,self.translation_val,self.deconved_shape  )
+                                                           ,self.translation_val, (self.shape_reshape_cfg.diameter_x,
+                                                                                   self.shape_reshape_cfg.diameter_y )  )
 
         return mask_combined, (consistency_loss+rounding_loss+feature_variance_loss)
+
 
 
 v_Apply_on_single_area=nn.vmap(Apply_on_single_area
@@ -388,7 +393,6 @@ class Shape_apply_reshape(nn.Module):
     def __call__(self, resized_image:jnp.ndarray
                  ,mask:jnp.ndarray
                  ,mask_new:jnp.ndarray) -> jnp.ndarray:
-        print(f"Shape_apply_reshape mask {mask.shape} mask_new {mask_new.shape} resized_image {resized_image.shape}")
         resized_image=divide_sv_grid(resized_image,self.shape_reshape_cfg)
         mask_new=divide_sv_grid(mask_new,self.shape_reshape_cfg_old)
         mask_old=divide_sv_grid(mask,self.shape_reshape_cfg_old)
@@ -399,6 +403,7 @@ class Shape_apply_reshape(nn.Module):
                                                 ,self.curr_shape
                                                 ,self.deconved_shape
                                                 ,self.translation_val
+                                                ,self.shape_reshape_cfg
                                                 )(resized_image,mask_new,mask_old)
         
         mask_combined=recreate_orig_shape(mask_combined,self.shape_reshape_cfg)
@@ -445,8 +450,6 @@ class De_conv_non_batched(nn.Module):
         """
         image should be in original size - here we will downsample it via linear interpolation
         """  
-        print(f" r_x {self.r_x} r_y {self.r_y} deconved_shape {self.deconved_shape} current_shape {self.current_shape} mask {mask.shape}")
-
         #resisizing image to the deconvolved - increased shape
         # we assume single channel
         image= einops.rearrange(image,'w h c-> w (h c)',c=1)
@@ -611,7 +614,6 @@ class De_conv_3_dim(nn.Module):
     @nn.compact
     def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray ) -> jnp.ndarray:
         
-        print(f"aa input mask {masks.shape}")
         deconv_multi,masks,loss_a=De_conv_batched_multimasks(self.cfg
                                    ,0#dim_stride
                                    ,self.r_x
@@ -620,7 +622,6 @@ class De_conv_3_dim(nn.Module):
                                    ,self.translation_val
                                    ,self.features,self.module_to_use_non_batched)(image,masks,deconv_multi)
         
-        print(f"bb input mask {masks.shape}")
         deconv_multi,masks,loss_b=De_conv_batched_multimasks(self.cfg
                                    ,1#dim_stride
                                    ,self.r_x
