@@ -352,6 +352,8 @@ class Apply_on_single_area(nn.Module):
         feature_variance_loss=get_translated_mask_variance(resized_image, mask_combined
                                                            ,self.translation_val, (self.shape_reshape_cfg.diameter_x,
                                                                                    self.shape_reshape_cfg.diameter_y )  )
+        masked_image=jnp.multiply(mask_combined,resized_image)
+        
 
         return mask_combined, (consistency_loss+rounding_loss+feature_variance_loss)
 

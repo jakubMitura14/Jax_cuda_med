@@ -105,9 +105,9 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   #       optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
   #       optax.lion(learning_rate=cosine_decay_scheduler))
 
-  cosine_decay_scheduler = optax.cosine_decay_schedule(0.0001, decay_steps=cfg.total_steps, alpha=0.95)
+  cosine_decay_scheduler = optax.cosine_decay_schedule(0.01, decay_steps=cfg.total_steps, alpha=0.95,exponent=1.8)
   tx = optax.chain(
-        optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
+        optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
         optax.adamw(learning_rate=cosine_decay_scheduler))
 
   return train_state.TrainState.create(
@@ -119,23 +119,23 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
 
 
 # @jax.jit
-@functools.partial(jax.pmap, axis_name='ensemble')
-def apply_model(state, image):
+@functools.partial(jax.pmap,static_broadcasted_argnums=2, axis_name='ensemble')
+def apply_model(state, image,model):
   """Train for a single step."""
   def loss_fn(params):
-    loss,masks=state.apply_fn({'params': params}, image)#, rngs={'texture': random.PRNGKey(2)}
-    return loss,masks #(loss.copy(),out_image)
+    loss,out_image,masks=state.apply_fn({'params': params}, image)#, rngs={'texture': random.PRNGKey(2)}
+    return loss,(out_image,masks) #(loss.copy(),out_image)
     # loss,grid = state.apply_fn({'params': params}, image,label)
     # print(f"loss {loss} ")
     # return loss,grid 
   grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-  (loss, masks), grads = grad_fn(state.params)
+  (loss, (out_image,masks)), grads = grad_fn(state.params)
   # losss,grid_res=pair
   losss=jax.lax.pmean(loss, axis_name='ensemble')
 
   # state = state.apply_gradients(grads=grads)
   # return state,(jax.lax.pmean(losss, axis_name='ensemble'), grid_res )
-  return grads, losss,masks#,(losss,grid_res )
+  return grads, losss,out_image,masks#,(losss,grid_res )
 
 @jax.pmap
 def update_model(state, grads):
@@ -172,8 +172,8 @@ def train_epoch(epoch,slicee,index,dat,state,model):
     # batch_labels = jax_utils.replicate(batch_labels)
   
     
-    grads, loss,masks =apply_model(state, batch_images)
-    epoch_loss.append(jax_utils.unreplicate(loss)) 
+    grads, loss,out_image,masks =apply_model(state, batch_images,model)
+    epoch_loss.append(jnp.mean(jax_utils.unreplicate(loss))) 
     state = update_model(state, grads)
     # losss_curr,grid_res=jax_utils.unreplicate(pair)
     # losss_curr,out_image=pair
@@ -196,14 +196,17 @@ def train_epoch(epoch,slicee,index,dat,state,model):
       image_to_disp=np.rot90(np.array(image_to_disp))
 
       masks =masks[0,0,:,:,:]
+      masks = jnp.round(masks)
+      masks=masks.at[1,:,:].set(masks[1,:,:]*2)
+      masks=masks.at[2,:,:].set(masks[2,:,:]*3)
+      masks=masks.at[3,:,:].set(masks[3,:,:]*4)
       masks=jnp.sum(masks,axis=0)
       print(f"summed mask {masks.shape}")
-      out_image=einops.rearrange(masks,'a b -> 1 a b 1')
-      # # out_image=einops.rearrange(out_image[0,:,:,0],'a b -> 1 a b 1')
-      # out_image=jax_utils.unreplicate(out_image)
-      # res_grid=jax_utils.unreplicate(res_grid)
+      masks=einops.rearrange(masks,'a b -> 1 a b 1')
+      # out_image=einops.rearrange(out_image[0,:,:,0],'a b -> 1 a b 1')
+      out_image=jax_utils.unreplicate(out_image)
 
-      # out_image=np.rot90(np.array(out_image[slicee,:,:,0]))
+      out_image=np.rot90(np.array(out_image[slicee,:,:,0]))
 
       # res_grid=np.array(res_grid[slicee,:,:,:])
       # res_grid=np.round(res_grid).astype(int) 
@@ -214,7 +217,7 @@ def train_epoch(epoch,slicee,index,dat,state,model):
       # with_boundaries=mark_boundaries(image_to_disp,res_grid )
 
       image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
-      # out_image=einops.rearrange(out_image,'a b-> 1 a b 1')
+      out_image=einops.rearrange(out_image,'a b-> 1 a b 1')
       # with_boundaries=einops.rearrange(with_boundaries,'a b c-> 1 a b c')
 
       # print(f"ooo out_image {out_image.shape} min {jnp.min(jnp.ravel(out_image))} max {jnp.max(jnp.ravel(out_image))} ")
