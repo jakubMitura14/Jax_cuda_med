@@ -94,21 +94,21 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   lab_size[0]=lab_size[0]//jax.local_device_count()
   
   input=jnp.ones(tuple(img_size))
-  print(f"iiiiin state create {input.shape}")
+  print(f"iiiiin 333 state create {input.shape}")
   rng_main,rng_mean=jax.random.split(rng_2)
 
   #jax.random.split(rng_2,num=1 )
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
   params = model.init({'params': rng_main}, input)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
-  # cosine_decay_scheduler = optax.cosine_decay_schedule(0.001, decay_steps=cfg.total_steps, alpha=0.95)
-  # tx = optax.chain(
-  #       optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
-  #       optax.lion(learning_rate=cosine_decay_scheduler))
-
-  cosine_decay_scheduler = optax.cosine_decay_schedule(0.01, decay_steps=cfg.total_steps, alpha=0.95,exponent=1.8)
+  cosine_decay_scheduler = optax.cosine_decay_schedule(0.1, decay_steps=cfg.total_steps, alpha=0.95,exponent=1.1)
   tx = optax.chain(
-        optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
-        optax.adamw(learning_rate=cosine_decay_scheduler))
+        optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
+        optax.lion(learning_rate=cosine_decay_scheduler))
+
+#   cosine_decay_scheduler = optax.cosine_decay_schedule(0.01, decay_steps=cfg.total_steps, alpha=0.95,exponent=1.8)
+#   tx = optax.chain(
+#         optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
+#         optax.adamw(learning_rate=cosine_decay_scheduler))
 
   return train_state.TrainState.create(
       apply_fn=model.apply, params=params, tx=tx)
@@ -206,7 +206,7 @@ def train_epoch(epoch,slicee,index,dat,state,model):
       # out_image=einops.rearrange(out_image[0,:,:,0],'a b -> 1 a b 1')
       out_image=jax_utils.unreplicate(out_image)
 
-      out_image=np.rot90(np.array(out_image[slicee,:,:,0]))
+      out_image=np.rot90(np.array(out_image[slicee,:,:]))
 
       # res_grid=np.array(res_grid[slicee,:,:,:])
       # res_grid=np.round(res_grid).astype(int) 
