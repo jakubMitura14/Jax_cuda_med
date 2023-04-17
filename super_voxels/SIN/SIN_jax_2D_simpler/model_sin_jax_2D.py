@@ -46,23 +46,37 @@ class SpixelNet(nn.Module):
         out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
         out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-        deconv_multi,masks,loss1,out_image=De_conv_3_dim(self.cfg
+
+
+        deconv_multi,masks, out_image,consistency_loss_1, rounding_loss_1,feature_variance_loss_1,consistency_between_masks_loss_1,edgeloss_1 =De_conv_3_dim(self.cfg
                        ,64
                       ,1#r_x
                       ,1#r_y
                       ,translation_val=1
                       ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
-        deconv_multi,masks,loss2,out_image=De_conv_3_dim(self.cfg,32
+        deconv_multi,masks, out_image,consistency_loss_2, rounding_loss_2,feature_variance_loss_2,consistency_between_masks_loss_2,edgeloss_2=De_conv_3_dim(self.cfg
+                      ,32
                       ,2#r_x
                       ,2#r_y
                       ,translation_val=2
                       ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi )
-        deconv_multi,masks,loss3,out_image=De_conv_3_dim(self.cfg,16
+        deconv_multi,masks, out_image,consistency_loss_3, rounding_loss_3,feature_variance_loss_3,consistency_between_masks_loss_3,edgeloss_3=De_conv_3_dim(self.cfg
+                      ,16
                       ,3#r_x
                       ,3#r_y
                       ,translation_val=4
                       ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi )
+        #we recreate the image using a supervoxels
+        image_roconstruction_loss=jnp.mean(optax.l2_loss(out_image,image[:,:,:,0]).flatten())
 
-        return jnp.mean(jnp.stack([loss1,loss2,loss3]).flatten()),out_image,masks
+        # return jnp.mean(jnp.stack([loss1,loss2,loss3]).flatten())+image_roconstruction_loss,out_image,masks
+        return (jnp.mean(jnp.array([consistency_loss_1,consistency_loss_2,consistency_loss_3]))
+        , jnp.mean(jnp.array([rounding_loss_1,rounding_loss_2,rounding_loss_3]))
+        ,jnp.mean(jnp.array([feature_variance_loss_1,feature_variance_loss_2,feature_variance_loss_3]))
+        ,jnp.mean(jnp.array([consistency_between_masks_loss_1,consistency_between_masks_loss_2,consistency_between_masks_loss_3]))
+        ,jnp.mean(jnp.array([edgeloss_1,edgeloss_2,edgeloss_3]))
+        ,image_roconstruction_loss
+                ,out_image,masks)
+
 
         #TODO in original learning rate for biases in convolutions is 0 - good to try omitting biases

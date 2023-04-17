@@ -144,7 +144,9 @@ RUN python3 -m  pip install \
 # RUN python3 -m  pip install git+https://github.com/google/flax.git
 
 RUN python3 -m  pip install git+https://github.com/deepmind/optax.git 
-RUN python3 -m  pip install -q git+https://github.com/cpgoodri/jax_transformations3d.git
+RUN python3 -m  pip install jraph 
+# RUN python3 -m  pip install git+git://github.com/deepmind/jraph.git
+# RUN python3 -m  pip install -q git+https://github.com/cpgoodri/jax_transformations3d.git
 
 RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \
     cd ${HOME}/externalRepos/numPyro && \

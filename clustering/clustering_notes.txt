@@ -1,0 +1,6 @@
+
+We can calculate common border between supervoxels by analyzing the overlap of gradients - maybe just dice as gradients reach over the edge by one voxel it should work
+
+
+https://github.com/zhoushengisnoob/DeepClustering
+https://www.google.com/url?sa=t&source=web&rct=j&url=https://openreview.net/forum%3Fid%3DqsGpFRlK0a&ved=2ahUKEwia95G1sqv-AhUF_CoKHduaDEcQFnoECDMQAQ&usg=AOvVaw0WcmzL-tn3OC_RF33ZEfq5

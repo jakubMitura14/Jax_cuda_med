@@ -26,3 +26,12 @@ https://github.com/google/neural-tangents/blob/9cfdc2878f7270bb02973cc2b438c81a7
 differentiable histogram 
 https://arxiv.org/pdf/2012.06311.pdf
 https://github.com/Liamkuo/SAIR/blob/0fb289cd975b5a196b58e7d16bac00e31fd41d39/loss/histogram.py#L11
+
+https://www.researchgate.net/publication/361206461_Ensembling_Framework_for_Texture_Extraction_Techniques_for_Classification
+https://www.researchgate.net/publication/361547728_Jointly_Optimized_Spatial_Histogram_UNET_Architecture_JOSHUA_for_Adipose_Tissue_Segmentation
+https://www.researchgate.net/publication/360323751_HRANet_histogram-residual-attention_network_used_to_measure_neatness_of_toy_placement
+https://www.researchgate.net/publication/355882666_Deep_Texture_Recognition_via_Exploiting_Cross-Layer_Statistical_Self-Similarity
+   
+
+differentiable entrophy
+https://mail.google.com/mail/u/0/#inbox/KtbxLxgNMXwVZXvrjrDzQLFgfpNPVnPsHg?projector=1&messagePartId=0.1
