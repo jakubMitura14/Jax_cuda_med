@@ -55,11 +55,9 @@ import toolz
 
 jax.numpy.set_printoptions(linewidth=400)
 
-config.update("jax_debug_nans", True)
+# config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
-
-
 cfg = config_dict.ConfigDict()
 # cfg.img_size=(1,1,32,32,32)
 # cfg.label_size=(1,32,32,32)
@@ -68,14 +66,17 @@ cfg.img_size = (cfg.batch_size,1,256,256)
 cfg.label_size = (cfg.batch_size,256,256)
 cfg.r_x_total= 3
 cfg.r_y_total= 3
+cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
+
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total)
-cfg.total_steps=150
-cfg.consistency_loss_factor=1.0
-cfg.rounding_loss_factor=1.0
+cfg.total_steps=700
+cfg.consistency_loss_factor=0.6
+cfg.rounding_loss_factor=0.3
 cfg.feature_variance_loss_factor=1.0
-cfg.consistency_between_masks_loss_factor=1.0
+cfg.consistency_between_masks_loss_factor=0.1
 cfg.edgeloss_factor=1.0
 cfg.image_roconstruction_loss_factor=1.0
+cfg.average_coverage_loss_factor=0.2
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
 ##### tensor board
@@ -128,17 +129,6 @@ file_writer = tf.summary.create_file_writer(logdir)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 @functools.partial(jax.pmap,static_broadcasted_argnums=(1,2), axis_name='ensemble')#,static_broadcasted_argnums=(2)
 def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model):
   """Creates initial `TrainState`."""
@@ -146,14 +136,14 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   lab_size=list(cfg.label_size)
   img_size[0]=img_size[0]//jax.local_device_count()
   lab_size[0]=lab_size[0]//jax.local_device_count()
-  
   input=jnp.ones(tuple(img_size))
   print(f"iiiiin 333 state create {input.shape}")
   rng_main,rng_mean=jax.random.split(rng_2)
+  order_shuffled=jax.random.shuffle(rng_mean, jnp.array([0,1,2,3]), axis=0).astype(int)
 
   #jax.random.split(rng_2,num=1 )
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
-  params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
+  params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input,order_shuffled)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
   cosine_decay_scheduler = optax.cosine_decay_schedule(0.000005, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   tx = optax.chain(
         optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
@@ -169,35 +159,35 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
 
 
 
-
 # @jax.jit
-@functools.partial(jax.pmap,static_broadcasted_argnums=2, axis_name='ensemble')
-def apply_model(state, image,cfg):
+@functools.partial(jax.pmap,static_broadcasted_argnums=3, axis_name='ensemble')
+def apply_model(state, image,loss_weights,cfg):
   """Train for a single step."""
+  order_shuffled=jnp.array([0,1,2,3]).astype(int)
+
   def loss_fn(params):
-    consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,image_roconstruction_loss,out_image,masks=state.apply_fn({'params': params}, image, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
-    return (jnp.mean(jnp.array([consistency_loss*cfg.consistency_loss_factor
-                              ,rounding_loss*cfg.rounding_loss_factor
-                              ,feature_variance_loss*cfg.feature_variance_loss_factor
-                              ,consistency_between_masks_loss*cfg.consistency_between_masks_loss_factor
-                              ,edgeloss*cfg.edgeloss_factor
-                              ,image_roconstruction_loss*cfg.image_roconstruction_loss_factor
+    consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,average_coverage_loss,image_roconstruction_loss,out_image,masks=state.apply_fn({'params': params}, image,order_shuffled, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
+    return (jnp.mean(jnp.array([consistency_loss*cfg.consistency_loss_factor*loss_weights[0]
+                              ,rounding_loss*cfg.rounding_loss_factor*loss_weights[1]
+                              ,feature_variance_loss*cfg.feature_variance_loss_factor*loss_weights[2]
+                              ,consistency_between_masks_loss*cfg.consistency_between_masks_loss_factor*loss_weights[3]
+                              ,edgeloss*cfg.edgeloss_factor*loss_weights[4]
+                              ,average_coverage_loss*cfg.average_coverage_loss_factor*loss_weights[5]
+                              ,image_roconstruction_loss*cfg.image_roconstruction_loss_factor*loss_weights[6]
                                 ])) ,(consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,image_roconstruction_loss,edgeloss,out_image,masks)) 
   
   grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-  (loss, (consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,image_roconstruction_loss,out_image,mask,edgeloss)), grads = grad_fn(state.params)
+  (loss, (consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,image_roconstruction_loss,edgeloss,average_coverage_loss,out_image,masks)), grads = grad_fn(state.params)
   # losss,grid_res=pair
   losss=jax.lax.pmean(loss, axis_name='ensemble')
 
   # state = state.apply_gradients(grads=grads)
   # return state,(jax.lax.pmean(losss, axis_name='ensemble'), grid_res )
-  return grads, losss,consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,image_roconstruction_loss,out_image,masks#,(losss,grid_res )
+  return grads, losss,consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,average_coverage_loss,image_roconstruction_loss,out_image,masks#,(losss,grid_res )
 
 @jax.pmap
 def update_model(state, grads):
   return state.apply_gradients(grads=grads)
-
-
 
 
 def train_epoch(epoch,slicee,index,dat,state,model,cfg):    
@@ -227,8 +217,16 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
     # batch_images = jax_utils.replicate(batch_images)
     # batch_labels = jax_utils.replicate(batch_labels)
   
-    
-    grads, loss,consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,image_roconstruction_loss,out_image,masks =apply_model(state, batch_images,cfg)
+    loss_weights= jnp.array([
+      8.0 #consistency_loss
+      ,8.0 #rounding_loss
+      ,0.1 #feature_variance_loss
+      ,8.0 #consistency_between_masks_loss
+      ,0.1 #edgeloss
+      ,100 #average_coverage_loss
+      ,10.0 #image_roconstruction_loss
+    ])
+    grads, loss,consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,average_coverage_loss,image_roconstruction_loss,out_image,masks =apply_model(state, batch_images,loss_weights,cfg)
     epoch_loss.append(jnp.mean(jax_utils.unreplicate(loss))) 
     state = update_model(state, grads)
     # losss_curr,grid_res=jax_utils.unreplicate(pair)
@@ -305,6 +303,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
           tf.summary.scalar(f"consistency_between_masks_loss", np.mean(consistency_between_masks_loss), step=epoch)
           tf.summary.scalar(f"image_roconstruction_loss", np.mean(image_roconstruction_loss), step=epoch)
           tf.summary.scalar(f"edgeloss", np.mean(edgeloss), step=epoch)
+          tf.summary.scalar(f"average_coverage_loss", np.mean(average_coverage_loss), step=epoch)
 
 
           tf.summary.scalar(f"mask 0  mean", np.mean(masks[0,:,:].flatten()), step=epoch)

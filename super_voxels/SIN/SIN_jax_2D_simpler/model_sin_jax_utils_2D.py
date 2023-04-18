@@ -332,7 +332,7 @@ def get_edgeloss(image:jnp.ndarray,mask:jnp.ndarray,axis:int):
     so we can simply get first the l2 loss element wise than scale it by the image gradient
     """
     image_gradient=jnp.gradient(image,axis=axis)
-    mask_gradient=jnp.mask(image,axis=axis)
+    mask_gradient=jnp.gradient(mask,axis=axis)
     element_wise_l2=optax.l2_loss(image_gradient,mask_gradient)
     element_wise_l2= jnp.multiply(element_wise_l2,image_gradient)
     return jnp.mean(element_wise_l2.flatten())
@@ -580,25 +580,29 @@ class De_conv_batched_multimasks(nn.Module):
                             ,split_rngs={'params': True}
                             )
 
-    def get_module_to_use_batched(self,image,masks,deconv_multi,index,mask_sum,shifts):
+    def get_module_to_use_batched(self,image:jnp.ndarray,masks:jnp.ndarray,deconv_multi:jnp.ndarray
+                                  ,mask_sum:jnp.ndarray,shift_x:int,shift_y:int ):
         return self.module_to_use_batched(self.cfg
                         ,self.dim_stride
                         ,self.r_x
                         ,self.r_y
-                        ,shifts[index,0]#shift_x
-                        ,shifts[index,1]#shift_y
+                        ,shift_x#shift_x
+                        ,shift_y#shift_y
                         ,self.rearrange_to_intertwine_einops
                         ,self.translation_val)
 
 
-    def apply_module_to_use_batched(self,image,masks,deconv_multi,index,mask_sum,modules):
-        mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss=modules[index](image,masks[:,index,:,:],mask_sum,deconv_multi)   
+    def apply_module_to_use_batched(self,image:jnp.ndarray,masks:jnp.ndarray,deconv_multi:jnp.ndarray,index:int,mask_sum:jnp.ndarray,modules):
+        mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss=modules[index](image,jax.lax.dynamic_index_in_dim(masks, 1*index, axis=1, keepdims=False),mask_sum,deconv_multi)   
+                # (image,masks[:,index,:,:],mask_sum,deconv_multi)   
         mask_sum=mask_sum+mask_not_enlarged
-        return mask_sum, mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss
+        #generally all masks should have roughly the same number of pixels
+        average_coverage_loss= optax.l2_loss(jnp.sum(mask)/self.cfg.masks_num,jnp.array([1/4]))
+        return mask_sum, mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
 
 
     @nn.compact
-    def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray ) -> jnp.ndarray:
+    def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray,order_shuffled :jnp.ndarray) -> jnp.ndarray:
         
         deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride
         deconv_multi=Conv_trio(self.cfg,self.features)(deconv_multi)#no stride   
@@ -608,65 +612,65 @@ class De_conv_batched_multimasks(nn.Module):
         
         mask_sum=jnp.zeros_like(masks[:,0,:,:])
         
-        # order_shuffled=jax.random.shuffle(self.make_rng("to_shuffle"), jnp.array([0,1,2,3]), axis=0)
+        
         # print(f"order_shuffled 0 {order_shuffled[0]} 1 {order_shuffled[1]}")
-        # shifts= jnp.array([[0,0],[1,0],[0,1],[1,1] ]).astype(bool)
-        # modules=[
-        #     self.get_module_to_use_batched(image,masks,deconv_multi,0,mask_sum,shifts),
-        #     self.get_module_to_use_batched(image,masks,deconv_multi,1,mask_sum,shifts),
-        #     self.get_module_to_use_batched(image,masks,deconv_multi,2,mask_sum,shifts),
-        #     self.get_module_to_use_batched(image,masks,deconv_multi,3,mask_sum,shifts)
-        # ]
-        # mask_sum,ff_mask,ff_mask_not_enlarged ,ff_out_image,ff_consistency_loss,ff_rounding_loss,ff_feature_variance_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,0,mask_sum,modules)
-        # mask_sum,tf_mask,tf_mask_not_enlarged,tf_out_image,tf_consistency_loss,tf_rounding_loss,tf_feature_variance_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,1,mask_sum,modules)
-        # mask_sum,ft_mask,ft_mask_not_enlarged,ft_out_image,ft_consistency_loss,ft_rounding_loss,ft_feature_variance_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,2,mask_sum,modules)
-        # mask_sum,tt_mask,tt_mask_not_enlarged,tt_out_image,tt_consistency_loss,tt_rounding_loss,tt_feature_variance_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,3,mask_sum,modules)
+        modules=[
+            self.get_module_to_use_batched(image,masks,deconv_multi,mask_sum,0,0),
+            self.get_module_to_use_batched(image,masks,deconv_multi,mask_sum,1,0),
+            self.get_module_to_use_batched(image,masks,deconv_multi,mask_sum,0,1),
+            self.get_module_to_use_batched(image,masks,deconv_multi,mask_sum,1,1)
+        ]
+        mask_sum,ff_mask,ff_mask_not_enlarged ,ff_out_image,ff_consistency_loss,ff_rounding_loss,ff_feature_variance_loss,ff_edgeloss,ff_average_coverage_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,0,mask_sum,modules)
+        mask_sum,tf_mask,tf_mask_not_enlarged,tf_out_image,tf_consistency_loss,tf_rounding_loss,tf_feature_variance_loss,tf_edgeloss,tf_average_coverage_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,1,mask_sum,modules)
+        mask_sum,ft_mask,ft_mask_not_enlarged,ft_out_image,ft_consistency_loss,ft_rounding_loss,ft_feature_variance_loss,ft_edgeloss,ft_average_coverage_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,2,mask_sum,modules)
+        mask_sum,tt_mask,tt_mask_not_enlarged,tt_out_image,tt_consistency_loss,tt_rounding_loss,tt_feature_variance_loss,tt_edgeloss,tt_average_coverage_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,3,mask_sum,modules)
         
-        ff_mask,ff_mask_not_enlarged ,ff_out_image,ff_consistency_loss,ff_rounding_loss,ff_feature_variance_loss,ff_edgeloss=self.module_to_use_batched(self.cfg
-                        ,self.dim_stride
-                        ,self.r_x
-                        ,self.r_y
-                        ,0#shift_x
-                        ,0#shift_y
-                        ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,masks[:,0,:,:],mask_sum,deconv_multi)   
-        mask_sum=mask_sum+ff_mask_not_enlarged      
+        # ff_mask,ff_mask_not_enlarged ,ff_out_image,ff_consistency_loss,ff_rounding_loss,ff_feature_variance_loss,ff_edgeloss=self.module_to_use_batched(self.cfg
+        #                 ,self.dim_stride
+        #                 ,self.r_x
+        #                 ,self.r_y
+        #                 ,0#shift_x
+        #                 ,0#shift_y
+        #                 ,self.rearrange_to_intertwine_einops
+        #                 ,self.translation_val)(image,masks[:,0,:,:],mask_sum,deconv_multi)   
+        # mask_sum=mask_sum+ff_mask_not_enlarged      
                
-        tf_mask,tf_mask_not_enlarged,tf_out_image,tf_consistency_loss,tf_rounding_loss,tf_feature_variance_loss,tf_edgeloss=self.module_to_use_batched(self.cfg
-                        ,self.dim_stride
-                        ,self.r_x
-                        ,self.r_y
-                        ,1#shift_x
-                        ,0#shift_y
-                        ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,masks[:,1,:,:],mask_sum,deconv_multi)   
-        mask_sum=mask_sum+tf_mask_not_enlarged
+        # tf_mask,tf_mask_not_enlarged,tf_out_image,tf_consistency_loss,tf_rounding_loss,tf_feature_variance_loss,tf_edgeloss=self.module_to_use_batched(self.cfg
+        #                 ,self.dim_stride
+        #                 ,self.r_x
+        #                 ,self.r_y
+        #                 ,1#shift_x
+        #                 ,0#shift_y
+        #                 ,self.rearrange_to_intertwine_einops
+        #                 ,self.translation_val)(image,masks[:,1,:,:],mask_sum,deconv_multi)   
+        # mask_sum=mask_sum+tf_mask_not_enlarged
         
-        ft_mask,ft_mask_not_enlarged,ft_out_image,ft_consistency_loss,ft_rounding_loss,ft_feature_variance_loss,ft_edgeloss=self.module_to_use_batched(self.cfg
-                        ,self.dim_stride
-                        ,self.r_x
-                        ,self.r_y
-                        ,0#shift_x
-                        ,1#shift_y
-                        ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,masks[:,2,:,:],mask_sum,deconv_multi)   
-        mask_sum=mask_sum+ft_mask_not_enlarged
+        # ft_mask,ft_mask_not_enlarged,ft_out_image,ft_consistency_loss,ft_rounding_loss,ft_feature_variance_loss,ft_edgeloss=self.module_to_use_batched(self.cfg
+        #                 ,self.dim_stride
+        #                 ,self.r_x
+        #                 ,self.r_y
+        #                 ,0#shift_x
+        #                 ,1#shift_y
+        #                 ,self.rearrange_to_intertwine_einops
+        #                 ,self.translation_val)(image,masks[:,2,:,:],mask_sum,deconv_multi)   
+        # mask_sum=mask_sum+ft_mask_not_enlarged
     
-        tt_mask,tt_mask_not_enlarged,tt_out_image,tt_consistency_loss,tt_rounding_loss,tt_feature_variance_loss,tt_edgeloss=self.module_to_use_batched(self.cfg
-                        ,self.dim_stride
-                        ,self.r_x
-                        ,self.r_y
-                        ,1#shift_x
-                        ,1#shift_y
-                        ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,masks[:,3,:,:],mask_sum,deconv_multi)
-        mask_sum=mask_sum+tt_mask_not_enlarged
+        # tt_mask,tt_mask_not_enlarged,tt_out_image,tt_consistency_loss,tt_rounding_loss,tt_feature_variance_loss,tt_edgeloss=self.module_to_use_batched(self.cfg
+        #                 ,self.dim_stride
+        #                 ,self.r_x
+        #                 ,self.r_y
+        #                 ,1#shift_x
+        #                 ,1#shift_y
+        #                 ,self.rearrange_to_intertwine_einops
+        #                 ,self.translation_val)(image,masks[:,3,:,:],mask_sum,deconv_multi)
+        # mask_sum=mask_sum+tt_mask_not_enlarged
 
         deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(deconv_multi)
         consistency_loss=jnp.mean(jnp.stack([ff_consistency_loss,ft_consistency_loss,tf_consistency_loss,tt_consistency_loss  ]))
         rounding_loss=jnp.mean(jnp.stack([ff_rounding_loss,ft_rounding_loss,tf_rounding_loss,tt_rounding_loss  ]))
         feature_variance_loss=jnp.mean(jnp.stack([ff_feature_variance_loss,ft_feature_variance_loss,tf_feature_variance_loss,tt_feature_variance_loss  ]))
         edgeloss=jnp.mean(jnp.stack([ff_edgeloss,ft_edgeloss,tf_edgeloss,tt_edgeloss  ]))
+        average_coverage_loss=jnp.mean(jnp.stack([ff_average_coverage_loss,ft_average_coverage_loss,tf_average_coverage_loss,tt_average_coverage_loss  ]))
     
         masks= jnp.stack([ff_mask,tf_mask,ft_mask,tt_mask],axis=1)       
         out_image= jnp.stack([ff_out_image,tf_out_image,ft_out_image,tt_out_image],axis=1)
@@ -677,7 +681,7 @@ class De_conv_batched_multimasks(nn.Module):
         consistency_between_masks_loss=jnp.mean(optax.l2_loss(jnp.ones_like(summed).flatten(), summed.flatten()))
     
         # return deconv_multi,masks,out_image,jnp.mean(jnp.stack([consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss ]).flatten())
-        return deconv_multi,masks,out_image,consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss
+        return deconv_multi,masks,out_image,consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,average_coverage_loss
 
 
 class De_conv_3_dim(nn.Module):
@@ -693,23 +697,23 @@ class De_conv_3_dim(nn.Module):
     module_to_use_non_batched:nn.Module
 
     @nn.compact
-    def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray ) -> jnp.ndarray:
+    def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray,order_shuffled:jnp.ndarray ) -> jnp.ndarray:
         
-        deconv_multi,masks,out_image,consistency_loss_a, rounding_loss_a,feature_variance_loss_a,consistency_between_masks_loss_a,edgeloss_a=De_conv_batched_multimasks(self.cfg
+        deconv_multi,masks,out_image,consistency_loss_a, rounding_loss_a,feature_variance_loss_a,consistency_between_masks_loss_a,edgeloss_a,average_coverage_loss_a=De_conv_batched_multimasks(self.cfg
                                    ,0#dim_stride
                                    ,self.r_x
                                    ,self.r_y-1
                                    ,'f h w-> (h f) w'#rearrange_to_intertwine_einops
                                    ,self.translation_val
-                                   ,self.features,self.module_to_use_non_batched)(image,masks,deconv_multi)
+                                   ,self.features,self.module_to_use_non_batched)(image,masks,deconv_multi,order_shuffled)
         
-        deconv_multi,masks,out_image,consistency_loss_b, rounding_loss_b,feature_variance_loss_b,consistency_between_masks_loss_b,edgeloss_b=De_conv_batched_multimasks(self.cfg
+        deconv_multi,masks,out_image,consistency_loss_b, rounding_loss_b,feature_variance_loss_b,consistency_between_masks_loss_b,edgeloss_b,average_coverage_loss_b=De_conv_batched_multimasks(self.cfg
                                    ,1#dim_stride
                                    ,self.r_x
                                    ,self.r_y
                                    ,'f h w -> h (w f)'#rearrange_to_intertwine_einops
                                    ,self.translation_val
-                                   ,self.features,self.module_to_use_non_batched)(image,masks,deconv_multi)
+                                   ,self.features,self.module_to_use_non_batched)(image,masks,deconv_multi,order_shuffled)
 
 
         return (deconv_multi,masks, out_image,jnp.mean(jnp.array([consistency_loss_a,consistency_loss_b]))
@@ -717,6 +721,7 @@ class De_conv_3_dim(nn.Module):
                 ,jnp.mean(jnp.array([feature_variance_loss_a,feature_variance_loss_b]))
                 ,jnp.mean(jnp.array([consistency_between_masks_loss_a,consistency_between_masks_loss_b]))
                 ,jnp.mean(jnp.array([edgeloss_a,edgeloss_b]))
+                ,jnp.mean(jnp.array([average_coverage_loss_a,average_coverage_loss_b]))
                 
                 )
 
