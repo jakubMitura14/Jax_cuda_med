@@ -597,7 +597,7 @@ class De_conv_batched_multimasks(nn.Module):
                 # (image,masks[:,index,:,:],mask_sum,deconv_multi)   
         mask_sum=mask_sum+mask_not_enlarged
         #generally all masks should have roughly the same number of pixels
-        average_coverage_loss= optax.l2_loss(jnp.sum(mask)/self.cfg.masks_num,jnp.array([1/4]))
+        average_coverage_loss=  jnp.power(jnp.mean(mask.flatten(),keepdims=True)-jnp.array([1/self.cfg.masks_num]),2)
         return mask_sum, mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
 
 
@@ -625,6 +625,7 @@ class De_conv_batched_multimasks(nn.Module):
         mask_sum,ft_mask,ft_mask_not_enlarged,ft_out_image,ft_consistency_loss,ft_rounding_loss,ft_feature_variance_loss,ft_edgeloss,ft_average_coverage_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,2,mask_sum,modules)
         mask_sum,tt_mask,tt_mask_not_enlarged,tt_out_image,tt_consistency_loss,tt_rounding_loss,tt_feature_variance_loss,tt_edgeloss,tt_average_coverage_loss=self.apply_module_to_use_batched(image,masks,deconv_multi,3,mask_sum,modules)
         
+
         # ff_mask,ff_mask_not_enlarged ,ff_out_image,ff_consistency_loss,ff_rounding_loss,ff_feature_variance_loss,ff_edgeloss=self.module_to_use_batched(self.cfg
         #                 ,self.dim_stride
         #                 ,self.r_x

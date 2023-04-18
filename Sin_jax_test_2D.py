@@ -59,8 +59,10 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
-# cfg.img_size=(1,1,32,32,32)
-# cfg.label_size=(1,32,32,32)
+cfg.total_steps=110
+cfg.learning_rate=0.000005
+
+
 cfg.batch_size=200
 cfg.img_size = (cfg.batch_size,1,256,256)
 cfg.label_size = (cfg.batch_size,256,256)
@@ -69,7 +71,6 @@ cfg.r_y_total= 3
 cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
 
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total)
-cfg.total_steps=700
 cfg.consistency_loss_factor=0.6
 cfg.rounding_loss_factor=0.3
 cfg.feature_variance_loss_factor=1.0
@@ -141,10 +142,12 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   rng_main,rng_mean=jax.random.split(rng_2)
   order_shuffled=jax.random.shuffle(rng_mean, jnp.array([0,1,2,3]), axis=0).astype(int)
 
+
   #jax.random.split(rng_2,num=1 )
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
   params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input,order_shuffled)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
-  cosine_decay_scheduler = optax.cosine_decay_schedule(0.000005, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
+  # cosine_decay_scheduler = optax.cosine_decay_schedule(0.000005, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
+  cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   tx = optax.chain(
         optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
         optax.lion(learning_rate=cosine_decay_scheduler))
@@ -174,10 +177,10 @@ def apply_model(state, image,loss_weights,cfg):
                               ,edgeloss*cfg.edgeloss_factor*loss_weights[4]
                               ,average_coverage_loss*cfg.average_coverage_loss_factor*loss_weights[5]
                               ,image_roconstruction_loss*cfg.image_roconstruction_loss_factor*loss_weights[6]
-                                ])) ,(consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,image_roconstruction_loss,edgeloss,out_image,masks)) 
+                                ])) ,(consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,average_coverage_loss,image_roconstruction_loss,out_image,masks)) 
   
   grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-  (loss, (consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,image_roconstruction_loss,edgeloss,average_coverage_loss,out_image,masks)), grads = grad_fn(state.params)
+  (loss, (consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,average_coverage_loss,image_roconstruction_loss,out_image,masks)), grads = grad_fn(state.params)
   # losss,grid_res=pair
   losss=jax.lax.pmean(loss, axis_name='ensemble')
 
@@ -223,9 +226,10 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
       ,0.1 #feature_variance_loss
       ,8.0 #consistency_between_masks_loss
       ,0.1 #edgeloss
-      ,100 #average_coverage_loss
+      ,10000 #average_coverage_loss
       ,10.0 #image_roconstruction_loss
     ])
+    loss_weights= einops.repeat(loss_weights,'a->pm a',pm=jax.local_device_count())
     grads, loss,consistency_loss, rounding_loss,feature_variance_loss,consistency_between_masks_loss,edgeloss,average_coverage_loss,image_roconstruction_loss,out_image,masks =apply_model(state, batch_images,loss_weights,cfg)
     epoch_loss.append(jnp.mean(jax_utils.unreplicate(loss))) 
     state = update_model(state, grads)
@@ -281,15 +285,15 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
           tf.summary.image(f"image_to_disp",image_to_disp , step=epoch)
 
       with file_writer.as_default():
-        tf.summary.image(f"out_image",out_image , step=epoch)
+        tf.summary.image(f"out_image",out_image , step=epoch,max_outputs=2000)
       #   tf.summary.image(f"masks",plot_heatmap_to_image(masks[0,:,:]) , step=0)
       #   tf.summary.image(f"masks",plot_heatmap_to_image(masks[1,:,:]) , step=1)
       #   tf.summary.image(f"masks",plot_heatmap_to_image(masks[2,:,:]) , step=2)
       #   tf.summary.image(f"masks",plot_heatmap_to_image(masks[3,:,:]) , step=3)
-        tf.summary.image(f"masks 0",plot_heatmap_to_image(masks[0,:,:]) , step=epoch)
-        tf.summary.image(f"masks 1",plot_heatmap_to_image(masks[1,:,:]) , step=epoch)
-        tf.summary.image(f"masks 2",plot_heatmap_to_image(masks[2,:,:]) , step=epoch)
-        tf.summary.image(f"masks 3",plot_heatmap_to_image(masks[3,:,:]) , step=epoch)
+        tf.summary.image(f"masks 0",plot_heatmap_to_image(masks[0,:,:]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks 1",plot_heatmap_to_image(masks[1,:,:]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks 2",plot_heatmap_to_image(masks[2,:,:]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks 3",plot_heatmap_to_image(masks[3,:,:]) , step=epoch,max_outputs=2000)
 
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
 
@@ -310,7 +314,11 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
           tf.summary.scalar(f"mask 0  median", np.median(masks[0,:,:].flatten()), step=epoch)
           tf.summary.scalar(f"mask 1  mean", np.mean(masks[1,:,:].flatten()), step=epoch)
           tf.summary.scalar(f"mask 1  median", np.median(masks[1,:,:].flatten()), step=epoch)
-          
+          tf.summary.scalar(f"mask 2  mean", np.mean(masks[2,:,:].flatten()), step=epoch)
+          tf.summary.scalar(f"mask 3  mean", np.mean(masks[3,:,:].flatten()), step=epoch)
+
+
+
   return state
 
 
