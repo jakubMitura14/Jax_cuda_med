@@ -409,7 +409,7 @@ class Apply_on_single_area(nn.Module):
         masked_image_mean=jnp.sum(masked_image)/jnp.sum(mask_combined)
         out_image= mask_combined*masked_image_mean
 
-        return mask_combined, out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
+        return mask_combined, out_image,jnp.array([consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss])
 
 
 
@@ -459,7 +459,8 @@ class Shape_apply_reshape(nn.Module):
         mask_new=divide_sv_grid(mask_new,self.shape_reshape_cfg_old)
         mask_old=divide_sv_grid(mask,self.shape_reshape_cfg_old)
 
-        mask_combined,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss=v_Apply_on_single_area(self.cfg
+        #losses = consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
+        mask_combined,out_image,losses=v_Apply_on_single_area(self.cfg
                                                 ,self.rearrange_to_intertwine_einops
                                                 ,self.dim_stride 
                                                 ,self.curr_shape
@@ -481,8 +482,7 @@ class Shape_apply_reshape(nn.Module):
         mask_combined=recreate_orig_shape(mask_combined,self.shape_reshape_cfgs[shape_reshape_index])
         out_image=recreate_orig_shape(out_image,self.shape_reshape_cfgs[shape_reshape_index])
  
-        return mask_combined,out_image,jnp.mean(consistency_loss),jnp.mean(rounding_loss),jnp.mean(feature_variance_loss),jnp.mean(edgeloss), jnp.mean(average_coverage_loss)
-
+        return mask_combined,out_image,jnp.mean(losses,axis=0)
 
 class De_conv_non_batched(nn.Module):
     """ 
@@ -531,8 +531,8 @@ class De_conv_non_batched(nn.Module):
         # we need to add corrections for it 
         # mask_new = (jnp.tanh(mask_new)+1)/2
         mask_new= nn.softmax(mask_new,axis=-1)[:,:,0]
-
-        mask,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss=Shape_apply_reshape(self.cfg
+        #losses=consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
+        mask,out_image,losses=Shape_apply_reshape(self.cfg
                             ,self.dim_stride
                             ,self.r_x
                             ,self.r_y
@@ -543,8 +543,7 @@ class De_conv_non_batched(nn.Module):
         
 
 
-
-        return mask,mask_new,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
+        return mask,mask_new,out_image,losses
     
 
 
@@ -582,7 +581,7 @@ class De_conv_non_batched_first(nn.Module):
         mask_combined=einops.rearrange([mask_new,mask],self.rearrange_to_intertwine_einops)
 
 
-        return mask_combined,mask_new,mask_combined,jnp.zeros((1,)),jnp.zeros((1,)),jnp.zeros((1,)),jnp.zeros((1,)),jnp.zeros((1,))
+        return mask_combined,mask_new,mask_combined,jnp.zeros((6,))
 
 
 
@@ -605,17 +604,17 @@ class De_conv_batched_for_scan(nn.Module):
                             ,split_rngs={'params': True}
                             )
     # def __call__(self, image:jnp.ndarray, mask:jnp.ndarray,deconv_multi:jnp.ndarray,shape_reshape_index:int) -> jnp.ndarray:
-    def __call__(self, curried_mask:jnp.ndarray, image:jnp.ndarray, mask:jnp.ndarray,deconv_multi:jnp.ndarray,shape_reshape_index:int ) -> jnp.ndarray:
-       
+    def __call__(self, curried:jnp.ndarray, mask:jnp.ndarray,shape_reshape_index:int ) -> jnp.ndarray:
+        curried_mask, image,deconv_multi=curried
 
-        # mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss=self.module_to_use_batched(self.cfg
+        # mask,mask_not_enlarged ,out_image,losses=self.module_to_use_batched(self.cfg
         res_tuple=self.module_to_use_batched(self.cfg
                         ,self.dim_stride
                         ,self.r_x
                         ,self.r_y
                         ,self.rearrange_to_intertwine_einops
                         ,self.translation_val)(image,mask,curried_mask,deconv_multi,shape_reshape_index)
-        return ((curried_mask+res_tuple[0]), res_tuple)
+        return ( ((curried_mask+res_tuple[0]),image,deconv_multi) , res_tuple)
 
 class De_conv_batched_multimasks(nn.Module):
     """
@@ -639,36 +638,11 @@ class De_conv_batched_multimasks(nn.Module):
     
     def setup(self):
 
-
-
-
-De_conv_batched_for_scan
-        self.scanned=  nn.scan(self.module_to_use_batched,
+        self.scanned=  nn.scan(De_conv_batched_for_scan,
                                variable_axes={"params": 0}, #parametters are shared
-                            split_rngs={'params': False},
-                            length=self.cfg.masks_num,
-                            in_axes=(0,0,0,0))
-
-    def get_module_to_use_batched(self,image:jnp.ndarray,masks:jnp.ndarray,deconv_multi:jnp.ndarray
-                                  ,mask_sum:jnp.ndarray,shift_x:int,shift_y:int ):
-        return self.module_to_use_batched(self.cfg
-                        ,self.dim_stride
-                        ,self.r_x
-                        ,self.r_y
-                        ,shift_x#shift_x
-                        ,shift_y#shift_y
-                        ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)
-
-
-    def apply_module_to_use_batched(self,image:jnp.ndarray,masks:jnp.ndarray,deconv_multi:jnp.ndarray,index:int,mask_sum:jnp.ndarray,modules):
-        mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss=modules[index](image,jax.lax.dynamic_index_in_dim(masks, 1*index, axis=1, keepdims=False),mask_sum,deconv_multi)   
-                # (image,masks[:,index,:,:],mask_sum,deconv_multi)   
-        mask_sum=mask_sum+mask_not_enlarged
-        #generally all masks should have roughly the same number of pixels
-        # average_coverage_loss=  jnp.power(jnp.mean(mask.flatten(),keepdims=True)-jnp.array([1/self.cfg.masks_num]),2)
-        return mask_sum, mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
-
+                                split_rngs={'params': False},
+                                length=self.cfg.masks_num,
+                                in_axes=(1,0))
 
     @nn.compact
     def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray) -> jnp.ndarray:
