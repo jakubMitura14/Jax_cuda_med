@@ -138,6 +138,29 @@ def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y):
     return initt
 
 
+@partial(jax.jit, static_argnames=['diameter','r'])
+def getLine(curr_line,index,diameter,r):
+    difff=jnp.abs(r-index)
+    return jax.lax.dynamic_update_slice(curr_line, jnp.ones(diameter), (difff,)) 
+
+v_getLine=jax.vmap(getLine, in_axes=(0,0,None,None))
+
+def get_diamond(diameter):
+    """ 
+    gives diamond shape like ones array where all entries that's one norm from the center
+    is no more than diameter//2 are set to 1 and rest is 0
+    for 3d we can repeat it in third axis - rotate it -> get logical and - should work
+    """
+    r=diameter//2
+    a=v_getLine(jnp.zeros((diameter,diameter*2)),jnp.arange(diameter),diameter,r).astype(bool)
+    b= jnp.flip(a)
+    b=b[:,diameter:]
+    a=a[:,:-diameter]
+    c=jnp.logical_and(a,b).astype(float)
+    return c
+
+
+
 def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,orig_grid_shape:Tuple[int],diameter:int):
     """
     helper function for divide_sv_grid in order to calculate padding
@@ -352,6 +375,7 @@ class Apply_on_single_area(nn.Module):
     translation_val:int
     shape_reshape_cfg: ml_collections.config_dict.config_dict.ConfigDict
 
+
     @nn.compact
     def __call__(self
                  ,resized_image:jnp.ndarray
@@ -372,13 +396,17 @@ class Apply_on_single_area(nn.Module):
         edgeloss=get_edgeloss(resized_image,mask_combined,self.dim_stride)
         # mask_combined=mask_combined.at[:,-1].set(0) 
         # mask_combined=mask_combined.at[-1,:].set(0) 
-
+        
+        #we assume diameter x and y are the same
+        diamond=get_diamond(self.shape_reshape_cfg.diameter_x-1)
+        diamond= jnp.pad(diamond,((0,1),(0,1)))
+        average_coverage_loss= jnp.mean(optax.l2_loss(mask_combined,diamond).flatten())
 
         masked_image=jnp.multiply(mask_combined,resized_image)
         masked_image_mean=jnp.sum(masked_image)/jnp.sum(mask_combined)
         out_image= mask_combined*masked_image_mean
 
-        return mask_combined, out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss
+        return mask_combined, out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
 
 
 
@@ -421,7 +449,7 @@ class Shape_apply_reshape(nn.Module):
         mask_new=divide_sv_grid(mask_new,self.shape_reshape_cfg_old)
         mask_old=divide_sv_grid(mask,self.shape_reshape_cfg_old)
 
-        mask_combined,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss=v_Apply_on_single_area(self.cfg
+        mask_combined,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss=v_Apply_on_single_area(self.cfg
                                                 ,self.rearrange_to_intertwine_einops
                                                 ,self.dim_stride 
                                                 ,self.curr_shape
@@ -429,6 +457,9 @@ class Shape_apply_reshape(nn.Module):
                                                 ,self.translation_val
                                                 ,self.shape_reshape_cfg
                                                 )(resized_image,mask_new,mask_old)
+
+
+
         
         # svs= mask_combined.shape[0]
         # arranges= np.arange(svs)
@@ -440,7 +471,7 @@ class Shape_apply_reshape(nn.Module):
         mask_combined=recreate_orig_shape(mask_combined,self.shape_reshape_cfg)
         out_image=recreate_orig_shape(out_image,self.shape_reshape_cfg)
  
-        return mask_combined,out_image,jnp.mean(consistency_loss),jnp.mean(rounding_loss),jnp.mean(feature_variance_loss),jnp.mean(edgeloss)
+        return mask_combined,out_image,jnp.mean(consistency_loss),jnp.mean(rounding_loss),jnp.mean(feature_variance_loss),jnp.mean(edgeloss), jnp.mean(average_coverage_loss)
 
 
 class De_conv_non_batched(nn.Module):
@@ -493,7 +524,7 @@ class De_conv_non_batched(nn.Module):
         # mask_new = (jnp.tanh(mask_new)+1)/2
         mask_new= nn.softmax(mask_new,axis=-1)[:,:,0]
 
-        mask,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss=Shape_apply_reshape(self.cfg
+        mask,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss=Shape_apply_reshape(self.cfg
                             ,self.dim_stride
                             ,self.r_x
                             ,self.r_y
@@ -507,7 +538,7 @@ class De_conv_non_batched(nn.Module):
 
 
 
-        return mask,mask_new,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss
+        return mask,mask_new,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
     
 
 
@@ -547,7 +578,7 @@ class De_conv_non_batched_first(nn.Module):
         mask_combined=einops.rearrange([mask_new,mask],self.rearrange_to_intertwine_einops)
 
 
-        return mask_combined,mask_new,mask_combined,jnp.zeros((1,)),jnp.zeros((1,)),jnp.zeros((1,)),jnp.zeros((1,))
+        return mask_combined,mask_new,mask_combined,jnp.zeros((1,)),jnp.zeros((1,)),jnp.zeros((1,)),jnp.zeros((1,)),jnp.zeros((1,))
 
 
 
@@ -593,11 +624,11 @@ class De_conv_batched_multimasks(nn.Module):
 
 
     def apply_module_to_use_batched(self,image:jnp.ndarray,masks:jnp.ndarray,deconv_multi:jnp.ndarray,index:int,mask_sum:jnp.ndarray,modules):
-        mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss=modules[index](image,jax.lax.dynamic_index_in_dim(masks, 1*index, axis=1, keepdims=False),mask_sum,deconv_multi)   
+        mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss=modules[index](image,jax.lax.dynamic_index_in_dim(masks, 1*index, axis=1, keepdims=False),mask_sum,deconv_multi)   
                 # (image,masks[:,index,:,:],mask_sum,deconv_multi)   
         mask_sum=mask_sum+mask_not_enlarged
         #generally all masks should have roughly the same number of pixels
-        average_coverage_loss=  jnp.power(jnp.mean(mask.flatten(),keepdims=True)-jnp.array([1/self.cfg.masks_num]),2)
+        # average_coverage_loss=  jnp.power(jnp.mean(mask.flatten(),keepdims=True)-jnp.array([1/self.cfg.masks_num]),2)
         return mask_sum, mask,mask_not_enlarged ,out_image,consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss
 
 

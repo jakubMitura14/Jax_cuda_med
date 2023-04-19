@@ -53,6 +53,7 @@ class SpixelNet(nn.Module):
                       ,1#r_x
                       ,1#r_y
                       ,translation_val=1
+                    #   ,module_to_use_non_batched=De_conv_non_batched)(image,self.initial_masks,out4,order_shuffled )
                       ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4,order_shuffled )
         deconv_multi,masks, out_image,consistency_loss_2, rounding_loss_2,feature_variance_loss_2,consistency_between_masks_loss_2,edgeloss_2,average_coverage_loss_2=De_conv_3_dim(self.cfg
                       ,32
