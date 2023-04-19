@@ -138,26 +138,15 @@ def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y):
     return initt
 
 
-@partial(jax.jit, static_argnames=['diameter','r'])
-def getLine(curr_line,index,diameter,r):
-    difff=jnp.abs(r-index)
-    return jax.lax.dynamic_update_slice(curr_line, jnp.ones(diameter), (difff,)) 
-
-v_getLine=jax.vmap(getLine, in_axes=(0,0,None,None))
-
-def get_diamond(diameter):
-    """ 
-    gives diamond shape like ones array where all entries that's one norm from the center
-    is no more than diameter//2 are set to 1 and rest is 0
-    for 3d we can repeat it in third axis - rotate it -> get logical and - should work
+def set_non_overlapping_regions(area: jnp.ndarray, shape_reshape_cfg:ml_collections.config_dict.config_dict.ConfigDict):
     """
-    r=diameter//2
-    a=v_getLine(jnp.zeros((diameter,diameter*2)),jnp.arange(diameter),diameter,r).astype(bool)
-    b= jnp.flip(a)
-    b=b[:,diameter:]
-    a=a[:,:-diameter]
-    c=jnp.logical_and(a,b).astype(float)
-    return c
+    sets non overlapping regions of each mask to 1
+    """
+    p_x=((shape_reshape_cfg.diameter_x-1)//2)-1#-shape_reshape_cfg.shift_x
+    p_y=((shape_reshape_cfg.diameter_y-1)//2)-1#-shape_reshape_cfg.shift_y
+    s_x=shape_reshape_cfg.shift_x
+    s_y=shape_reshape_cfg.shift_y
+    return area.at[p_x+s_x:-(p_x-s_x),p_y+s_y:-(p_y-s_y)].set(1)
 
 
 
@@ -398,9 +387,8 @@ class Apply_on_single_area(nn.Module):
         # mask_combined=mask_combined.at[-1,:].set(0) 
         
         #we assume diameter x and y are the same
-        diamond=get_diamond(self.shape_reshape_cfg.diameter_x-1)
-        diamond= jnp.pad(diamond,((0,1),(0,1)))
-        average_coverage_loss= jnp.mean(optax.l2_loss(mask_combined,diamond).flatten())
+        region_non_overlap=set_non_overlapping_regions(jnp.zeros_like(mask_combined),self.shape_reshape_cfg)
+        average_coverage_loss= jnp.mean(optax.l2_loss(mask_combined,region_non_overlap).flatten())
 
         masked_image=jnp.multiply(mask_combined,resized_image)
         masked_image_mean=jnp.sum(masked_image)/jnp.sum(mask_combined)
