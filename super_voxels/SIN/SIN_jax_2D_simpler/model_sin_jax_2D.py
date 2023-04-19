@@ -38,7 +38,7 @@ class SpixelNet(nn.Module):
         self.initial_masks= einops.repeat(initial_masks,'c w h-> b c w h',b=self.cfg.batch_size//jax.local_device_count())
     
     @nn.compact
-    def __call__(self, image: jnp.ndarray,order_shuffled: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, image: jnp.ndarray) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
         image=einops.rearrange(image,'b c w h-> b w h c')
         out1=Conv_trio(self.cfg,channels=16)(image)
@@ -53,20 +53,22 @@ class SpixelNet(nn.Module):
                       ,1#r_x
                       ,1#r_y
                       ,translation_val=1
-                    #   ,module_to_use_non_batched=De_conv_non_batched)(image,self.initial_masks,out4,order_shuffled )
-                      ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
+                      ,module_to_use_non_batched=De_conv_non_batched)(image,self.initial_masks,out4 )
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
         deconv_multi,masks, out_image,losses_2=De_conv_3_dim(self.cfg
                       ,32
                       ,2#r_x
                       ,2#r_y
                       ,translation_val=2
                       ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi )
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
         deconv_multi,masks, out_image,losses_3=De_conv_3_dim(self.cfg
                       ,16
                       ,3#r_x
                       ,3#r_y
                       ,translation_val=4
                       ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi)
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
         #we recreate the image using a supervoxels
         image_roconstruction_loss=jnp.mean(optax.l2_loss(out_image,image[:,:,:,0]).flatten())
 

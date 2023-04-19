@@ -64,6 +64,7 @@ cfg.learning_rate=0.0005
 
 
 cfg.batch_size=200
+cfg.batch_size_pmapped=cfg.batch_size//jax.local_device_count()
 cfg.img_size = (cfg.batch_size,1,256,256)
 cfg.label_size = (cfg.batch_size,256,256)
 cfg.r_x_total= 3
@@ -72,8 +73,8 @@ cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
 
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total)
 
+### how important we consider diffrent losses at diffrent stages of the training loop
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)image_roconstruction_loss
-
 cfg.initial_loss_weights=(
       8.0 #consistency_loss
       ,8.0 #rounding_loss
@@ -83,7 +84,6 @@ cfg.initial_loss_weights=(
       ,8.0 #consistency_between_masks_loss
       ,10.0 #image_roconstruction_loss
     )
-
 cfg.actual_segmentation_loss_weights=(
       0.6 #consistency_loss
       ,0.3 #rounding_loss
@@ -155,12 +155,11 @@ state = create_train_state(prng,cfg,model)
 #   input=jnp.ones(tuple(img_size))
 #   print(f"iiiiin 333 state create {input.shape}")
 #   rng_main,rng_mean=jax.random.split(rng_2)
-#   order_shuffled=jax.random.shuffle(rng_mean, jnp.array([0,1,2,3]), axis=0).astype(int)
 
 
 #   #jax.random.split(rng_2,num=1 )
 #   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
-#   params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input,order_shuffled)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
+#   params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
 #   # cosine_decay_scheduler = optax.cosine_decay_schedule(0.000005, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
 #   cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
 #   tx = optax.chain(
@@ -181,10 +180,9 @@ state = create_train_state(prng,cfg,model)
 # @functools.partial(jax.pmap,static_broadcasted_argnums=3, axis_name='ensemble')
 # def apply_model(state, image,loss_weights,cfg):
 #   """Train for a single step."""
-#   order_shuffled=jnp.array([0,1,2,3]).astype(int)
 
 #   def loss_fn(params):
-#     losses,out_image,masks=state.apply_fn({'params': params}, image,order_shuffled, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
+#     losses,out_image,masks=state.apply_fn({'params': params}, image, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
 #     losses= jnp.multiply(losses, loss_weights)
 #     return (jnp.mean(losses) ,(losses,out_image,masks)) 
 #   #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)image_roconstruction_loss=losses
