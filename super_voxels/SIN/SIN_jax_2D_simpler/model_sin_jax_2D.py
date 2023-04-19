@@ -54,19 +54,19 @@ class SpixelNet(nn.Module):
                       ,1#r_y
                       ,translation_val=1
                     #   ,module_to_use_non_batched=De_conv_non_batched)(image,self.initial_masks,out4,order_shuffled )
-                      ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4,order_shuffled )
+                      ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
         deconv_multi,masks, out_image,consistency_loss_2, rounding_loss_2,feature_variance_loss_2,consistency_between_masks_loss_2,edgeloss_2,average_coverage_loss_2=De_conv_3_dim(self.cfg
                       ,32
                       ,2#r_x
                       ,2#r_y
                       ,translation_val=2
-                      ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi,order_shuffled )
+                      ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi )
         deconv_multi,masks, out_image,consistency_loss_3, rounding_loss_3,feature_variance_loss_3,consistency_between_masks_loss_3,edgeloss_3,average_coverage_loss_3=De_conv_3_dim(self.cfg
                       ,16
                       ,3#r_x
                       ,3#r_y
                       ,translation_val=4
-                      ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi,order_shuffled)
+                      ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi)
         #we recreate the image using a supervoxels
         image_roconstruction_loss=jnp.mean(optax.l2_loss(out_image,image[:,:,:,0]).flatten())
 

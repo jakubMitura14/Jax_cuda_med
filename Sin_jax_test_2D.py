@@ -59,8 +59,8 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
-cfg.total_steps=110
-cfg.learning_rate=0.000005
+cfg.total_steps=60
+cfg.learning_rate=0.0005
 
 
 cfg.batch_size=200
