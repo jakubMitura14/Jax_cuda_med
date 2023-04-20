@@ -117,15 +117,21 @@ def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y):
     initt[shift_x::2,shift_y::2]=1
     return initt
 
-def set_non_overlapping_regions(area: jnp.ndarray, shape_reshape_cfg_arr):
+def set_non_overlapping_regions(area: jnp.ndarray
+                                ,diameter_x:int
+                                ,diameter_y:int
+                                ,index:int
+                                ):
     """
     sets non overlapping regions of each mask to 1
     """
-    shape_reshape_cfg=array_toshape_reshape_constants(shape_reshape_cfg_arr)
-    p_x=((shape_reshape_cfg.diameter_x-1)//2)-1#-shape_reshape_cfg.shift_x
-    p_y=((shape_reshape_cfg.diameter_y-1)//2)-1#-shape_reshape_cfg.shift_y
-    s_x=shape_reshape_cfg.shift_x
-    s_y=shape_reshape_cfg.shift_y
+    shift_x= jnp.remainder(index,2)
+    shift_y=index//2
+    p_x=((diameter_x-1)//2)-1#-shape_reshape_cfg.shift_x
+    p_y=((diameter_y-1)//2)-1#-shape_reshape_cfg.shift_y
+    s_x=shift_x
+    s_y=shift_y
+    
     return area.at[p_x+s_x:-(p_x-s_x),p_y+s_y:-(p_y-s_y)].set(1)
 
 def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,orig_grid_shape:Tuple[int],diameter:int):
