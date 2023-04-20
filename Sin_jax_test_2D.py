@@ -69,9 +69,13 @@ cfg.img_size = (cfg.batch_size,1,256,256)
 cfg.label_size = (cfg.batch_size,256,256)
 cfg.r_x_total= 3
 cfg.r_y_total= 3
+cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total)
 cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
 
-cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total)
+##getting the importance of the losses associated with deconvolutions
+## generally last one is most similar to the actual image - hence should be most important
+cfg.deconves_importances=(0.1,0.5,1.0)
+
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)image_roconstruction_loss

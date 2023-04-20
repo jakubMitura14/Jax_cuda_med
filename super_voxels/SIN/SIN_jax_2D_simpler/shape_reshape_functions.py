@@ -117,22 +117,32 @@ def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y):
     initt[shift_x::2,shift_y::2]=1
     return initt
 
-def set_non_overlapping_regions(area: jnp.ndarray
-                                ,diameter_x:int
+@partial(jax.jit, static_argnames=['diameter_x','diameter_y','p_x','p_y'])
+def set_non_overlapping_regions(diameter_x:int
                                 ,diameter_y:int
-                                ,index:int
+                                ,shift_x:int
+                                ,shift_y:int
+                                ,p_x:int
+                                ,p_y:int
                                 ):
     """
     sets non overlapping regions of each mask to 1
     """
-    shift_x= jnp.remainder(index,2)
-    shift_y=index//2
-    p_x=((diameter_x-1)//2)-1#-shape_reshape_cfg.shift_x
-    p_y=((diameter_y-1)//2)-1#-shape_reshape_cfg.shift_y
+    # shift_x= jnp.remainder(index,2)
+    # shift_y=index//2
+    # p_x=jnp.maximum(((diameter_x-1)//2)-1)#-shape_reshape_cfg.shift_x
+    # p_y=jnp.maximum(((diameter_y-1)//2)-1)#-shape_reshape_cfg.shift_y
     s_x=shift_x
     s_y=shift_y
-    
-    return area.at[p_x+s_x:-(p_x-s_x),p_y+s_y:-(p_y-s_y)].set(1)
+    # return jnp.zeros((diameter_x,diameter_y)).at[p_x+s_x:-(p_x-s_x),p_y+s_y:-(p_y-s_y)].set(1)
+    beg_x=p_x+s_x
+    end_x=(p_x-s_x)
+    beg_y=p_y+s_y
+    end_y= (p_y-s_y)
+    oness = jnp.ones((diameter_x-p_x*2,diameter_y-p_y*2))
+    return jax.lax.dynamic_update_slice(jnp.zeros((diameter_x,diameter_y )), oness, (beg_x,beg_y))
+    # return jnp.pad(oness,((beg_x,end_x),(beg_y,end_y)))
+    # return jnp.pad(oness,(jnp.stack([beg_x,end_x]),jnp.stack([beg_y,end_y])))
 
 def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,orig_grid_shape:Tuple[int],diameter:int):
     """
@@ -150,15 +160,15 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
     to_remove_from_end= (shift*is_odd)*r_to_pad + ((1-shift)*is_even)*r_to_pad
     axis_len_prim=for_pad_beg+current_grid_shape[axis]-to_remove_from_end
     #how much padding we need to make it divisible by diameter
-    for_pad_rem= jnp.remainder(axis_len_prim,diameter)
-    to_pad_end=diameter-jnp.remainder(axis_len_prim,diameter)
+    for_pad_rem= np.remainder(axis_len_prim,diameter)
+    to_pad_end=diameter-np.remainder(axis_len_prim,diameter)
 
-    # if(for_pad_rem==0):
-    #     to_pad_end=0
+    if(for_pad_rem==0):
+        to_pad_end=0
 
-    f1 = lambda: 0
-    f2 = lambda: to_pad_end
-    to_pad_end=jax.lax.cond(for_pad_rem==0,f1,f2)
+    # f1 = lambda: 0
+    # f2 = lambda: to_pad_end
+    # to_pad_end=jax.lax.cond(for_pad_rem==0,f1,f2)
  
     axis_len=axis_len_prim+to_pad_end    
     return for_pad_beg,to_remove_from_end,axis_len_prim,axis_len,to_pad_end     
@@ -212,17 +222,22 @@ def divide_sv_grid(res_grid: jnp.ndarray,shape_reshape_cfg):
     cutted=einops.rearrange( cutted,'bb (a x) (b y)->bb (a b) x y', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
     return cutted
 
-
-def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg_arr):
+def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg
+                        ,to_reshape_back_x:int
+                        ,to_reshape_back_y:int):
     """
     as in divide_sv_grid we are changing the shape for supervoxel based texture infrence
     we need then to recreate undo padding axis reshuffling ... to get back the original image shape
     """
-    shape_reshape_cfg=array_toshape_reshape_constants(shape_reshape_cfg_arr)
     # undo axis reshuffling
     texture_information= einops.rearrange(texture_information,'bb (a b) x y->bb (a x) (b y)'
-        ,a=shape_reshape_cfg.axis_len_x//shape_reshape_cfg.diameter_x
-        ,b=shape_reshape_cfg.axis_len_y//shape_reshape_cfg.diameter_y, x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
+        ,a=to_reshape_back_x
+        ,b=to_reshape_back_y
+        ,x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
+    # texture_information= einops.rearrange(texture_information,'bb (a b) x y->bb (a x) (b y)'
+    #     ,a=shape_reshape_cfg.axis_len_x//shape_reshape_cfg.diameter_x
+    #     ,b=shape_reshape_cfg.axis_len_y//shape_reshape_cfg.diameter_y
+    #     ,x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
     # texture_information= einops.rearrange( texture_information,'a x y->(a x y)')
     #undo padding
     texture_information= texture_information[:,

@@ -68,8 +68,11 @@ class SpixelNet(nn.Module):
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
         #we recreate the image using a supervoxels
         image_roconstruction_loss=jnp.mean(optax.l2_loss(out_image,image[:,:,:,0]).flatten())
-
-        losses= jnp.mean(jnp.stack([losses_1,losses_2,losses_3],axis=0),axis=0)
+        #adding corrections as local loses are not equally important
+        losses= jnp.mean(jnp.stack([losses_1*self.cfg.deconves_importances[0]
+                                    ,losses_2*self.cfg.deconves_importances[1]
+                                    ,losses_3*self.cfg.deconves_importances[2]
+                                    ],axis=0),axis=0)
         losses= jnp.append(losses,image_roconstruction_loss)
         ##consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,consistency_between_masks_loss,image_roconstruction_loss=losses
 

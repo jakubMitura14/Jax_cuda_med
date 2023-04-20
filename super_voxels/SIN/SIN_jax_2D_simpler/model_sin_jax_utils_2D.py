@@ -202,6 +202,37 @@ class Apply_on_single_area(nn.Module):
     translation_val:int
     diameter_x:int
     diameter_y:int
+    p_x:int
+    p_y:int
+    to_reshape_back_x:int
+    to_reshape_back_y:int    
+    # def setup(self):
+    #     self.p_x_y=np.array([np.maximum(((self.diameter_x-1)//2)-1,0),np.maximum(((self.diameter_y-1)//2)-1,0)])#-shape_reshape_cfg.shift_y
+    #     self.p_x_y= tuple([self.p_x_y[0],self.p_x_y[1]])
+
+    def select_set_non_overlapping_regions(self,index):
+        """
+        in order are for shift_x,shift_y
+        0) 0 0
+        1) 1 0
+        2) 0 1
+        3) 1 1
+        """        
+        def fun_ff():
+            return set_non_overlapping_regions(self.diameter_x,self.diameter_y,0,0,self.p_x,self.p_y)
+            
+        def fun_tf():
+            return set_non_overlapping_regions(self.diameter_x,self.diameter_y,1,0,self.p_x,self.p_y)
+            
+        def fun_ft():
+            return set_non_overlapping_regions(self.diameter_x,self.diameter_y,0,1,self.p_x,self.p_y)
+
+        def fun_tt():
+            return set_non_overlapping_regions(self.diameter_x,self.diameter_y,1,1,self.p_x,self.p_y)
+
+        functions_list=[fun_ff,fun_tf,fun_ft,fun_tt]
+        return jax.lax.switch(index,functions_list)
+
 
     @nn.compact
     def __call__(self
@@ -226,7 +257,7 @@ class Apply_on_single_area(nn.Module):
         # mask_combined=mask_combined.at[-1,:].set(0) 
         
         #we assume diameter x and y are the same
-        region_non_overlap=set_non_overlapping_regions(jnp.zeros_like(mask_combined),self.diameter_x,self.diameter_y,mask_index )
+        region_non_overlap=self.select_set_non_overlapping_regions(mask_index)
         average_coverage_loss= jnp.sum(optax.l2_loss(mask_combined,region_non_overlap).flatten())
 
         masked_image=jnp.multiply(mask_combined,resized_image)
@@ -287,9 +318,23 @@ class De_conv_batched_for_scan(nn.Module):
         self.shape_reshape_cfgs=get_all_shape_reshape_constants(self.cfg,r_x=self.r_x,r_y=self.r_y)
         self.shape_reshape_cfg_olds=get_all_shape_reshape_constants(self.cfg,r_x=rss[0], r_y=rss[1])
 
-        self.diameter_x=self.shape_reshape_cfgs[0].diameter_x
-        self.diameter_y=self.shape_reshape_cfgs[0].diameter_y
+        self.diameter_x=self.shape_reshape_cfgs[0].diameter_x #get_diameter_no_pad(cfg.r_x_total -self.r_x)
+        self.diameter_y=self.shape_reshape_cfgs[0].diameter_y #get_diameter_no_pad(cfg.r_y_total-self.r_y)# self.shape_reshape_cfgs[0].diameter_y
+        self.axis_len_x=self.shape_reshape_cfgs[0].axis_len_x #get_diameter_no_pad(cfg.r_y_total-self.r_y)# self.shape_reshape_cfgs[0].diameter_y
+        self.axis_len_y=self.shape_reshape_cfgs[0].axis_len_y #get_diameter_no_pad(cfg.r_y_total-self.r_y)# self.shape_reshape_cfgs[0].diameter_y
 
+
+        self.p_x_y=np.array([np.maximum(((self.diameter_x-1)//2)-1,0),np.maximum(((self.diameter_y-1)//2)-1,0)])#-shape_reshape_cfg.shift_y
+        self.p_x_y= (self.p_x_y[0],self.p_x_y[1])
+        self.to_reshape_back_x=np.floor_divide(self.axis_len_x,self.diameter_x)
+        self.to_reshape_back_y=np.floor_divide(self.axis_len_y,self.diameter_y)
+
+
+        strides=[1,1]  
+        if(self.dim_stride==-1):
+            strides=[2,2]
+        strides[self.dim_stride]=2 
+        self.conv_strides=tuple(strides)           
 
     def select_shape_reshape_operation(self,arr,index,shape_reshape_cfgs,fun):
         """
@@ -314,7 +359,28 @@ class De_conv_batched_for_scan(nn.Module):
         functions_list=[fun_ff,fun_tf,fun_ft,fun_tt]
         return jax.lax.switch(index,functions_list)
 
+    def select_recreate_orig_shape(self,arr,index):
+        """
+        in order are for shift_x,shift_y
+        0) 0 0
+        1) 1 0
+        2) 0 1
+        3) 1 1
+        """
+        def fun_ff():
+            return recreate_orig_shape(arr,self.shape_reshape_cfgs[0],self.to_reshape_back_x,self.to_reshape_back_y )
+            
+        def fun_tf():
+            return recreate_orig_shape(arr,self.shape_reshape_cfgs[1],self.to_reshape_back_x,self.to_reshape_back_y )
+            
+        def fun_ft():
+            return recreate_orig_shape(arr,self.shape_reshape_cfgs[2],self.to_reshape_back_x,self.to_reshape_back_y )
 
+        def fun_tt():
+            return recreate_orig_shape(arr,self.shape_reshape_cfgs[3],self.to_reshape_back_x,self.to_reshape_back_y )
+
+        functions_list=[fun_ff,fun_tf,fun_ft,fun_tt]
+        return jax.lax.switch(index,functions_list)
     # def __call__(self, image:jnp.ndarray, mask:jnp.ndarray,deconv_multi:jnp.ndarray,shape_reshape_index:int) -> jnp.ndarray:
     @nn.compact
     def __call__(self, curried:jnp.ndarray, mask:jnp.ndarray,mask_index:int) -> jnp.ndarray:
@@ -333,22 +399,27 @@ class De_conv_batched_for_scan(nn.Module):
         image= einops.rearrange(image,'b w h c->b w (h c)',c=1)
         resized_image= jax.image.resize(image, self.deconved_shape, "linear")
         #concatenating resized image and convolving it to get a single channel new mask
-        maskk= jnp.stack([mask,curried_mask],axis=-1)
-        cat_conv_multi= jnp.concatenate([maskk,deconv_multi], axis=-1)
-        cat_conv_multi=remat(Conv_trio)(self.cfg,12)(cat_conv_multi) 
-        mask_new=nn.Conv(2, kernel_size=(5,5))(cat_conv_multi)
+        maskk= remat(De_conv_not_sym)(self.cfg,2,self.dim_stride)(einops.rearrange(mask,'b w h-> b w h 1'))
+        maskk= jnp.concatenate([maskk,einops.rearrange(curried_mask,'b w h-> b w h 1')],axis=-1)
+        # image_to_concat=jax.image.resize(image, self.current_shape, "linear")
+        cat_conv_multi= jnp.concatenate([maskk,einops.rearrange(resized_image,'b w h-> b w h 1'),deconv_multi], axis=-1)
+        cat_conv_multi=remat(Conv_trio)(self.cfg,self.features)(cat_conv_multi) 
+        cat_conv_multi=remat(Conv_trio)(self.cfg,self.features)(cat_conv_multi) 
+        cat_conv_multi=remat(Conv_trio)(self.cfg,self.features)(cat_conv_multi) 
+        mask_new=remat(nn.Conv)(2, kernel_size=(5,5),strides=self.conv_strides)(cat_conv_multi)
         #we want to interpret it as probabilities 
         #trying tanh as may be better then sigmoid but as it has a codomain range -1 to 1
         # we need to add corrections for it 
         # mask_new = (jnp.tanh(mask_new)+1)/2
         mask_new= nn.softmax(mask_new,axis=-1)[:,:,:,0]        
 
+
+
         ############ shape apply reshape 
         #get constants required to divide image into individual supervoxel areas
         # shape_reshape_cfg=self.shape_reshape_cfgs[0] #get_shape_reshape_constants(self.cfg,shift_x,shift_y,self.r_x,self.r_y)
         # shape_reshape_cfg_old=self.shape_reshape_cfg_olds[0]#=get_shape_reshape_constants(self.cfg,shift_x,shift_y,self.rss[0],self.rss[1])
 
-        print(f"before reshape  resized_image {resized_image.shape} mask_new {mask_new.shape} mask {mask.shape}")
 
 
         resized_image=self.select_shape_reshape_operation(resized_image,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
@@ -358,7 +429,6 @@ class De_conv_batched_for_scan(nn.Module):
         # mask_new=divide_sv_grid(mask_new,shape_reshape_cfg_old)
         # mask=divide_sv_grid(mask,shape_reshape_cfg_old)
 
-        print(f"after reshape  resized_image {resized_image.shape} mask_new {mask_new.shape} mask {mask.shape}")
         mask,out_image,losses=batched_v_Apply_on_single_area(self.cfg
                                                 ,self.rearrange_to_intertwine_einops
                                                 ,self.dim_stride 
@@ -367,15 +437,22 @@ class De_conv_batched_for_scan(nn.Module):
                                                 ,self.translation_val
                                                 ,self.diameter_x
                                                 ,self.diameter_y
+                                                ,self.p_x_y[0]
+                                                ,self.p_x_y[1]
+                                                ,self.to_reshape_back_x
+                                                ,self.to_reshape_back_y
                                                 )(resized_image,mask_new,mask,mask_index)
 
+        mask=self.select_recreate_orig_shape(mask,mask_index)
+        out_image=self.select_recreate_orig_shape(out_image,mask_index)
 
-        mask=self.select_shape_reshape_operation(mask,mask_index,self.shape_reshape_cfgs,recreate_orig_shape)
-        out_image=self.select_shape_reshape_operation(out_image,mask_index,self.shape_reshape_cfgs,recreate_orig_shape)
+        # mask=self.select_shape_reshape_operation(mask,mask_index,self.shape_reshape_cfgs,recreate_orig_shape)
+        # out_image=self.select_shape_reshape_operation(out_image,mask_index,self.shape_reshape_cfgs,recreate_orig_shape)
         # mask=recreate_orig_shape(mask,shape_reshape_cfg)
         # out_image=recreate_orig_shape(out_image,shape_reshape_cfg)
         losses=jnp.mean(losses,axis=0)
-        return ( ((curried_mask+mask),image,deconv_multi) , (mask,out_image,losses) )
+        accum_mask=(curried_mask+mask)
+        return ( (accum_mask,einops.rearrange(image,'b w h-> b w h 1'),deconv_multi) , (mask,out_image,losses) )
 
 
 class De_conv_batched_multimasks(nn.Module):
@@ -404,8 +481,9 @@ class De_conv_batched_multimasks(nn.Module):
 
 
 
-        self.deconved_shape = ( cfg.batch_size_pmapped,cfg.img_size[2]//2**(cfg.r_x_total -rss[0]),cfg.img_size[3]//2**(cfg.r_y_total-rss[1]))
-
+        self.deconved_shape = (self.cfg.batch_size_pmapped,cfg.img_size[2]//2**(cfg.r_x_total -self.r_x),cfg.img_size[3]//2**(cfg.r_y_total-self.r_y))
+        self.current_shape = (self.cfg.batch_size_pmapped,cfg.img_size[2]//2**(cfg.r_x_total-rss[0]),cfg.img_size[3]//2**(cfg.r_y_total-rss[1]))
+        
         self.scanned_de_cov_batched=  nn.scan(De_conv_batched_for_scan,
                                 variable_broadcast="params", #parametters are shared
                                 split_rngs={'params': False},
@@ -417,13 +495,12 @@ class De_conv_batched_multimasks(nn.Module):
     @nn.compact
     def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray) -> jnp.ndarray:
         
-        deconv_multi=remat(Conv_trio)(self.cfg,self.features)(deconv_multi)#no stride
-        deconv_multi=remat(Conv_trio)(self.cfg,self.features)(deconv_multi)#no stride
+        deconv_multi=remat(De_conv_not_sym)(self.cfg,self.features,self.dim_stride)(deconv_multi)
         deconv_multi=remat(Conv_trio)(self.cfg,self.features)(deconv_multi)#no stride
         deconv_multi=remat(Conv_trio)(self.cfg,self.features)(deconv_multi)#no stride
         deconv_multi=remat(Conv_trio)(self.cfg,self.features)(deconv_multi)#no stride
 
-        curried=jnp.zeros(self.deconved_shape), image,deconv_multi
+        curried= jnp.zeros(self.deconved_shape), image,deconv_multi
 
         # krowa maybe apply reshaping here of each mask 
 
@@ -437,14 +514,14 @@ class De_conv_batched_multimasks(nn.Module):
                                                     ,self.features)(curried,masks,jnp.arange(self.cfg.masks_num) )
         masks,out_image,losses= accum 
 
-
-        deconv_multi=De_conv_not_sym(self.cfg,self.features,self.dim_stride)(deconv_multi)
+        #reducing the scanned ...        
         out_image= jnp.sum(out_image,axis=1)
-        losses= jnp.mean(losses,axis=1)
-        #after we got through all shift configuration we need to check consistency between masks
+        losses= jnp.mean(losses,axis=(0,1))
         summed= jnp.sum(masks,axis=1)
-        consistency_between_masks_loss=jnp.mean(optax.l2_loss(jnp.ones_like(summed), summed).flatten())
-        
+
+        #after we got through all shift configuration we need to check consistency between masks
+        consistency_between_masks_loss=jnp.mean(optax.l2_loss(jnp.ones_like(summed), summed).flatten(),keepdims=True)
+
         losses=jnp.append(losses, consistency_between_masks_loss, axis=0)
         #consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,=consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,consistency_between_masks_loss=losses
 
