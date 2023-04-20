@@ -547,7 +547,7 @@ class De_conv_3_dim(nn.Module):
     @nn.compact
     def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray) -> jnp.ndarray:
         
-        deconv_multi,masks,out_image,losses_1=De_conv_batched_multimasks(self.cfg
+        deconv_multi,masks,out_image,losses_1=remat(De_conv_batched_multimasks)(self.cfg
                                    ,0#dim_stride
                                    ,self.r_x
                                    ,self.r_y-1
@@ -555,7 +555,7 @@ class De_conv_3_dim(nn.Module):
                                    ,self.translation_val
                                    ,self.features)(image,masks,deconv_multi)
         
-        deconv_multi,masks,out_image,losses_2=De_conv_batched_multimasks(self.cfg
+        deconv_multi,masks,out_image,losses_2=remat(De_conv_batched_multimasks)(self.cfg
                                    ,1#dim_stride
                                    ,self.r_x
                                    ,self.r_y

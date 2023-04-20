@@ -75,7 +75,6 @@ class SpixelNet(nn.Module):
                                     ],axis=0),axis=0)
         losses= jnp.append(losses,image_roconstruction_loss)
         ##consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,consistency_between_masks_loss,image_roconstruction_loss=losses
-
         return (losses,out_image,masks)
 
 
