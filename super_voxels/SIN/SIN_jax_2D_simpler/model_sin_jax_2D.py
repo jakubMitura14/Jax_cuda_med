@@ -52,22 +52,19 @@ class SpixelNet(nn.Module):
                        ,64
                       ,1#r_x
                       ,1#r_y
-                      ,translation_val=1
-                      ,module_to_use_non_batched=De_conv_non_batched)(image,self.initial_masks,out4 )
+                      ,translation_val=1)(image,self.initial_masks,out4 )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
         deconv_multi,masks, out_image,losses_2=De_conv_3_dim(self.cfg
                       ,32
                       ,2#r_x
                       ,2#r_y
-                      ,translation_val=2
-                      ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi )
+                      ,translation_val=2)(image,masks,deconv_multi )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
         deconv_multi,masks, out_image,losses_3=De_conv_3_dim(self.cfg
                       ,16
                       ,3#r_x
                       ,3#r_y
-                      ,translation_val=4
-                      ,module_to_use_non_batched=De_conv_non_batched)(image,masks,deconv_multi)
+                      ,translation_val=4)(image,masks,deconv_multi)
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
         #we recreate the image using a supervoxels
         image_roconstruction_loss=jnp.mean(optax.l2_loss(out_image,image[:,:,:,0]).flatten())

@@ -144,10 +144,16 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
     to_remove_from_end= (shift*is_odd)*r_to_pad + ((1-shift)*is_even)*r_to_pad
     axis_len_prim=for_pad_beg+current_grid_shape[axis]-to_remove_from_end
     #how much padding we need to make it divisible by diameter
-    for_pad_rem= np.remainder(axis_len_prim,diameter)
-    to_pad_end=diameter-np.remainder(axis_len_prim,diameter)
-    if(for_pad_rem==0):
-        to_pad_end=0
+    for_pad_rem= jnp.remainder(axis_len_prim,diameter)
+    to_pad_end=diameter-jnp.remainder(axis_len_prim,diameter)
+
+    # if(for_pad_rem==0):
+    #     to_pad_end=0
+
+    f1 = lambda: 0
+    f2 = lambda: to_pad_end
+    to_pad_end=jax.lax.cond(for_pad_rem==0,f1,f2)
+ 
     axis_len=axis_len_prim+to_pad_end    
     return for_pad_beg,to_remove_from_end,axis_len_prim,axis_len,to_pad_end     
 
@@ -182,60 +188,23 @@ def divide_sv_grid(res_grid: jnp.ndarray,shape_reshape_cfg):
     #first we cut out all areas not covered by current supervoxels
     # end_a=shape_reshape_cfg_arr[18]- shape_reshape_cfg_arr[1]
     # end_b=shape_reshape_cfg_arr[19]- shape_reshape_cfg_arr[5]
-    # # end_a=shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
-    # # end_b=shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y
-
-
-    # # cutted=lax.dynamic_slice(res_grid, (0, 0), jnp.stack([end_a,end_b]))
-    # cutted=lax.dynamic_slice(res_grid, jnp.array([0, 0]), jnp.stack([end_a,end_b]))
-    # cutted=lax.dynamic_slice(res_grid, jnp.array([0, 0]), jnp.stack([index,index]))
-
-    cutted=res_grid[0: shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
-                    ,0: shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y]
-    cutted= jnp.pad(cutted,(
-                        (shape_reshape_cfg.to_pad_beg_x,shape_reshape_cfg.to_pad_end_x)
-                        ,(shape_reshape_cfg.to_pad_beg_y,shape_reshape_cfg.to_pad_end_y )
-                        ))
-    cutted=einops.rearrange( cutted,'(a x) (b y)-> (a b) x y', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
-    return cutted
-
-@partial(jax.jit, static_argnames=['end_a','end_b'])
-def divide_sv_grid_debug(res_grid: jnp.ndarray,shape_reshape_cfg_arr,index,end_a,end_b):
-    """
-    as the supervoxel will overlap we need to have a way to divide the array with supervoxel ids
-    into the set of non overlapping areas - we want thos area to be maximum possible area where we could find
-    any voxels associated with this supervoxels- the "radius" of this cube hence can be calculated based on the amount of dilatations made
-    becouse of this overlapping we need to be able to have at least 8 diffrent divisions
-    we can work them out on the basis of the fact where we start at each axis at 0 or r - and do it for
-    all axis permutations 2**3 =8
-    we need also to take care about padding after removing r from each axis the grid need to be divisible by 2*r+1
-    as the first row and column do not grow back by construction if there is no shift we always need to add r padding rest of pad to the end
-    in case no shift is present all padding should go at the end
-    """
-
-
-    shape_reshape_cfg=array_toshape_reshape_constants(shape_reshape_cfg_arr)
-    #first we cut out all areas not covered by current supervoxels
-    # end_a=shape_reshape_cfg_arr[18]- shape_reshape_cfg_arr[1]
-    # end_b=shape_reshape_cfg_arr[19]- shape_reshape_cfg_arr[5]
     # end_a=shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
     # end_b=shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y
+    # print(f"end_a {end_a} ")
+    # cutted=lax.dynamic_slice_in_dim(res_grid, 0, end_a, axis=1)#[0,:]
+    # cutted=lax.dynamic_slice_in_dim(cutted, 0, end_b, axis=2)#[0,:]
+    # # # cutted=lax.dynamic_slice(res_grid, (0, 0), jnp.stack([end_a,end_b]))
+    # cutted=lax.dynamic_slice(res_grid, jnp.array([0, 0,0]), jnp.stack([5,end_a,end_b]))
+    # # cutted=lax.dynamic_slice(res_grid, jnp.array([0, 0]), jnp.stack([index,index]))
 
-
-    # cutted=lax.dynamic_slice(res_grid, (0, 0), jnp.stack([end_a,end_b]))
-    cutted=lax.dynamic_slice(res_grid, jnp.array([0, 0]), jnp.concatenate([end_a,end_b]))
-    # cutted=lax.dynamic_slice(res_grid, jnp.array([0, 0]), jnp.stack([index,index]))
-
-    # cutted=res_grid[0: shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
-    #                 ,0: shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y]
-    cutted= jnp.pad(cutted,(
+    cutted=res_grid[:,0: shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
+                    ,0: shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y]
+    cutted= jnp.pad(cutted,((0,0),
                         (shape_reshape_cfg.to_pad_beg_x,shape_reshape_cfg.to_pad_end_x)
                         ,(shape_reshape_cfg.to_pad_beg_y,shape_reshape_cfg.to_pad_end_y )
                         ))
-    cutted=einops.rearrange( cutted,'(a x) (b y)-> (a b) x y', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
+    cutted=einops.rearrange( cutted,'bb (a x) (b y)->bb (a b) x y', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
     return cutted
-
-
 
 
 def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg_arr):
@@ -245,18 +214,17 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg_arr):
     """
     shape_reshape_cfg=array_toshape_reshape_constants(shape_reshape_cfg_arr)
     # undo axis reshuffling
-    texture_information= einops.rearrange(texture_information,'(a b) x y->(a x) (b y)'
+    texture_information= einops.rearrange(texture_information,'bb (a b) x y->bb (a x) (b y)'
         ,a=shape_reshape_cfg.axis_len_x//shape_reshape_cfg.diameter_x
         ,b=shape_reshape_cfg.axis_len_y//shape_reshape_cfg.diameter_y, x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
     # texture_information= einops.rearrange( texture_information,'a x y->(a x y)')
     #undo padding
-    texture_information= texture_information[
+    texture_information= texture_information[:,
             shape_reshape_cfg.to_pad_beg_x: shape_reshape_cfg.axis_len_x- shape_reshape_cfg.to_pad_end_x
             ,shape_reshape_cfg.to_pad_beg_y:shape_reshape_cfg.axis_len_y- shape_reshape_cfg.to_pad_end_y  ]
-    
-
+   
     #undo cutting
-    texture_information= jnp.pad(texture_information,(
+    texture_information= jnp.pad(texture_information,((0,0),
                         (0,shape_reshape_cfg.to_remove_from_end_x)
                         ,(0,shape_reshape_cfg.to_remove_from_end_y )
                         ))
@@ -271,8 +239,8 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
     diameter_x=get_diameter(r_x)
     diameter_y=get_diameter(r_y)
     curr_image_shape= (cfg.img_size[2]//2**(cfg.r_x_total-r_x),cfg.img_size[3]//2**(cfg.r_y_total-r_y))
-    shift_x=int(shift_x)
-    shift_y=int(shift_y)
+    # shift_x=int(shift_x)
+    # shift_y=int(shift_y)
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(curr_image_shape,0,r_x,shift_x,cfg.orig_grid_shape,diameter_x)
     to_pad_beg_y,to_remove_from_end_y,axis_len_prim_y,axis_len_y,to_pad_end_y   =for_pad_divide_grid(curr_image_shape,1,r_y,shift_y,cfg.orig_grid_shape,diameter_y)
 
@@ -309,8 +277,12 @@ def get_all_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.
     2) 0 1
     3) 1 1
     """
-    arr=[shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=0,shift_y=0, r_x=r_x, r_y=r_y ))
-           ,shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=1,shift_y=0, r_x=r_x, r_y=r_y ))
-           ,shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=0,shift_y=1, r_x=r_x, r_y=r_y ))
-           ,shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=1,shift_y=1, r_x=r_x, r_y=r_y ))]
-    return jnp.stack(arr)
+    return[get_shape_reshape_constants(cfg,shift_x=0,shift_y=0, r_x=r_x, r_y=r_y )
+           ,get_shape_reshape_constants(cfg,shift_x=1,shift_y=0, r_x=r_x, r_y=r_y )
+           ,get_shape_reshape_constants(cfg,shift_x=0,shift_y=1, r_x=r_x, r_y=r_y )
+           ,get_shape_reshape_constants(cfg,shift_x=1,shift_y=1, r_x=r_x, r_y=r_y )]
+    # arr=[shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=0,shift_y=0, r_x=r_x, r_y=r_y ))
+    #        ,shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=1,shift_y=0, r_x=r_x, r_y=r_y ))
+    #        ,shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=0,shift_y=1, r_x=r_x, r_y=r_y ))
+    #        ,shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=1,shift_y=1, r_x=r_x, r_y=r_y ))]
+    # return jnp.stack(arr)
