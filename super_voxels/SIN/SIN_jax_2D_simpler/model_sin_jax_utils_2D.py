@@ -243,6 +243,13 @@ v_Apply_on_single_area=nn.vmap(Apply_on_single_area
                             ,split_rngs={'params': True}
                             )
 
+batched_v_Apply_on_single_area=nn.vmap(v_Apply_on_single_area
+                            ,in_axes=(0, 0,0)
+                            ,variable_axes={'params': None} #parametters are shared
+                            ,split_rngs={'params': True}
+                            )
+
+
 class Shape_apply_reshape(nn.Module):
     """
     we are here dividing the main arrays into the areas that are encompassing all possible points where the given supervoxel may
@@ -281,8 +288,10 @@ class Shape_apply_reshape(nn.Module):
     def __call__(self, resized_image:jnp.ndarray
                  ,mask:jnp.ndarray
                  ,mask_new:jnp.ndarray
-                 ,shape_reshape_index:int) -> jnp.ndarray:
-        
+                 ,shift_x:int
+                 ,shift_y:int
+                 ) -> jnp.ndarray:
+        print("uuuuuuuuuuuuu")
         shape_reshape_cfg=get_shape_reshape_constants(self.cfg,shift_x,shift_y,self.r_x,self.r_y)
 
         # print("aaaa")
@@ -295,10 +304,11 @@ class Shape_apply_reshape(nn.Module):
 
         # lax.dynamic_slice_in_dim(self.shape_reshape_cfgs, shape_reshape_index, 1, axis=0)[0]
 
-        end_a=lax.dynamic_slice_in_dim(self.end_a, shape_reshape_index, 1, axis=0)
-        end_b=lax.dynamic_slice_in_dim(self.end_b, shape_reshape_index, 1, axis=0)
-
+        # end_a=lax.dynamic_slice_in_dim(self.end_a, shape_reshape_index, 1, axis=0)
+        # end_b=lax.dynamic_slice_in_dim(self.end_b, shape_reshape_index, 1, axis=0)
+        shape_reshape_index=1
         resized_image=divide_sv_grid(resized_image,shape_reshape_cfg)
+        print("ssssssssssssssssssssssssssss")
         # resized_image=divide_sv_grid_debug(resized_image,lax.dynamic_slice_in_dim(shape_reshape_cfgs, shape_reshape_index, 1, axis=0)[0,:],shape_reshape_index,end_a,end_b)
         mask_new=divide_sv_grid(mask_new,lax.dynamic_slice_in_dim(self.shape_reshape_cfg_olds, shape_reshape_index, 1, axis=0)[0,:])
         mask_old=divide_sv_grid(mask,lax.dynamic_slice_in_dim(self.shape_reshape_cfg_olds, shape_reshape_index, 1, axis=0)[0,:])
@@ -354,7 +364,7 @@ class De_conv_non_batched(nn.Module):
         self.current_shape = (cfg.img_size[2]//2**(cfg.r_x_total-rss[0]),cfg.img_size[3]//2**(cfg.r_y_total-rss[1]))
 
     @nn.compact
-    def __call__(self, image:jnp.ndarray, mask:jnp.ndarray,mask_old:jnp.ndarray,deconv_multi:jnp.ndarray,shape_reshape_index:int) -> jnp.ndarray:    
+    def __call__(self, image:jnp.ndarray, mask:jnp.ndarray,mask_old:jnp.ndarray,deconv_multi:jnp.ndarray,shift_x,shift_y) -> jnp.ndarray:    
         
         """
         image should be in original size - here we will downsample it via linear interpolation
@@ -386,7 +396,7 @@ class De_conv_non_batched(nn.Module):
                             ,self.rearrange_to_intertwine_einops
                             ,self.current_shape
                             ,self.deconved_shape
-                            ,self.translation_val)(resized_image,mask,mask_new,shape_reshape_index)
+                            ,self.translation_val)(resized_image,mask,mask_new,shift_x,shift_y)
         
 
 
@@ -454,23 +464,25 @@ class De_conv_batched_for_scan(nn.Module):
 
     def setup(self):
         self.module_to_use_batched=nn.vmap(self.module_to_use_non_batched
-                            ,in_axes=(0, 0,0,0,None)
-                            ,out_axes=(0, 0,0,0)
+                            ,in_axes=(0, 0,0,0,0,None)
+                            # ,out_axes=(0, 0,0,0)
                             ,variable_axes={'params': None} #parametters are shared
                             ,split_rngs={'params': True}
                             )
     # def __call__(self, image:jnp.ndarray, mask:jnp.ndarray,deconv_multi:jnp.ndarray,shape_reshape_index:int) -> jnp.ndarray:
     @nn.compact
-    def __call__(self, curried:jnp.ndarray, mask:jnp.ndarray,shape_reshape_index:int ) -> jnp.ndarray:
+    def __call__(self, curried:jnp.ndarray, mask:jnp.ndarray,shift_x:int,shift_y:int ) -> jnp.ndarray:
         curried_mask, image,deconv_multi=curried
 
         # mask,mask_not_enlarged ,out_image,losses=self.module_to_use_batched(self.cfg
+        # mask,mask_not_enlarged ,out_image,losses =self.module_to_use_batched(self.cfg
         mask,mask_not_enlarged ,out_image,losses =self.module_to_use_batched(self.cfg
                         ,self.dim_stride
                         ,self.r_x
                         ,self.r_y
                         ,self.rearrange_to_intertwine_einops
-                        ,self.translation_val)(image,mask,curried_mask,deconv_multi,shape_reshape_index)
+                        ,self.translation_val)(image,mask,curried_mask,deconv_multi,shift_x,shift_y)
+        
         return ( ((curried_mask+mask),image,deconv_multi) , (mask,out_image,losses) )
 
 
@@ -506,7 +518,7 @@ class De_conv_batched_multimasks(nn.Module):
                                 variable_broadcast="params", #parametters are shared
                                 split_rngs={'params': False},
                                 length=self.cfg.masks_num,
-                                in_axes=(1,0)
+                                in_axes=(1,0,0)
                                 ,out_axes=(1,1,1) ) #masks out_image losses
 
     @nn.compact
@@ -530,7 +542,7 @@ class De_conv_batched_multimasks(nn.Module):
                                                    ,self.rearrange_to_intertwine_einops
                                                    ,self.translation_val
                                                     ,self.features
-                                                     ,self.module_to_use_non_batched )(curried,masks,jnp.arange(self.cfg.masks_num) )
+                                                     ,self.module_to_use_non_batched )(curried,masks,jnp.array([0,1,0,1]),jnp.array([0,0,1,1]) )
         masks,out_image,losses= accum 
 
 
