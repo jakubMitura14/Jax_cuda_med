@@ -59,7 +59,7 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
-cfg.total_steps=60
+cfg.total_steps=500
 cfg.learning_rate=0.0005
 
 
@@ -88,15 +88,27 @@ cfg.initial_loss_weights=(
       ,8.0 #consistency_between_masks_loss
       ,10.0 #image_roconstruction_loss
     )
+# cfg.actual_segmentation_loss_weights=(
+#       0.6 #consistency_loss
+#       ,0.3 #rounding_loss
+#       ,1.0 #feature_variance_loss
+#       ,1.0 #edgeloss
+#       ,0.01 #average_coverage_loss
+#       ,8.0 #consistency_between_masks_loss
+#       ,1.0 #image_roconstruction_loss
+#     )
+
 cfg.actual_segmentation_loss_weights=(
       0.6 #consistency_loss
       ,0.3 #rounding_loss
-      ,1.0 #feature_variance_loss
-      ,1.0 #edgeloss
-      ,0.01 #average_coverage_loss
-      ,8.0 #consistency_between_masks_loss
-      ,1.0 #image_roconstruction_loss
+      ,5.0 #feature_variance_loss
+      ,100.0 #edgeloss
+      ,0.000000001 #average_coverage_loss
+      ,0.5 #consistency_between_masks_loss
+      ,0.5 #image_roconstruction_loss
     )
+
+
 cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 
 ##### tensor board
@@ -169,10 +181,11 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
   params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
   # cosine_decay_scheduler = optax.cosine_decay_schedule(0.000005, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
-  cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
+  # cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   tx = optax.chain(
-        optax.clip_by_global_norm(4.0),  # Clip gradients at norm 
-        optax.lion(learning_rate=cosine_decay_scheduler))
+        optax.clip_by_global_norm(8.0),  # Clip gradients at norm 
+        optax.lion(learning_rate=cfg.learning_rate))
+        # optax.lion(learning_rate=cosine_decay_scheduler))
 
   # cosine_decay_scheduler = optax.cosine_decay_schedule(0.0001, decay_steps=cfg.total_steps, alpha=0.95)
   # tx = optax.chain(
@@ -232,10 +245,15 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
 
 
 
-    cfg.initial_loss_weights #krowa
-    cfg.actual_segmentation_loss_weights
+    # cfg.initial_loss_weights 
+    # cfg.actual_segmentation_loss_weights
 
-    loss_weights=jnp.array(cfg.initial_loss_weights)
+    #after we will get some meaningfull initializations we will get to our goal more directly
+    if(epoch<40):
+      loss_weights=jnp.array(cfg.initial_loss_weights)
+    else:  
+      loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
+
     loss_weights= einops.repeat(loss_weights,'a->pm a',pm=jax.local_device_count())
     grads, losss,losses,out_image,masks =apply_model(state, batch_images,loss_weights,cfg)
     epoch_loss.append(jnp.mean(jax_utils.unreplicate(losss))) 
