@@ -160,23 +160,24 @@ def get_image_features(image:jnp.ndarray,mask:jnp.ndarray):
 def get_translated_mask_variance(image:jnp.ndarray
                                  ,mask:jnp.ndarray
                                  ,translation_val:int
-                                 ,mask_shape:Tuple[int]):
+                                 ,mask_shape:Tuple[int]
+                                 ,feature_loss_multiplier:float):
     """ 
     we will make a translation of the mask in all directions and check wether image features change
     generally the same supervoxel should have the same image features in all of its subregions
     so we want the variance here to be small 
     """
     features=jnp.stack([
-        get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape)),
-        get_image_features(image,translate_mask_in_axis(mask,0,1,translation_val,mask_shape)),
-        get_image_features(image,translate_mask_in_axis(mask,1,0,translation_val,mask_shape)),
-        get_image_features(image,translate_mask_in_axis(mask,1,1,translation_val,mask_shape))
+        get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape))*feature_loss_multiplier,
+        get_image_features(image,translate_mask_in_axis(mask,0,1,translation_val,mask_shape))*feature_loss_multiplier,
+        get_image_features(image,translate_mask_in_axis(mask,1,0,translation_val,mask_shape))*feature_loss_multiplier,
+        get_image_features(image,translate_mask_in_axis(mask,1,1,translation_val,mask_shape))*feature_loss_multiplier
               ])
     feature_variance=jnp.var(features,axis=0)
     # print(f"features {features} feature_variance {feature_variance}")
     return jnp.mean(feature_variance)
 
-def get_edgeloss(image:jnp.ndarray,mask:jnp.ndarray,axis:int):
+def get_edgeloss(image:jnp.ndarray,mask:jnp.ndarray,axis:int,edge_loss_multiplier:float):
     """
     in order to also force the supervoxels to keep to the strong edges
     we can add edge loss that will be comparing a directional gradient of the mask
@@ -186,7 +187,7 @@ def get_edgeloss(image:jnp.ndarray,mask:jnp.ndarray,axis:int):
     image_gradient=jnp.gradient(image,axis=axis)
     mask_gradient=jnp.gradient(mask,axis=axis)
     element_wise_l2=optax.l2_loss(image_gradient,mask_gradient)
-    element_wise_l2= jnp.multiply(element_wise_l2,image_gradient)
+    element_wise_l2= jnp.multiply(element_wise_l2,image_gradient*edge_loss_multiplier)
     return jnp.mean(element_wise_l2.flatten())
 
 class Apply_on_single_area(nn.Module):
@@ -251,8 +252,8 @@ class Apply_on_single_area(nn.Module):
         #calculate image feature variance in the supervoxel itself
         feature_variance_loss=get_translated_mask_variance(resized_image, mask_combined
                                                            ,self.translation_val, (self.diameter_x,
-                                                                                  self.diameter_y )  )
-        edgeloss=get_edgeloss(resized_image,mask_combined,self.dim_stride)
+                                                                                  self.diameter_y ) ,self.cfg.feature_loss_multiplier )
+        edgeloss=get_edgeloss(resized_image,mask_combined,self.dim_stride,self.cfg.feature_loss_multiplier)
         # mask_combined=mask_combined.at[:,-1].set(0) 
         # mask_combined=mask_combined.at[-1,:].set(0) 
         

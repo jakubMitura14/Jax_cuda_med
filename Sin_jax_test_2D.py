@@ -63,6 +63,7 @@ cfg.total_steps=500
 cfg.learning_rate=0.0005
 
 
+
 cfg.batch_size=200
 cfg.batch_size_pmapped=cfg.batch_size//jax.local_device_count()
 cfg.img_size = (cfg.batch_size,1,256,256)
@@ -75,33 +76,28 @@ cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
 ##getting the importance of the losses associated with deconvolutions
 ## generally last one is most similar to the actual image - hence should be most important
 cfg.deconves_importances=(0.1,0.5,1.0)
+#some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
+cfg.edge_loss_multiplier=1000.0
+cfg.feature_loss_multiplier=1000.0
 
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)image_roconstruction_loss
+cfg.initial_weights_epochs_len=20 #number of epochs when initial_loss_weights would be used
 cfg.initial_loss_weights=(
       8.0 #consistency_loss
       ,8.0 #rounding_loss
-      ,0.1 #feature_variance_loss
-      ,0.1 #edgeloss
+      ,0000.1 #feature_variance_loss
+      ,0000.1 #edgeloss
       ,10000 #average_coverage_loss
       ,8.0 #consistency_between_masks_loss
       ,10.0 #image_roconstruction_loss
     )
-# cfg.actual_segmentation_loss_weights=(
-#       0.6 #consistency_loss
-#       ,0.3 #rounding_loss
-#       ,1.0 #feature_variance_loss
-#       ,1.0 #edgeloss
-#       ,0.01 #average_coverage_loss
-#       ,8.0 #consistency_between_masks_loss
-#       ,1.0 #image_roconstruction_loss
-#     )
 
 cfg.actual_segmentation_loss_weights=(
       0.6 #consistency_loss
       ,0.3 #rounding_loss
-      ,5.0 #feature_variance_loss
+      ,10.0 #feature_variance_loss
       ,100.0 #edgeloss
       ,0.000000001 #average_coverage_loss
       ,0.5 #consistency_between_masks_loss
@@ -249,7 +245,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
     # cfg.actual_segmentation_loss_weights
 
     #after we will get some meaningfull initializations we will get to our goal more directly
-    if(epoch<40):
+    if(epoch<cfg.initial_weights_epochs_len):
       loss_weights=jnp.array(cfg.initial_loss_weights)
     else:  
       loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
