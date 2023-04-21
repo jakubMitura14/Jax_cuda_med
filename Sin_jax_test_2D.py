@@ -60,7 +60,7 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
 cfg.total_steps=500
-cfg.learning_rate=0.0005
+cfg.learning_rate=0.001
 
 
 
@@ -85,17 +85,17 @@ cfg.feature_loss_multiplier=1000.0
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)image_roconstruction_loss
 cfg.initial_weights_epochs_len=20 #number of epochs when initial_loss_weights would be used
 cfg.initial_loss_weights=(
-      8.0 #consistency_loss
-      ,8.0 #rounding_loss
+      1.0 #consistency_loss
+      ,1.0 #rounding_loss
       ,0000.1 #feature_variance_loss
       ,0000.1 #edgeloss
       ,10000 #average_coverage_loss
-      ,8.0 #consistency_between_masks_loss
-      ,10.0 #image_roconstruction_loss
+      ,1.0 #consistency_between_masks_loss
+      ,1.0 #image_roconstruction_loss
     )
 
 cfg.actual_segmentation_loss_weights=(
-      0.6 #consistency_loss
+      2.0 #consistency_loss
       ,0.3 #rounding_loss
       ,10.0 #feature_variance_loss
       ,100.0 #edgeloss
@@ -245,10 +245,24 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
     # cfg.actual_segmentation_loss_weights
 
     #after we will get some meaningfull initializations we will get to our goal more directly
+    loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
     if(epoch<cfg.initial_weights_epochs_len):
       loss_weights=jnp.array(cfg.initial_loss_weights)
-    else:  
-      loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
+    else:
+      if(epoch%10==0 or epoch%9==0):
+      # sharpening the masks so they will become closer to 0 or 1 ...
+        loss_weights=jnp.array([
+          0.1 #consistency_loss
+          ,10000000 #rounding_loss
+          ,0.1 #feature_variance_loss
+          ,0.1 #edgeloss
+          ,0.000000001 #average_coverage_loss
+          ,10000 #consistency_between_masks_loss
+          ,0.1 #image_roconstruction_loss
+        ])
+
+
+
 
     loss_weights= einops.repeat(loss_weights,'a->pm a',pm=jax.local_device_count())
     grads, losss,losses,out_image,masks =apply_model(state, batch_images,loss_weights,cfg)
@@ -264,7 +278,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
 
 
     #saving only with index one
-    divisor = 2
+    divisor = 1
     if(index==0 and epoch%divisor==0):
       print(f"batch_images_prim {batch_images_prim.shape}")
       # loss,masks=state.apply_fn({'params': params}, batch_images_prim)
