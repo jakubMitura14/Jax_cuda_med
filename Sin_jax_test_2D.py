@@ -250,7 +250,8 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
 
 
     #saving only with index one
-    if(index==0 and epoch%2==0):
+    divisor = 2
+    if(index==0 and epoch%divisor==0):
       print(f"batch_images_prim {batch_images_prim.shape}")
       # loss,masks=state.apply_fn({'params': params}, batch_images_prim)
 
@@ -279,7 +280,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
       # print(f"ooo out_image {out_image.shape} min {jnp.min(jnp.ravel(out_image))} max {jnp.max(jnp.ravel(out_image))} ")
       # print(f"ooo image_to_disp {image_to_disp.shape} with_boundaries {with_boundaries.shape}")
 
-      if(epoch==0):
+      if(epoch==divisor):
         with file_writer.as_default():
           tf.summary.image(f"image_to_disp",image_to_disp , step=epoch)
 
@@ -293,6 +294,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
         tf.summary.image(f"masks 1",plot_heatmap_to_image(masks[1,:,:]) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks 2",plot_heatmap_to_image(masks[2,:,:]) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks 3",plot_heatmap_to_image(masks[3,:,:]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks summ",plot_heatmap_to_image(jnp.sum(masks),axis=0) , step=epoch,max_outputs=2000)
 
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
       print(f"losses to write {losses.shape}")
@@ -311,9 +313,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
 
 
           tf.summary.scalar(f"mask 0  mean", np.mean(masks[0,:,:].flatten()), step=epoch)
-          tf.summary.scalar(f"mask 0  median", np.median(masks[0,:,:].flatten()), step=epoch)
           tf.summary.scalar(f"mask 1  mean", np.mean(masks[1,:,:].flatten()), step=epoch)
-          tf.summary.scalar(f"mask 1  median", np.median(masks[1,:,:].flatten()), step=epoch)
           tf.summary.scalar(f"mask 2  mean", np.mean(masks[2,:,:].flatten()), step=epoch)
           tf.summary.scalar(f"mask 3  mean", np.mean(masks[3,:,:].flatten()), step=epoch)
 
@@ -362,3 +362,6 @@ toc_loop = time.perf_counter()
 print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 
 
+
+
+# tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board
