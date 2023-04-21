@@ -312,7 +312,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
         tf.summary.image(f"masks 1",plot_heatmap_to_image(masks[1,:,:]) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks 2",plot_heatmap_to_image(masks[2,:,:]) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks 3",plot_heatmap_to_image(masks[3,:,:]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"masks summ",plot_heatmap_to_image(jnp.sum(masks),axis=0) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks summ",plot_heatmap_to_image(jnp.sum(masks,axis=0)) , step=epoch,max_outputs=2000)
 
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
       print(f"losses to write {losses.shape}")
