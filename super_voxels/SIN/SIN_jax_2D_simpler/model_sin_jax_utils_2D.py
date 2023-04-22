@@ -170,17 +170,17 @@ def get_translated_mask_variance(image:jnp.ndarray
     so we want the variance here to be small 
     """
     features=jnp.stack([
-        get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape))*feature_loss_multiplier,
-        get_image_features(image,translate_mask_in_axis(mask,0,1,translation_val,mask_shape))*feature_loss_multiplier,
-        get_image_features(image,translate_mask_in_axis(mask,1,0,translation_val,mask_shape))*feature_loss_multiplier,
-        get_image_features(image,translate_mask_in_axis(mask,1,1,translation_val,mask_shape))*feature_loss_multiplier
+        get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape)),
+        get_image_features(image,translate_mask_in_axis(mask,0,1,translation_val,mask_shape)),
+        get_image_features(image,translate_mask_in_axis(mask,1,0,translation_val,mask_shape)),
+        get_image_features(image,translate_mask_in_axis(mask,1,1,translation_val,mask_shape))
               ])
     maxes= jnp.max(features,axis=0)
     features=features/maxes
 
     feature_variance=jnp.var(features,axis=0)
     # print(f"features {features} feature_variance {feature_variance}")
-    return jnp.mean(feature_variance)
+    return jnp.mean(feature_variance)*feature_loss_multiplier
 
 @partial(jax.profiler.annotate_function, name="get_edgeloss")
 def get_edgeloss(image:jnp.ndarray,mask:jnp.ndarray,axis:int,edge_loss_multiplier:float):

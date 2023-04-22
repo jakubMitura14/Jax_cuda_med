@@ -85,7 +85,7 @@ cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
 cfg.deconves_importances=(0.1,0.5,1.0)
 #some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
 cfg.edge_loss_multiplier=10.0
-cfg.feature_loss_multiplier=1.0
+cfg.feature_loss_multiplier=10.0
 
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
@@ -112,7 +112,7 @@ cfg.actual_segmentation_loss_weights=(
     )
 
 
-cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
+cfg = ml_collections.conficheck_mask_consistencyg_dict.FrozenConfigDict(cfg)
 
 ##### tensor board
 #just removing to reduce memory usage of tensorboard logs
@@ -263,7 +263,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
     loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
     if(epoch<cfg.initial_weights_epochs_len):
       loss_weights=jnp.array(cfg.initial_loss_weights)
-      # dynamic_cfg=dynamic_cfgs[0] TODO(unhash)
+      dynamic_cfg=dynamic_cfgs[0] 
     else:
       if(epoch%10==0 or epoch%9==0):
       # sharpening the masks so they will become closer to 0 or 1 ...
@@ -285,14 +285,16 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
     epoch_loss.append(jnp.mean(jax_utils.unreplicate(losss))) 
     state = update_model(state, grads)
     #checkpointing
-    divisor_checkpoint = 2
+    divisor_checkpoint = 1
 
     if(index==0 and epoch%divisor_checkpoint==0):
       chechpoint_epoch_folder=f"{checkPoint_folder}/{epoch}"
       # os.makedirs(chechpoint_epoch_folder)
 
       orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-      orbax_checkpointer.save(chechpoint_epoch_folder, state)
+      ckpt = {'model': state, 'config': cfg}
+      save_args = orbax_utils.save_args_from_target(ckpt)
+      orbax_checkpointer.save(chechpoint_epoch_folder, ckpt, save_args=save_args)
 
 
     # out_image.block_until_ready()# krowa TODO(remove)
@@ -301,22 +303,11 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
 
 
 
-    # losss_curr,grid_res=jax_utils.unreplicate(pair)
-    # losss_curr,out_image=pair
-    # losss=losss+losss_curr
-
 
     #saving only with index one
     divisor_logging = 1
     if(index==0 and epoch%divisor_logging==0):
       print(f"batch_images_prim {batch_images_prim.shape}")
-      # loss,masks=state.apply_fn({'params': params}, batch_images_prim)
-
-
-
-      # batch_images_prim=einops.rearrange(batch_images_prim, 'c x y->1 c x y' )
-      # batch_label_prim=einops.rearrange(batch_label_prim, 'x y-> 1 x y' )
-
 
       image_to_disp=batch_images_prim[0,:,:]
       print(f"image_to_disp {image_to_disp.shape}")
@@ -343,10 +334,6 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
 
       with file_writer.as_default():
         tf.summary.image(f"out_image",out_image , step=epoch,max_outputs=2000)
-      #   tf.summary.image(f"masks",plot_heatmap_to_image(masks[0,:,:]) , step=0)
-      #   tf.summary.image(f"masks",plot_heatmap_to_image(masks[1,:,:]) , step=1)
-      #   tf.summary.image(f"masks",plot_heatmap_to_image(masks[2,:,:]) , step=2)
-      #   tf.summary.image(f"masks",plot_heatmap_to_image(masks[3,:,:]) , step=3)
         tf.summary.image(f"masks 0",plot_heatmap_to_image(masks[0,:,:]) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks 1",plot_heatmap_to_image(masks[1,:,:]) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks 2",plot_heatmap_to_image(masks[2,:,:]) , step=epoch,max_outputs=2000)
