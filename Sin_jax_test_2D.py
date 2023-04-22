@@ -90,7 +90,7 @@ cfg.feature_loss_multiplier=1.0
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)image_roconstruction_loss
-cfg.initial_weights_epochs_len=35 #number of epochs when initial_loss_weights would be used
+cfg.initial_weights_epochs_len=42 #number of epochs when initial_loss_weights would be used
 cfg.initial_loss_weights=(
       1.0 #consistency_loss
       ,1.0 #rounding_loss

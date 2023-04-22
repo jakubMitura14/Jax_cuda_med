@@ -252,8 +252,9 @@ class Apply_on_single_area(nn.Module):
         feature_variance_loss=get_translated_mask_variance(resized_image, mask_combined
                                                         ,self.translation_val, (self.diameter_x,
                                                                                 self.diameter_y ) ,self.cfg.feature_loss_multiplier )
-        edgeloss=get_edgeloss(resized_image,mask_combined,self.dim_stride,self.cfg.feature_loss_multiplier)
-        return feature_variance_loss,edgeloss
+        # edgeloss=get_edgeloss(resized_image,mask_combined,self.dim_stride,self.cfg.feature_loss_multiplier)
+        # return feature_variance_loss,edgeloss
+        return feature_variance_loss,0.0
 
     def get_average_coverage_loss(self,mask_index,mask_combined):
         if(self.dynamic_cfg.is_beg):
