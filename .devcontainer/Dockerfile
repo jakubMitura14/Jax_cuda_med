@@ -125,10 +125,11 @@ RUN python3 -m  pip install \
     Pillow==9.4.0 \
     scikit-image==0.20.0 \
     imageio==2.26.0 \
-    flax==0.6.6\
+    # flax==0.6.6\
     # optax==git+https://github.com/deepmind/optax.git \
     more-itertools \
-    seaborn
+    seaborn \
+    orbax-checkpoint==0.2.1
     # jax-cosmo==0.1.0 \
     # more-itertools \
     # optax
@@ -142,6 +143,11 @@ RUN python3 -m  pip install \
 
 
 # RUN python3 -m  pip install git+https://github.com/google/flax.git
+
+RUN python3 -m pip install --upgrade "jax[cuda11_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+
+RUN python3 -m pip install -U -qq "git+https://github.com/google/flax.git@main#egg=flax"
 
 RUN python3 -m  pip install git+https://github.com/deepmind/optax.git 
 RUN python3 -m  pip install jraph 

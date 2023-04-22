@@ -52,6 +52,13 @@ import time
 import more_itertools
 import toolz
 from subprocess import Popen
+from flax.training import checkpoints, train_state
+from flax import struct, serialization
+import orbax.checkpoint
+from datetime import datetime
+from flax.training import orbax_utils
+
+
 
 jax.numpy.set_printoptions(linewidth=400)
 
@@ -77,8 +84,8 @@ cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
 ## generally last one is most similar to the actual image - hence should be most important
 cfg.deconves_importances=(0.1,0.5,1.0)
 #some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
-cfg.edge_loss_multiplier=1000.0
-cfg.feature_loss_multiplier=1000.0
+cfg.edge_loss_multiplier=10.0
+cfg.feature_loss_multiplier=1.0
 
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
@@ -97,8 +104,8 @@ cfg.initial_loss_weights=(
 cfg.actual_segmentation_loss_weights=(
       2.0 #consistency_loss
       ,0.3 #rounding_loss
-      ,10.0 #feature_variance_loss
-      ,100.0 #edgeloss
+      ,1.0 #feature_variance_loss
+      ,1.0 #edgeloss
       ,0.000000001 #average_coverage_loss
       ,0.5 #consistency_between_masks_loss
       ,0.5 #image_roconstruction_loss
@@ -222,7 +229,7 @@ def update_model(state, grads):
   return state.apply_gradients(grads=grads)
 
 
-def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs):    
+def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_folder):    
   batch_images,label,batch_labels=dat# here batch_labels is slic
   epoch_loss=[]
   if(batch_images.shape[0]%jax.local_device_count()==0):
@@ -256,7 +263,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs):
     loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
     if(epoch<cfg.initial_weights_epochs_len):
       loss_weights=jnp.array(cfg.initial_loss_weights)
-      dynamic_cfg=dynamic_cfgs[0]
+      # dynamic_cfg=dynamic_cfgs[0] TODO(unhash)
     else:
       if(epoch%10==0 or epoch%9==0):
       # sharpening the masks so they will become closer to 0 or 1 ...
@@ -277,7 +284,19 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs):
     grads, losss,losses,out_image,masks =apply_model(state, batch_images,loss_weights_b,cfg,dynamic_cfg)
     epoch_loss.append(jnp.mean(jax_utils.unreplicate(losss))) 
     state = update_model(state, grads)
-    out_image.block_until_ready()# krowa TODO(remove)
+    #checkpointing
+    divisor_checkpoint = 2
+
+    if(index==0 and epoch%divisor_checkpoint==0):
+      chechpoint_epoch_folder=f"{checkPoint_folder}/{epoch}"
+      # os.makedirs(chechpoint_epoch_folder)
+
+      orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+      orbax_checkpointer.save(chechpoint_epoch_folder, state)
+
+
+    # out_image.block_until_ready()# krowa TODO(remove)
+    out_image
 #     print(f"after apply_model losses {losses.shape}")
 
 
@@ -288,8 +307,8 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs):
 
 
     #saving only with index one
-    divisor = 1
-    if(index==0 and epoch%divisor==0):
+    divisor_logging = 1
+    if(index==0 and epoch%divisor_logging==0):
       print(f"batch_images_prim {batch_images_prim.shape}")
       # loss,masks=state.apply_fn({'params': params}, batch_images_prim)
 
@@ -318,7 +337,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs):
       # print(f"ooo out_image {out_image.shape} min {jnp.min(jnp.ravel(out_image))} max {jnp.max(jnp.ravel(out_image))} ")
       # print(f"ooo image_to_disp {image_to_disp.shape} with_boundaries {with_boundaries.shape}")
 
-      if(epoch==divisor):
+      if(epoch==divisor_logging):
         with file_writer.as_default():
           tf.summary.image(f"image_to_disp",image_to_disp , step=epoch)
 
@@ -392,11 +411,17 @@ def main_train(cfg):
   cached_subj =get_spleen_data()[0:43]
   cached_subj= add_batches(cached_subj,cfg)
   state = create_train_state(rng_2,cfg,model,dynamic_cfgs[0])
+  now = datetime.now()
+  checkPoint_folder=f"/workspaces/Jax_cuda_med/data/checkpoints/{now}"
+  checkPoint_folder=checkPoint_folder.replace(' ','_')
+  checkPoint_folder=checkPoint_folder.replace(':','_')
+  checkPoint_folder=checkPoint_folder.replace('.','_')
+  os.makedirs(checkPoint_folder)
 
   for epoch in range(1, cfg.total_steps):
       slicee=15
       for index,dat in enumerate(cached_subj) :
-        state=train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs)
+        state=train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_folder)
  
 
 
@@ -423,3 +448,7 @@ print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 # jax.profiler.stop_trace()
 
 # tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board
+
+# with jax.profiler.trace("/workspaces/Jax_cuda_med/data/profiler_data", create_perfetto_link=True):
+#   x = random.uniform(random.PRNGKey(0), (100, 100))
+#   jnp.dot(x, x).block_until_ready() 

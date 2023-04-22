@@ -175,6 +175,9 @@ def get_translated_mask_variance(image:jnp.ndarray
         get_image_features(image,translate_mask_in_axis(mask,1,0,translation_val,mask_shape))*feature_loss_multiplier,
         get_image_features(image,translate_mask_in_axis(mask,1,1,translation_val,mask_shape))*feature_loss_multiplier
               ])
+    maxes= jnp.max(features,axis=0)
+    features=features/maxes
+
     feature_variance=jnp.var(features,axis=0)
     # print(f"features {features} feature_variance {feature_variance}")
     return jnp.mean(feature_variance)
@@ -187,11 +190,14 @@ def get_edgeloss(image:jnp.ndarray,mask:jnp.ndarray,axis:int,edge_loss_multiplie
     and image, hovewer the importance of the loss should be proportional to the strength of the edges
     so we can simply get first the l2 loss element wise than scale it by the image gradient
     """
-    image_gradient=jnp.gradient(image,axis=axis)*edge_loss_multiplier
-    mask_gradient=jnp.gradient(mask,axis=axis)*edge_loss_multiplier
+    image_gradient=jnp.gradient(image,axis=axis)#*edge_loss_multiplier
+    mask_gradient=jnp.gradient(mask,axis=axis)#*edge_loss_multiplier
+    # image_gradient=image_gradient/jnp.max(image_gradient.flatten())
+    # mask_gradient=mask_gradient/jnp.max(mask_gradient.flatten())
+
     element_wise_l2=optax.l2_loss(image_gradient,mask_gradient)
-    element_wise_l2= jnp.multiply(element_wise_l2,image_gradient)
-    return jnp.mean(element_wise_l2.flatten())
+    # element_wise_l2= jnp.multiply(element_wise_l2,image_gradient)*edge_loss_multiplier
+    return jnp.mean(element_wise_l2.flatten())*(-1)
 
 class Apply_on_single_area(nn.Module):
     """
@@ -276,13 +282,15 @@ class Apply_on_single_area(nn.Module):
         # having entries 0 or 1 will maximize the term below so we negate it for loss
         rounding_loss=jnp.mean((-1)*jnp.power(mask_combined-(1-mask_combined),2) )
         #making the values closer to 1 or 0 in a differentiable way
+        average_coverage_loss=self.get_average_coverage_loss(mask_index,mask_combined)
+
         mask_combined=v_v_harder_diff_round(mask_combined)       
         #calculate image feature variance in the supervoxel itself
         feature_variance_loss,edgeloss=self.get_feature_va_and_edge_loss(resized_image,mask_combined)
         # mask_combined=mask_combined.at[:,-1].set(0) 
         # mask_combined=mask_combined.at[-1,:].set(0) 
         
-        average_coverage_loss=self.get_average_coverage_loss(mask_index,mask_combined)
+
 
         masked_image=jnp.multiply(mask_combined,resized_image)
         masked_image_mean=jnp.sum(masked_image)/jnp.sum(mask_combined)
