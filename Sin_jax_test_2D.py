@@ -60,7 +60,7 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
 cfg.total_steps=500
-cfg.learning_rate=0.0005
+cfg.learning_rate=0.0001
 
 
 
