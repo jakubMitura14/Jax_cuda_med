@@ -392,8 +392,8 @@ class De_conv_batched_for_scan(nn.Module):
 
     @partial(jax.profiler.annotate_function, name="in_single_mask_convs")
     def in_single_mask_convs(self,cat_conv_multi):
-        return nn.Sequential([remat(De_conv_not_sym)(self.cfg,self.features,self.dim_stride)
-        ,remat(Conv_trio)(self.cfg,self.features)#no stride
+        return nn.Sequential([
+         remat(Conv_trio)(self.cfg,self.features)#no stride
         ,remat(Conv_trio)(self.cfg,self.features)#no stride
         ,remat(Conv_trio)(self.cfg,self.features)])(cat_conv_multi)#no stride
 
@@ -505,7 +505,6 @@ class De_conv_batched_multimasks(nn.Module):
     @partial(jax.profiler.annotate_function, name="before_mask_scan_scanning_convs")
     def before_mask_scan_scanning_convs(self,deconv_multi):
         return nn.Sequential([remat(De_conv_not_sym)(self.cfg,self.features,self.dim_stride)
-        ,remat(Conv_trio)(self.cfg,self.features)#no stride
         ,remat(Conv_trio)(self.cfg,self.features)#no stride
         ,remat(Conv_trio)(self.cfg,self.features)])(deconv_multi)#no stride
 

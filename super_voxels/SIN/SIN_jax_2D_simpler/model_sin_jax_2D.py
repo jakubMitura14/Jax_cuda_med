@@ -41,7 +41,7 @@ class SpixelNet(nn.Module):
     def __call__(self, image: jnp.ndarray) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
         image=einops.rearrange(image,'b c w h-> b w h c')
-        out4=nn.Sequential([
+        out4=remat(nn.Sequential)([
             Conv_trio(self.cfg,channels=16)
             ,Conv_trio(self.cfg,channels=16,strides=(2,2))
             ,Conv_trio(self.cfg,channels=32,strides=(2,2))
@@ -52,19 +52,19 @@ class SpixelNet(nn.Module):
         # out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
         # out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-        deconv_multi,masks, out_image,losses_1 =De_conv_3_dim(self.cfg
+        deconv_multi,masks, out_image,losses_1 =remat(De_conv_3_dim)(self.cfg
                        ,64
                       ,1#r_x
                       ,1#r_y
                       ,translation_val=1)(image,self.initial_masks,out4 )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
-        deconv_multi,masks, out_image,losses_2=De_conv_3_dim(self.cfg
+        deconv_multi,masks, out_image,losses_2=remat(De_conv_3_dim)(self.cfg
                       ,32
                       ,2#r_x
                       ,2#r_y
                       ,translation_val=2)(image,masks,deconv_multi )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
-        deconv_multi,masks, out_image,losses_3=De_conv_3_dim(self.cfg
+        deconv_multi,masks, out_image,losses_3=remat(De_conv_3_dim)(self.cfg
                       ,16
                       ,3#r_x
                       ,3#r_y

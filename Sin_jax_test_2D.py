@@ -51,7 +51,7 @@ import ml_collections
 import time
 import more_itertools
 import toolz
-
+from subprocess import Popen
 
 jax.numpy.set_printoptions(linewidth=400)
 
@@ -60,7 +60,7 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
 cfg.total_steps=500
-cfg.learning_rate=0.001
+cfg.learning_rate=0.0005
 
 
 
@@ -111,6 +111,12 @@ cfg = ml_collections.config_dict.FrozenConfigDict(cfg)
 #just removing to reduce memory usage of tensorboard logs
 shutil.rmtree('/workspaces/Jax_cuda_med/data/tensor_board')
 os.makedirs("/workspaces/Jax_cuda_med/data/tensor_board")
+
+profiler_dir='/workspaces/Jax_cuda_med/data/profiler_data'
+shutil.rmtree(profiler_dir)
+os.makedirs(profiler_dir)
+
+
 initialise_tracking()
 
 logdir="/workspaces/Jax_cuda_med/data/tensor_board"
@@ -268,6 +274,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
     grads, losss,losses,out_image,masks =apply_model(state, batch_images,loss_weights,cfg)
     epoch_loss.append(jnp.mean(jax_utils.unreplicate(losss))) 
     state = update_model(state, grads)
+    out_image.block_until_ready()# krowa TODO(remove)
 #     print(f"after apply_model losses {losses.shape}")
 
 
@@ -379,7 +386,15 @@ def main_train(cfg):
 
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
 # tensorboard --logdir=/workspaces/Jax_cuda_med/tensor_board
+
+# cmd_terminal=f"tensorboard --logdir=/workspaces/Jax_cuda_med/tensor_board"
+# p = Popen(cmd_terminal, shell=True)
+# p.wait(5)
+
 # jax.profiler.start_server(9999)
+# jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
+# with jax.profiler.trace("/workspaces/Jax_cuda_med/data/profiler_data", create_perfetto_link=True):
+
 tic_loop = time.perf_counter()
 
 main_train(cfg)
@@ -389,7 +404,6 @@ jnp.dot(x, x).block_until_ready()
 toc_loop = time.perf_counter()
 print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 
-
-
+# jax.profiler.stop_trace()
 
 # tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board
