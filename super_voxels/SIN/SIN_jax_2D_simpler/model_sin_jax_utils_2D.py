@@ -187,10 +187,10 @@ def get_edgeloss(image:jnp.ndarray,mask:jnp.ndarray,axis:int,edge_loss_multiplie
     and image, hovewer the importance of the loss should be proportional to the strength of the edges
     so we can simply get first the l2 loss element wise than scale it by the image gradient
     """
-    image_gradient=jnp.gradient(image,axis=axis)
-    mask_gradient=jnp.gradient(mask,axis=axis)
+    image_gradient=jnp.gradient(image,axis=axis)*edge_loss_multiplier
+    mask_gradient=jnp.gradient(mask,axis=axis)*edge_loss_multiplier
     element_wise_l2=optax.l2_loss(image_gradient,mask_gradient)
-    element_wise_l2= jnp.multiply(element_wise_l2,image_gradient*edge_loss_multiplier)
+    element_wise_l2= jnp.multiply(element_wise_l2,image_gradient)
     return jnp.mean(element_wise_l2.flatten())
 
 class Apply_on_single_area(nn.Module):
@@ -199,6 +199,7 @@ class Apply_on_single_area(nn.Module):
     for simplicity of implementation here we are just working on single supervoxel area
     """
     cfg: ml_collections.config_dict.config_dict.ConfigDict
+    dynamic_cfg: ml_collections.config_dict.config_dict.ConfigDict
     rearrange_to_intertwine_einops:str
     dim_stride:int
     curr_shape:Tuple[int]
@@ -238,6 +239,27 @@ class Apply_on_single_area(nn.Module):
         functions_list=[fun_ff,fun_tf,fun_ft,fun_tt]
         return jax.lax.switch(index,functions_list)
 
+
+    def get_feature_va_and_edge_loss(self,resized_image,mask_combined):
+        if(self.dynamic_cfg.is_beg):
+            return 0.0,0.0#jnp.zeros((1,)),jnp.zeros((1,))
+        feature_variance_loss=get_translated_mask_variance(resized_image, mask_combined
+                                                        ,self.translation_val, (self.diameter_x,
+                                                                                self.diameter_y ) ,self.cfg.feature_loss_multiplier )
+        edgeloss=get_edgeloss(resized_image,mask_combined,self.dim_stride,self.cfg.feature_loss_multiplier)
+        return feature_variance_loss,edgeloss
+
+    def get_average_coverage_loss(self,mask_index,mask_combined):
+        if(self.dynamic_cfg.is_beg):
+            #we assume diameter x and y are the same
+            region_non_overlap=self.select_set_non_overlapping_regions(mask_index)
+            average_coverage_loss= jnp.sum(optax.l2_loss(mask_combined,region_non_overlap).flatten())
+            return average_coverage_loss
+        return 0.0#jnp.zeros((1,))    
+
+
+
+
     @partial(jax.profiler.annotate_function, name="Apply_on_single_area")
     @nn.compact
     def __call__(self
@@ -256,16 +278,11 @@ class Apply_on_single_area(nn.Module):
         #making the values closer to 1 or 0 in a differentiable way
         mask_combined=v_v_harder_diff_round(mask_combined)       
         #calculate image feature variance in the supervoxel itself
-        feature_variance_loss=get_translated_mask_variance(resized_image, mask_combined
-                                                           ,self.translation_val, (self.diameter_x,
-                                                                                  self.diameter_y ) ,self.cfg.feature_loss_multiplier )
-        edgeloss=get_edgeloss(resized_image,mask_combined,self.dim_stride,self.cfg.feature_loss_multiplier)
+        feature_variance_loss,edgeloss=self.get_feature_va_and_edge_loss(resized_image,mask_combined)
         # mask_combined=mask_combined.at[:,-1].set(0) 
         # mask_combined=mask_combined.at[-1,:].set(0) 
         
-        #we assume diameter x and y are the same
-        region_non_overlap=self.select_set_non_overlapping_regions(mask_index)
-        average_coverage_loss= jnp.sum(optax.l2_loss(mask_combined,region_non_overlap).flatten())
+        average_coverage_loss=self.get_average_coverage_loss(mask_index,mask_combined)
 
         masked_image=jnp.multiply(mask_combined,resized_image)
         masked_image_mean=jnp.sum(masked_image)/jnp.sum(mask_combined)
@@ -299,6 +316,7 @@ class De_conv_batched_for_scan(nn.Module):
     """
 
     cfg: ml_collections.config_dict.config_dict.ConfigDict
+    dynamic_cfg: ml_collections.config_dict.config_dict.ConfigDict
     dim_stride:int
     r_x:int
     r_y:int
@@ -392,10 +410,10 @@ class De_conv_batched_for_scan(nn.Module):
 
     @partial(jax.profiler.annotate_function, name="in_single_mask_convs")
     def in_single_mask_convs(self,cat_conv_multi):
-        return nn.Sequential([
-         remat(Conv_trio)(self.cfg,self.features)#no stride
-        ,remat(Conv_trio)(self.cfg,self.features)#no stride
-        ,remat(Conv_trio)(self.cfg,self.features)])(cat_conv_multi)#no stride
+        return remat(nn.Sequential)([
+         Conv_trio(self.cfg,self.features)#no stride
+        ,Conv_trio(self.cfg,self.features)#no stride
+        ,Conv_trio(self.cfg,self.features)])(cat_conv_multi)#no stride
 
     @partial(jax.profiler.annotate_function, name="prepare_new_mask")
     def prepare_new_mask(self,mask,curried_mask,deconv_multi,resized_image):
@@ -426,6 +444,7 @@ class De_conv_batched_for_scan(nn.Module):
         # mask=divide_sv_grid(mask,shape_reshape_cfg_old)
 
         mask,out_image,losses=batched_v_Apply_on_single_area(self.cfg
+                                                ,self.dynamic_cfg
                                                 ,self.rearrange_to_intertwine_einops
                                                 ,self.dim_stride 
                                                 ,self.current_shape
@@ -478,6 +497,7 @@ class De_conv_batched_multimasks(nn.Module):
     """
     
     cfg: ml_collections.config_dict.config_dict.ConfigDict
+    dynamic_cfg: ml_collections.config_dict.config_dict.ConfigDict
     dim_stride:int
     r_x:int
     r_y:int
@@ -504,20 +524,22 @@ class De_conv_batched_multimasks(nn.Module):
 
     @partial(jax.profiler.annotate_function, name="before_mask_scan_scanning_convs")
     def before_mask_scan_scanning_convs(self,deconv_multi):
-        return nn.Sequential([remat(De_conv_not_sym)(self.cfg,self.features,self.dim_stride)
-        ,remat(Conv_trio)(self.cfg,self.features)#no stride
-        ,remat(Conv_trio)(self.cfg,self.features)])(deconv_multi)#no stride
+        return remat(nn.Sequential)([De_conv_not_sym(self.cfg,self.features,self.dim_stride)
+        ,Conv_trio(self.cfg,self.features)#no stride
+        ,Conv_trio(self.cfg,self.features)])(deconv_multi)#no stride
 
     @partial(jax.profiler.annotate_function, name="scan_over_masks")
     def scan_over_masks(self,image,deconv_multi,masks):
         curried= jnp.zeros(self.deconved_shape), image,deconv_multi
         curried,accum= self.scanned_de_cov_batched(self.cfg
+                                                    ,self.dynamic_cfg
                                                    ,self.dim_stride
                                                    ,self.r_x
                                                    ,self.r_y
                                                    ,self.rearrange_to_intertwine_einops
                                                    ,self.translation_val
-                                                    ,self.features)(curried,masks,jnp.arange(self.cfg.masks_num) )
+                                                    ,self.features
+                                                    )(curried,masks,jnp.arange(self.cfg.masks_num) )
         return accum                                            
 
 
@@ -566,6 +588,8 @@ class De_conv_3_dim(nn.Module):
     r_x,r_y tell about 
     """
     cfg: ml_collections.config_dict.config_dict.ConfigDict
+    dynamic_cfg: ml_collections.config_dict.config_dict.ConfigDict
+
     features: int
     r_x:int
     r_y:int
@@ -576,20 +600,24 @@ class De_conv_3_dim(nn.Module):
     def __call__(self, image:jnp.ndarray, masks:jnp.ndarray,deconv_multi:jnp.ndarray) -> jnp.ndarray:
         
         deconv_multi,masks,out_image,losses_1=remat(De_conv_batched_multimasks)(self.cfg
+                                   ,self.dynamic_cfg
                                    ,0#dim_stride
                                    ,self.r_x
                                    ,self.r_y-1
                                    ,'f h w-> (h f) w'#rearrange_to_intertwine_einops
                                    ,self.translation_val
-                                   ,self.features)(image,masks,deconv_multi)
+                                   ,self.features
+                                   )(image,masks,deconv_multi)
         
         deconv_multi,masks,out_image,losses_2=remat(De_conv_batched_multimasks)(self.cfg
+                                   ,self.dynamic_cfg
                                    ,1#dim_stride
                                    ,self.r_x
                                    ,self.r_y
                                    ,'f h w -> h (w f)'#rearrange_to_intertwine_einops
                                    ,self.translation_val
-                                   ,self.features)(image,masks,deconv_multi)
+                                   ,self.features
+                                   )(image,masks,deconv_multi)
 
         #consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,=consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,consistency_between_masks_loss=losses
         losses= jnp.mean(jnp.stack([losses_1,losses_2],axis=0),axis=0)

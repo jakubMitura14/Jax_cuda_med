@@ -38,7 +38,7 @@ class SpixelNet(nn.Module):
         self.initial_masks= einops.repeat(initial_masks,'c w h-> b c w h',b=self.cfg.batch_size//jax.local_device_count())
     
     @nn.compact
-    def __call__(self, image: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
         image=einops.rearrange(image,'b c w h-> b w h c')
         out4=remat(nn.Sequential)([
@@ -52,23 +52,29 @@ class SpixelNet(nn.Module):
         # out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
         # out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-        deconv_multi,masks, out_image,losses_1 =remat(De_conv_3_dim)(self.cfg
+        deconv_multi,masks, out_image,losses_1 =De_conv_3_dim(self.cfg
+                        ,dynamic_cfg
                        ,64
                       ,1#r_x
                       ,1#r_y
-                      ,translation_val=1)(image,self.initial_masks,out4 )
+                      ,translation_val=1
+                      )(image,self.initial_masks,out4 )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
-        deconv_multi,masks, out_image,losses_2=remat(De_conv_3_dim)(self.cfg
+        deconv_multi,masks, out_image,losses_2=De_conv_3_dim(self.cfg
+                        ,dynamic_cfg
                       ,32
                       ,2#r_x
                       ,2#r_y
-                      ,translation_val=2)(image,masks,deconv_multi )
+                      ,translation_val=2
+                      )(image,masks,deconv_multi )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
-        deconv_multi,masks, out_image,losses_3=remat(De_conv_3_dim)(self.cfg
+        deconv_multi,masks, out_image,losses_3=De_conv_3_dim(self.cfg
+                      ,dynamic_cfg
                       ,16
                       ,3#r_x
                       ,3#r_y
-                      ,translation_val=4)(image,masks,deconv_multi)
+                      ,translation_val=4
+                      )(image,masks,deconv_multi)
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
         
         

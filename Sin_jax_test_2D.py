@@ -60,7 +60,7 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
 cfg.total_steps=500
-cfg.learning_rate=0.0001
+cfg.learning_rate=0.00001
 
 
 
@@ -77,19 +77,19 @@ cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
 ## generally last one is most similar to the actual image - hence should be most important
 cfg.deconves_importances=(0.1,0.5,1.0)
 #some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
-cfg.edge_loss_multiplier=1000.0
+cfg.edge_loss_multiplier=10000.0
 cfg.feature_loss_multiplier=1000.0
 
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)image_roconstruction_loss
-cfg.initial_weights_epochs_len=20 #number of epochs when initial_loss_weights would be used
+cfg.initial_weights_epochs_len=35 #number of epochs when initial_loss_weights would be used
 cfg.initial_loss_weights=(
       1.0 #consistency_loss
       ,1.0 #rounding_loss
       ,0000.1 #feature_variance_loss
       ,0000.1 #edgeloss
-      ,10000 #average_coverage_loss
+      ,100 #average_coverage_loss
       ,1.0 #consistency_between_masks_loss
       ,1.0 #image_roconstruction_loss
     )
@@ -167,8 +167,8 @@ file_writer = tf.summary.create_file_writer(logdir)
 
 
 
-@functools.partial(jax.pmap,static_broadcasted_argnums=(1,2), axis_name='ensemble')#,static_broadcasted_argnums=(2)
-def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model):
+@functools.partial(jax.pmap,static_broadcasted_argnums=(1,2,3), axis_name='ensemble')#,static_broadcasted_argnums=(2)
+def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cfg):
   """Creates initial `TrainState`."""
   img_size=list(cfg.img_size)
   lab_size=list(cfg.label_size)
@@ -178,10 +178,9 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
   print(f"iiiiin 333 state create {input.shape}")
   rng_main,rng_mean=jax.random.split(rng_2)
 
-
   #jax.random.split(rng_2,num=1 )
   # params = model.init(rng_2 , input,input_label)['params'] # initialize parameters by passing a template image
-  params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
+  params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input,dynamic_cfg)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
   # cosine_decay_scheduler = optax.cosine_decay_schedule(0.000005, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   # cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   tx = optax.chain(
@@ -200,12 +199,12 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
 
 
 # @jax.jit
-@functools.partial(jax.pmap,static_broadcasted_argnums=3, axis_name='ensemble')
-def apply_model(state, image,loss_weights,cfg):
+@functools.partial(jax.pmap,static_broadcasted_argnums=(3,4), axis_name='ensemble')
+def apply_model(state, image,loss_weights,cfg,dynamic_cfg):
   """Train for a single step."""
 
   def loss_fn(params):
-    losses,out_image,masks=state.apply_fn({'params': params}, image, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
+    losses,out_image,masks=state.apply_fn({'params': params}, image,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
     losses= jnp.multiply(losses, loss_weights)
     return (jnp.mean(losses) ,(losses,out_image,masks)) 
   #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)image_roconstruction_loss=losses
@@ -223,7 +222,7 @@ def update_model(state, grads):
   return state.apply_gradients(grads=grads)
 
 
-def train_epoch(epoch,slicee,index,dat,state,model,cfg):    
+def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs):    
   batch_images,label,batch_labels=dat# here batch_labels is slic
   epoch_loss=[]
   if(batch_images.shape[0]%jax.local_device_count()==0):
@@ -251,9 +250,13 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
     # cfg.actual_segmentation_loss_weights
 
     #after we will get some meaningfull initializations we will get to our goal more directly
+
+    
+    dynamic_cfg=dynamic_cfgs[1]
     loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
     if(epoch<cfg.initial_weights_epochs_len):
       loss_weights=jnp.array(cfg.initial_loss_weights)
+      dynamic_cfg=dynamic_cfgs[1]
     else:
       if(epoch%10==0 or epoch%9==0):
       # sharpening the masks so they will become closer to 0 or 1 ...
@@ -270,8 +273,8 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
 
 
 
-    loss_weights= einops.repeat(loss_weights,'a->pm a',pm=jax.local_device_count())
-    grads, losss,losses,out_image,masks =apply_model(state, batch_images,loss_weights,cfg)
+    loss_weights_b= einops.repeat(loss_weights,'a->pm a',pm=jax.local_device_count())
+    grads, losss,losses,out_image,masks =apply_model(state, batch_images,loss_weights_b,cfg,dynamic_cfg)
     epoch_loss.append(jnp.mean(jax_utils.unreplicate(losss))) 
     state = update_model(state, grads)
     out_image.block_until_ready()# krowa TODO(remove)
@@ -334,6 +337,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg):
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
       print(f"losses to write {losses.shape}")
       losses= jnp.mean(losses,axis=0)
+      losses= jnp.multiply(losses,loss_weights)
       consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,consistency_between_masks_loss,image_roconstruction_loss =losses
       with file_writer.as_default():
           tf.summary.scalar(f"train loss", np.mean(epoch_loss), step=epoch)
@@ -367,20 +371,32 @@ def add_batches(cached_subj,cfg):
   return cached_subj
 
 
+
+def get_dynamic_cfgs():
+  dynamic_cfg_a = config_dict.ConfigDict()
+  dynamic_cfg_a.is_beg=True
+  dynamic_cfg_a = ml_collections.config_dict.FrozenConfigDict(dynamic_cfg_a)
+
+  dynamic_cfg_b = config_dict.ConfigDict()
+  dynamic_cfg_b.is_beg=False
+  dynamic_cfg_b = ml_collections.config_dict.FrozenConfigDict(dynamic_cfg_b)
+  return [dynamic_cfg_a, dynamic_cfg_b]
+
+
 def main_train(cfg):
 
   prng = jax.random.PRNGKey(42)
   model = SpixelNet(cfg)
   rng_2=jax.random.split(prng,num=jax.local_device_count() )
-
+  dynamic_cfgs=get_dynamic_cfgs()
   cached_subj =get_spleen_data()[0:43]
   cached_subj= add_batches(cached_subj,cfg)
-  state = create_train_state(rng_2,cfg,model)
+  state = create_train_state(rng_2,cfg,model,dynamic_cfgs[0])
 
   for epoch in range(1, cfg.total_steps):
       slicee=15
       for index,dat in enumerate(cached_subj) :
-        state=train_epoch(epoch,slicee,index,dat,state,model,cfg)
+        state=train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs)
  
 
 
