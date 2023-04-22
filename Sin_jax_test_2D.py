@@ -60,7 +60,7 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
 cfg.total_steps=500
-cfg.learning_rate=0.00001
+cfg.learning_rate=0.00002
 
 
 
@@ -77,7 +77,7 @@ cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
 ## generally last one is most similar to the actual image - hence should be most important
 cfg.deconves_importances=(0.1,0.5,1.0)
 #some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
-cfg.edge_loss_multiplier=10000.0
+cfg.edge_loss_multiplier=1000.0
 cfg.feature_loss_multiplier=1000.0
 
 
@@ -256,7 +256,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs):
     loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
     if(epoch<cfg.initial_weights_epochs_len):
       loss_weights=jnp.array(cfg.initial_loss_weights)
-      dynamic_cfg=dynamic_cfgs[1]
+      dynamic_cfg=dynamic_cfgs[0]
     else:
       if(epoch%10==0 or epoch%9==0):
       # sharpening the masks so they will become closer to 0 or 1 ...
