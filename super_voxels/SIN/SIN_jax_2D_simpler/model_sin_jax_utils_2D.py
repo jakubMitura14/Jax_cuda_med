@@ -140,12 +140,13 @@ def translate_mask_in_axis(mask:jnp.ndarray, axis:int,is_forward:int,translation
     take
     value of translation is described by translation_val
     """
+    mask_orig=mask.copy()
     mask= jnp.take(mask, indices=jnp.arange(translation_val*(1-is_forward),mask_shape[axis]-translation_val* is_forward),axis=axis )
     to_pad=np.array([[0,0],[0,0]])
     is_back=1-is_forward
     to_pad[axis,is_back]=translation_val
     mask= jnp.pad(mask,to_pad)
-    return mask
+    return jnp.multiply(mask,mask_orig)
 
 def get_image_features(image:jnp.ndarray,mask:jnp.ndarray):
     """
@@ -177,10 +178,8 @@ def get_translated_mask_variance(image:jnp.ndarray
               ])
     maxes= jnp.max(features,axis=0)
     features=features/maxes
-
-    feature_variance=jnp.var(features,axis=0)
-    # print(f"features {features} feature_variance {feature_variance}")
-    return jnp.mean(feature_variance)*feature_loss_multiplier
+    feature_variance=jnp.var(features,axis=0)*feature_loss_multiplier
+    return jnp.mean(feature_variance)
 
 @partial(jax.profiler.annotate_function, name="get_edgeloss")
 def get_edgeloss(image:jnp.ndarray,mask:jnp.ndarray,axis:int,edge_loss_multiplier:float):

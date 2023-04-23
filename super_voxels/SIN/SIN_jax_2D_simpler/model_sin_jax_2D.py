@@ -85,7 +85,7 @@ class SpixelNet(nn.Module):
                                     ,losses_2*self.cfg.deconves_importances[1]
                                     ,losses_3*self.cfg.deconves_importances[2]
                                     ],axis=0),axis=0)
-        losses= jnp.append(losses,image_roconstruction_loss)
+        losses= nn.tanh(jnp.append(losses,image_roconstruction_loss))
         ##consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,consistency_between_masks_loss,image_roconstruction_loss=losses
         return (losses,out_image,masks)
 
