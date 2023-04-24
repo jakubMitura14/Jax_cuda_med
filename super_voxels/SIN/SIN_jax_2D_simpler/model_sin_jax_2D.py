@@ -52,7 +52,7 @@ class SpixelNet(nn.Module):
         # out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
         # out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-        deconv_multi,masks, out_image,losses_1 =De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_1 =De_conv_3_dim(self.cfg
                         ,dynamic_cfg
                        ,64
                       ,1#r_x
@@ -60,7 +60,7 @@ class SpixelNet(nn.Module):
                       ,translation_val=1
                       )(image,self.initial_masks,out4 )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
-        deconv_multi,masks, out_image,losses_2=De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_2=De_conv_3_dim(self.cfg
                         ,dynamic_cfg
                       ,32
                       ,2#r_x
@@ -68,7 +68,7 @@ class SpixelNet(nn.Module):
                       ,translation_val=2
                       )(image,masks,deconv_multi )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
-        deconv_multi,masks, out_image,losses_3=De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_3=De_conv_3_dim(self.cfg
                       ,dynamic_cfg
                       ,16
                       ,3#r_x
@@ -79,15 +79,14 @@ class SpixelNet(nn.Module):
         
         
         #we recreate the image using a supervoxels
-        image_roconstruction_loss=jnp.mean(optax.l2_loss(out_image,image[:,:,:,0]).flatten())
         #adding corrections as local loses are not equally important
         losses= jnp.mean(jnp.stack([losses_1*self.cfg.deconves_importances[0]
                                     ,losses_2*self.cfg.deconves_importances[1]
                                     ,losses_3*self.cfg.deconves_importances[2]
                                     ],axis=0),axis=0)
-        losses= nn.tanh(jnp.append(losses,image_roconstruction_loss))
         ##consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,consistency_between_masks_loss,image_roconstruction_loss=losses
-        return (losses,out_image,masks)
+        jax.debug.print("losses: {}",losses)
+        return (losses,masks)
 
 
         #TODO in original learning rate for biases in convolutions is 0 - good to try omitting biases
