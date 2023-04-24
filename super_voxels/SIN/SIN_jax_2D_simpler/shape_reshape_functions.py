@@ -200,26 +200,13 @@ def divide_sv_grid(res_grid: jnp.ndarray,shape_reshape_cfg):
     as the first row and column do not grow back by construction if there is no shift we always need to add r padding rest of pad to the end
     in case no shift is present all padding should go at the end
     """
-    # shape_reshape_cfg=array_toshape_reshape_constants(shape_reshape_cfg_arr)
-    #first we cut out all areas not covered by current supervoxels
-    # end_a=shape_reshape_cfg_arr[18]- shape_reshape_cfg_arr[1]
-    # end_b=shape_reshape_cfg_arr[19]- shape_reshape_cfg_arr[5]
-    # end_a=shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
-    # end_b=shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y
-    # print(f"end_a {end_a} ")
-    # cutted=lax.dynamic_slice_in_dim(res_grid, 0, end_a, axis=1)#[0,:]
-    # cutted=lax.dynamic_slice_in_dim(cutted, 0, end_b, axis=2)#[0,:]
-    # # # cutted=lax.dynamic_slice(res_grid, (0, 0), jnp.stack([end_a,end_b]))
-    # cutted=lax.dynamic_slice(res_grid, jnp.array([0, 0,0]), jnp.stack([5,end_a,end_b]))
-    # # cutted=lax.dynamic_slice(res_grid, jnp.array([0, 0]), jnp.stack([index,index]))
-
     cutted=res_grid[:,0: shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
-                    ,0: shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y]
+                    ,0: shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y,:]
     cutted= jnp.pad(cutted,((0,0),
                         (shape_reshape_cfg.to_pad_beg_x,shape_reshape_cfg.to_pad_end_x)
                         ,(shape_reshape_cfg.to_pad_beg_y,shape_reshape_cfg.to_pad_end_y )
-                        ))
-    cutted=einops.rearrange( cutted,'bb (a x) (b y)->bb (a b) x y', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
+                        ,(0,0)))
+    cutted=einops.rearrange( cutted,'bb (a x) (b y) cc->bb (a b) x y cc', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
     return cutted
 
 def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg
@@ -230,7 +217,7 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg
     we need then to recreate undo padding axis reshuffling ... to get back the original image shape
     """
     # undo axis reshuffling
-    texture_information= einops.rearrange(texture_information,'bb (a b) x y->bb (a x) (b y)'
+    texture_information= einops.rearrange(texture_information,'bb (a b) x y cc->bb (a x) (b y) cc'
         ,a=to_reshape_back_x
         ,b=to_reshape_back_y
         ,x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
@@ -242,13 +229,13 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg
     #undo padding
     texture_information= texture_information[:,
             shape_reshape_cfg.to_pad_beg_x: shape_reshape_cfg.axis_len_x- shape_reshape_cfg.to_pad_end_x
-            ,shape_reshape_cfg.to_pad_beg_y:shape_reshape_cfg.axis_len_y- shape_reshape_cfg.to_pad_end_y  ]
+            ,shape_reshape_cfg.to_pad_beg_y:shape_reshape_cfg.axis_len_y- shape_reshape_cfg.to_pad_end_y,:]
    
     #undo cutting
     texture_information= jnp.pad(texture_information,((0,0),
                         (0,shape_reshape_cfg.to_remove_from_end_x)
                         ,(0,shape_reshape_cfg.to_remove_from_end_y )
-                        ))
+                        ,(0,0)))
     return texture_information
 
 def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.ConfigDict,shift_x:bool,shift_y:bool, r_x:int, r_y:int ):

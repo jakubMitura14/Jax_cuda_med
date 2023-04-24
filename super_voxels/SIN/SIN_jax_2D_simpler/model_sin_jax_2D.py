@@ -35,7 +35,7 @@ class SpixelNet(nn.Module):
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,0,1),
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,1,1)
                         ])
-        self.initial_masks= einops.repeat(initial_masks,'c w h-> b c w h',b=self.cfg.batch_size//jax.local_device_count())
+        self.initial_masks= einops.repeat(initial_masks,'c w h-> b c w h 1',b=self.cfg.batch_size//jax.local_device_count())
     
     @nn.compact
     def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:
