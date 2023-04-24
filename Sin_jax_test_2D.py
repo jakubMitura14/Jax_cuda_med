@@ -108,7 +108,7 @@ cfg.actual_segmentation_loss_weights=(
     )
 
 #just for numerical stability
-cfg.epsilon=0.0000000000001 
+cfg.epsilon=0.0000000001 
 cfg = ml_collections.FrozenConfigDict(cfg)
 
 ##### tensor board
@@ -336,7 +336,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
       if(epoch%10==0 or epoch%9==0):
       # sharpening the masks so they will become closer to 0 or 1 ...
         loss_weights=jnp.array([
-          ,10000000 #rounding_loss
+          10000000 #rounding_loss
           ,0.1 #feature_variance_loss
           ,0.1 #edgeloss
           ,10000 #consistency_between_masks_loss
@@ -391,11 +391,11 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
           tf.summary.image(f"image_to_disp",image_to_disp , step=epoch)
 
       with file_writer.as_default():
-        tf.summary.image(f"masks 0",plot_heatmap_to_image(masks[0,:,:]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"masks 1",plot_heatmap_to_image(masks[1,:,:]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"masks 2",plot_heatmap_to_image(masks[2,:,:]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"masks 3",plot_heatmap_to_image(masks[3,:,:]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"masks summ",plot_heatmap_to_image(jnp.sum(masks,axis=0)) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks 0",plot_heatmap_to_image(masks[0,:,:,0]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks 1",plot_heatmap_to_image(masks[1,:,:,0]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks 2",plot_heatmap_to_image(masks[2,:,:,0]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks 3",plot_heatmap_to_image(masks[3,:,:,0]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks summ",plot_heatmap_to_image(jnp.sum(masks,axis=0)[:,:,0]) , step=epoch,max_outputs=2000)
 
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
       print(f"losses to write {losses.shape}")
@@ -411,10 +411,10 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
           tf.summary.scalar(f"edgeloss", np.mean(edgeloss), step=epoch)
 
 
-          tf.summary.scalar(f"mask 0  mean", np.mean(masks[0,:,:].flatten()), step=epoch)
-          tf.summary.scalar(f"mask 1  mean", np.mean(masks[1,:,:].flatten()), step=epoch)
-          tf.summary.scalar(f"mask 2  mean", np.mean(masks[2,:,:].flatten()), step=epoch)
-          tf.summary.scalar(f"mask 3  mean", np.mean(masks[3,:,:].flatten()), step=epoch)
+          # tf.summary.scalar(f"mask 0  mean", np.mean(masks[0,:,:].flatten()), step=epoch)
+          # tf.summary.scalar(f"mask 1  mean", np.mean(masks[1,:,:].flatten()), step=epoch)
+          # tf.summary.scalar(f"mask 2  mean", np.mean(masks[2,:,:].flatten()), step=epoch)
+          # tf.summary.scalar(f"mask 3  mean", np.mean(masks[3,:,:].flatten()), step=epoch)
 
 
 
@@ -451,7 +451,7 @@ def main_train(cfg):
   dynamic_cfgs=get_dynamic_cfgs()
   cached_subj =get_spleen_data()[0:43]
   cached_subj= add_batches(cached_subj,cfg)
-  state = create_train_state(rng_2,cfg,model,dynamic_cfgs[0])
+  state = create_train_state(rng_2,cfg,model,dynamic_cfgs[1])
   # state = create_train_state_from_orbax(rng_2,cfg,model,dynamic_cfgs[0])
   now = datetime.now()
   checkPoint_folder=f"/workspaces/Jax_cuda_med/data/checkpoints/{now}"
@@ -500,4 +500,4 @@ print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 #   jnp.dot(x, x).block_until_ready() 
 # orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
 # raw_restored = orbax_checkpointer.restore('/workspaces/Jax_cuda_med/data/checkpoints/2023-04-22_14_01_10_321058/41')
-#raw_restored['model']['params']
+# raw_restored['model']['params']

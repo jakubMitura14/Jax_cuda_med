@@ -77,7 +77,6 @@ class SpixelNet(nn.Module):
                       )(image,masks,deconv_multi)
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
         
-        
         #we recreate the image using a supervoxels
         #adding corrections as local loses are not equally important
         losses= jnp.mean(jnp.stack([losses_1*self.cfg.deconves_importances[0]
@@ -85,7 +84,6 @@ class SpixelNet(nn.Module):
                                     ,losses_3*self.cfg.deconves_importances[2]
                                     ],axis=0),axis=0)
         ##consistency_loss,rounding_loss,feature_variance_loss,edgeloss,average_coverage_loss,consistency_between_masks_loss,image_roconstruction_loss=losses
-        jax.debug.print("losses: {}",losses)
         return (losses,masks)
 
 

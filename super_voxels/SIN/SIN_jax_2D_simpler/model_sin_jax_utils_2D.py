@@ -158,39 +158,39 @@ def translate_mask_in_axis(mask:jnp.ndarray, axis:int,is_forward:int,translation
     """
     mask_orig=mask.copy()
     mask= jnp.take(mask, indices=jnp.arange(translation_val*(1-is_forward),mask_shape[axis]-translation_val* is_forward),axis=axis )
-    to_pad=np.array([[0,0],[0,0]])
+    to_pad=np.array([[0,0],[0,0],[0,0]])
     is_back=1-is_forward
     to_pad[axis,is_back]=translation_val
     mask= jnp.pad(mask,to_pad)
     return jnp.multiply(mask,mask_orig)
 
-def get_image_features(image:jnp.ndarray,mask:jnp.ndarray):
+def get_image_features(image:jnp.ndarray,mask:jnp.ndarray,epsilon:float):
     """
     given image and a mask will calculate the set of image features
     that will return as a vector  
     """
     masked_image= jnp.multiply(image,mask)
-    meann= jnp.sum(masked_image.flatten())/jnp.sum(mask.flatten())
+    meann= jnp.sum(masked_image.flatten())/(jnp.sum(mask.flatten())+epsilon)
     varr= jnp.power( jnp.multiply((masked_image-meann),mask  ),2)
-    varr=jnp.sum(varr.flatten())/jnp.sum(mask.flatten())
+    varr=jnp.sum(varr.flatten())/(jnp.sum(mask.flatten())+epsilon)
     return jnp.array([meann, varr])
 
-@partial(jax.profiler.annotate_function, name="get_translated_mask_variance")
 def get_translated_mask_variance(image:jnp.ndarray
                                  ,mask:jnp.ndarray
                                  ,translation_val:int
                                  ,mask_shape:Tuple[int]
-                                 ,feature_loss_multiplier:float):
+                                 ,feature_loss_multiplier:float
+                                 ,epsilon:float):
     """ 
     we will make a translation of the mask in all directions and check wether image features change
     generally the same supervoxel should have the same image features in all of its subregions
     so we want the variance here to be small 
     """
     features=jnp.stack([
-        get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape)),
-        get_image_features(image,translate_mask_in_axis(mask,0,1,translation_val,mask_shape)),
-        get_image_features(image,translate_mask_in_axis(mask,1,0,translation_val,mask_shape)),
-        get_image_features(image,translate_mask_in_axis(mask,1,1,translation_val,mask_shape))
+        get_image_features(image,translate_mask_in_axis(mask,0,0,translation_val,mask_shape),epsilon),
+        get_image_features(image,translate_mask_in_axis(mask,0,1,translation_val,mask_shape),epsilon),
+        get_image_features(image,translate_mask_in_axis(mask,1,0,translation_val,mask_shape),epsilon),
+        get_image_features(image,translate_mask_in_axis(mask,1,1,translation_val,mask_shape),epsilon)
               ])
     # maxes= jnp.max(features,axis=0)
     # features=features/maxes
@@ -279,22 +279,26 @@ class Apply_on_single_area(nn.Module):
         #using alternative mask - that should be worse then main version
         feature_variance_loss_alt=get_translated_mask_variance(resized_image, mask_combined
                                                         ,self.translation_val, (self.diameter_x,
-                                                                                self.diameter_y ) ,self.cfg.feature_loss_multiplier )+epsilon
+                                                                                self.diameter_y ) ,self.cfg.feature_loss_multiplier,self.cfg.epsilon)
 
 
         #using main mask
         mask_combined=einops.rearrange([chosen_values,mask_old],self.rearrange_to_intertwine_einops)       
         feature_variance_loss_main=get_translated_mask_variance(resized_image, mask_combined
                                                         ,self.translation_val, (self.diameter_x,
-                                                                                self.diameter_y ) ,self.cfg.feature_loss_multiplier )+epsilon
+                                                                                self.diameter_y ) ,self.cfg.feature_loss_multiplier,self.cfg.epsilon )
          #feature_variance_loss_main should be small becouse we want to minimize the variance of features in chosen supervoxel
         #feature_variance_loss_alt should be big
 
         #such calculation will lead to be in range 0-1
-        feature_variance_loss=feature_variance_loss_main/((feature_variance_loss_main+feature_variance_loss_alt))
-        
+        feature_variance_loss=feature_variance_loss_main/((feature_variance_loss_main+feature_variance_loss_alt) +epsilon)
+        # jax.debug.print("feature_variance_loss: {}",feature_variance_loss)
+        # jax.debug.print("feature_variance_loss_main: {}",feature_variance_loss_main)
+        # jax.debug.print("feature_variance_loss_alt: {}",feature_variance_loss_alt)
+       
         # edgeloss=get_edgeloss(resized_image,mask_combined,self.dim_stride,self.cfg.feature_loss_multiplier)
         # return feature_variance_loss,edgeloss
+        # return feature_variance_loss,0.0,mask_combined
         return feature_variance_loss,0.0,mask_combined
 
     def get_average_coverage_loss(self,mask_index,mask_combined):
@@ -321,7 +325,7 @@ class Apply_on_single_area(nn.Module):
         #chosen values and its alternative
         chosen_values=jnp.multiply(old_propositions,bi_chan_probs)
         chosen_values= jnp.sum(chosen_values,axis=-1,keepdims=True)
-        chosen_values_alt=jnp.multiply(old_propositions,(1-bi_chan_probs))
+        chosen_values_alt=jnp.multiply(old_propositions,(jnp.flip(bi_chan_probs,axis=-1)))
         chosen_values_alt= jnp.sum(chosen_values_alt,axis=-1,keepdims=True)
         return chosen_values,chosen_values_alt
 
