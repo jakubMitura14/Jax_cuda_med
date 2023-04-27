@@ -60,7 +60,7 @@ class De_conv_not_sym(nn.Module):
         return jax.nn.gelu(x)
     
 def harder_diff_round(x):
-    return diff_round(x)
+    return diff_round(diff_round(x))
     # return diff_round(diff_round(x))
     # return  diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(x)))))))))))))
     # - 0.51 so all 
@@ -357,6 +357,7 @@ class Apply_on_single_area(nn.Module):
         # out_image= mask_combined*masked_image_mean
 
         return mask_combined,jnp.array([rounding_loss_val,feature_variance_loss,edgeloss])
+        # return mask_combined,jnp.array([rounding_loss_val,feature_variance_loss,edgeloss])
 
 
 v_Apply_on_single_area=nn.vmap(Apply_on_single_area

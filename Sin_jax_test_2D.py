@@ -27,7 +27,6 @@ import jax
 from testUtils.spleenTest import get_spleen_data
 from testUtils.tensorboard_utils import *
 from ml_collections import config_dict
-from super_voxels.SIN.SIN_jax_2D_simpler.model_sin_jax_2D import SpixelNet
 from swinTransformer.optimasation import get_optimiser
 import swinTransformer.swin_transformer as swin_transformer
 from swinTransformer.swin_transformer import SwinTransformer
@@ -59,6 +58,9 @@ from datetime import datetime
 from flax.training import orbax_utils
 from flax.core.frozen_dict import freeze
 
+from super_voxels.SIN.SIN_jax_2D_simpler.model_sin_jax_2D import SpixelNet
+from super_voxels.SIN.SIN_jax_2D_simpler.model_sin_jax_utils_2D import *
+from super_voxels.SIN.SIN_jax_2D_simpler.shape_reshape_functions import *
 
 
 jax.numpy.set_printoptions(linewidth=400)
@@ -69,7 +71,7 @@ jax.numpy.set_printoptions(linewidth=400)
 cfg = config_dict.ConfigDict()
 cfg.total_steps=500
 # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
-cfg.learning_rate=0.000002
+cfg.learning_rate=0.00003
 
 
 
@@ -101,10 +103,10 @@ cfg.initial_loss_weights=(
     )
 
 cfg.actual_segmentation_loss_weights=(
-      0.3 #rounding_loss
+       0.1 #rounding_loss
       ,1.0 #feature_variance_loss
       ,1.0 #edgeloss
-      ,1.0 #consistency_between_masks_loss
+      ,0.00001 #consistency_between_masks_loss
     )
 
 #just for numerical stability
@@ -378,24 +380,84 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
 
       masks =masks[0,0,:,:,:]
       masks = jnp.round(masks)
+      scale=4
 
+      
+      shapp=image_to_disp.shape
+      image_to_disp_big=jax.image.resize(image_to_disp,(shapp[0]*scale,shapp[1]*scale), "linear")     
+      mask_0=masks[0,:,:,0]
+      shapp=mask_0.shape
+      mask_0_big=jax.image.resize(mask_0,(shapp[0]*scale,shapp[1]*scale), "linear")  
+      with_boundaries=mark_boundaries(image_to_disp_big, np.round(mask_0_big).astype(int) )
+      with_boundaries= np.array(with_boundaries)
+      with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
+      to_dispp_svs=with_boundaries
 
       image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
+
+      # def per_area(mask, image ):
+      #   mask = jnp.pad(mask,((0,0),(0,0),(2,2),(0,0)),constant_values=((0,0),(0,0),(1,1),(0,0)))
+      #   image = jnp.pad(image,((0,0),(0,0),(2,2),(0,0)),constant_values=((0,0),(0,0),(1,1),(0,0)))
+      #   return jnp.concatenate([mask,image],axis=0)
+      # v_per_area=jax.vmap(per_area)
+
+      # offset=50
+      # fa=10
+      # fb=15
+      # #setting r_x, r_y to bigger to get the context
+      # r_x=3
+      # r_y=3
+      # def get_svs_to_disp(offset,fa,fb,mask,scale,r_x,r_y):
+      #       #showing single supervoxels
+
+      #       shape_reshape_cfg=get_shape_reshape_constants(cfg,shift_x=0,shift_y=0, r_x=r_x, r_y=r_y )
+      #       # shape_reshape_cfg_smaller=get_shape_reshape_constants(cfg,shift_x=0,shift_y=0, r_x=r_x-1, r_y=r_y-1)
+      #       mask=einops.rearrange(mask,'h w->1 h w 1')
+      #       mask_diveded=divide_sv_grid(mask,shape_reshape_cfg)
+      #       image_to_disp_divided=divide_sv_grid(image_to_disp,shape_reshape_cfg)    
+                      
+      #       to_dispp_svs= v_per_area(mask_diveded,image_to_disp_divided ) 
+      #       print(f"to_dispp_svs {to_dispp_svs.shape}")
+
+      #       to_dispp_svs= to_dispp_svs[:,offset:offset+(fa*fb),:,:,:]
+      #       to_dispp_svs= einops.rearrange(to_dispp_svs,'bb (fa fb) w h cc-> bb (fa w) (fb h) cc', fa=fa,fb=fb)
+      #       shapp=to_dispp_svs.shape
+      #       to_dispp_svs=jax.image.resize(to_dispp_svs,(1,shapp[1]*scale,shapp[2]*scale,1), "linear")
+      #       return to_dispp_svs
+
+      # to_dispp_svs=get_svs_to_disp(offset,fa,fb,masks[0,:,:,0],4,r_x,r_y)
+
+
+
+
+
+
       # with_boundaries=einops.rearrange(with_boundaries,'a b c-> 1 a b c')
 
       # print(f"ooo out_image {out_image.shape} min {jnp.min(jnp.ravel(out_image))} max {jnp.max(jnp.ravel(out_image))} ")
       # print(f"ooo image_to_disp {image_to_disp.shape} with_boundaries {with_boundaries.shape}")
 
+
+
+
+
+
       if(epoch==divisor_logging):
         with file_writer.as_default():
           tf.summary.image(f"image_to_disp",image_to_disp , step=epoch)
+      masks_0= jnp.pad(masks[0,:,:,0],((0,0),(2,2)),constant_values=((0,0),(1,1)))
+      masks_1= jnp.pad(masks[1,:,:,0],((0,0),(2,2)),constant_values=((0,0),(1,1)))
+      masks_2= jnp.pad(masks[2,:,:,0],((0,0),(2,2)),constant_values=((0,0),(1,1)))
+      masks_3= jnp.pad(masks[3,:,:,0],((0,0),(2,2)),constant_values=((0,0),(1,1)))
 
+      masks_to_disp= einops.rearrange([masks_0,masks_1,masks_2,masks_3], f'(a b) w h ->(a w) (b h)' ,a=2,b=2)
+      # shapp=masks_to_disp.shape
+      # masks_to_disp=jax.image.resize(masks_to_disp,(shapp[0]*2,shapp[1]*2), "linear")
       with file_writer.as_default():
-        tf.summary.image(f"masks 0",plot_heatmap_to_image(masks[0,:,:,0]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"masks 1",plot_heatmap_to_image(masks[1,:,:,0]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"masks 2",plot_heatmap_to_image(masks[2,:,:,0]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"masks 3",plot_heatmap_to_image(masks[3,:,:,0]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks",plot_heatmap_to_image(masks_to_disp) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks summ",plot_heatmap_to_image(jnp.sum(masks,axis=0)[:,:,0]) , step=epoch,max_outputs=2000)
+        # tf.summary.image(f"super_vox_mask_0",plot_heatmap_to_image(to_dispp_svs[0,:,:,0], cmap="Greys") , step=epoch,max_outputs=2000)
+        tf.summary.image(f"super_vox_mask_0",to_dispp_svs , step=epoch,max_outputs=2000)
 
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
       print(f"losses to write {losses.shape}")
@@ -404,11 +466,10 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
       rounding_loss,feature_variance_loss,edgeloss,consistency_between_masks_loss =losses
       with file_writer.as_default():
           tf.summary.scalar(f"train loss", np.mean(epoch_loss), step=epoch)
-
           tf.summary.scalar(f"rounding_loss", np.mean(rounding_loss), step=epoch)
           tf.summary.scalar(f"feature_variance_loss", np.mean(feature_variance_loss), step=epoch)
           tf.summary.scalar(f"consistency_between_masks_loss", np.mean(consistency_between_masks_loss), step=epoch)
-          tf.summary.scalar(f"edgeloss", np.mean(edgeloss), step=epoch)
+      #     tf.summary.scalar(f"edgeloss", np.mean(edgeloss), step=epoch)
 
 
           # tf.summary.scalar(f"mask 0  mean", np.mean(masks[0,:,:].flatten()), step=epoch)
@@ -493,7 +554,6 @@ print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 
 # jax.profiler.stop_trace()
 
-# tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board
 
 # with jax.profiler.trace("/workspaces/Jax_cuda_med/data/profiler_data", create_perfetto_link=True):
 #   x = random.uniform(random.PRNGKey(0), (100, 100))
@@ -501,3 +561,5 @@ print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 # orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
 # raw_restored = orbax_checkpointer.restore('/workspaces/Jax_cuda_med/data/checkpoints/2023-04-22_14_01_10_321058/41')
 # raw_restored['model']['params']
+
+# tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board

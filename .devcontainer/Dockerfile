@@ -159,6 +159,9 @@ RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numP
     pip install -e .[dev] 
 
 
+# RUN python3 -m  pip install git+https://github.com/deepmind/PGMax.git
+RUN python3 -m  pip install git+https://github.com/google/jaxopt
+
 
 
 # RUN python3 -m  pip install git+https://github.com/deepmind/optax.git

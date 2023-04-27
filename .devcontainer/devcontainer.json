@@ -37,7 +37,7 @@
 		// "ms-python.vscode-pylance"
 	],
 	"mounts": [
-		  "source=/media/jm/NewVolume/datasets/Task09_Spleen/Task09_Spleen,target=/root/data,type=bind,consistency=cached"
+		  "source=/media/jm/hddData/datasets/Task09_Spleen/Task09_Spleen,target=/root/data,type=bind,consistency=cached"
 	  ],
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.

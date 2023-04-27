@@ -30,8 +30,12 @@ def plot_to_image(figure):
   image = einops.rearrange(image,'h w c-> 1 h w c' )  
   return image
 
-def plot_heatmap_to_image(arr):
+def plot_heatmap_to_image(arr,cmap=None):
+    
+    # sns.set(rc={'figure.figsize':(16,16)})
     fig = sns.heatmap(arr).get_figure()
+    if(cmap!=None):
+      fig = sns.heatmap(arr,cmap=cmap).get_figure()
     return plot_to_image(fig)
 
 

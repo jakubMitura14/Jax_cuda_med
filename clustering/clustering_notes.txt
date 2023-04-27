@@ -4,3 +4,34 @@ We can calculate common border between supervoxels by analyzing the overlap of g
 
 https://github.com/zhoushengisnoob/DeepClustering
 https://www.google.com/url?sa=t&source=web&rct=j&url=https://openreview.net/forum%3Fid%3DqsGpFRlK0a&ved=2ahUKEwia95G1sqv-AhUF_CoKHduaDEcQFnoECDMQAQ&usg=AOvVaw0WcmzL-tn3OC_RF33ZEfq5
+
+
+
+https://arxiv.org/pdf/2203.14043.pdf
+
+https://www.researchgate.net/publication/362690343_Global_Self-Attention_as_a_Replacement_for_Graph_Convolution
+
+factor graphs
+
+https://github.com/deepmind/PGMax
+
+
+The image can be analyzed to get supervoxels in sections ; however there would be a need of an overlap probably of full r , generally probably one will need to manually fine tune what to scan remat and when to reduce that scanning window , 
+
+
+Instead of playing strangely with those loses at the beginning we can just learn at the beginning only using loss that will be perfect when each sv will have this diamond non overlapping shape 
+
+After small svs are established we should make them larger  by fusing multiple small ones ; we need to also keep the information about location of the supervoxels using id's; so in the end we will be able to reestablish segmentations, also later it would enable us to work on the geometry
+
+So we can iterative propose ids for each mask and multiply them by those masks ; after summing all we should have map of id's; this scheme would be fully achievable in scanning the image by sections scenario 
+
+Alternative idea also in scanning by sections is get couple initialization with different shifts and get average as a result
+
+
+Still for simplest transformer we would just need to encode the token by convolving; flattening and projecting both masked image and mask itself - this for shape perspective
+
+Swin transformer window shifts could be achieved in a most simple way by just padding whole image by 2r of supervoxels 
+
+We have a problem with positional encoding, we can also consider positional encoding of the supervoxels embedding not only between them 
+
+In graph we can additionally stack the id's  so we get the pairs in attention calculation if those pairs are similar we can keep them together and pass it to next round with wider window ...

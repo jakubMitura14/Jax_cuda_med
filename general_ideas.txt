@@ -1,0 +1,3 @@
+We can use factor graphs for all as it keeps discrete https://arxiv.org/pdf/2111.02458.pdf
+
+we can do loss function with non differentiable rounding and then use jax rax function transformation

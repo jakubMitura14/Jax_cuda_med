@@ -35,3 +35,26 @@ https://www.researchgate.net/publication/355882666_Deep_Texture_Recognition_via_
 
 differentiable entrophy
 https://mail.google.com/mail/u/0/#inbox/KtbxLxgNMXwVZXvrjrDzQLFgfpNPVnPsHg?projector=1&messagePartId=0.1
+
+
+factor graph texture 
+https://colab.research.google.com/github/deepmind/PGMax/blob/master/examples/pmp_binary_deconvolution.ipynb#scrollTo=q8JeiQCj6GC-
+
+texture could be analyzed by subtracting the binned arrays 
+so lets say that we solved the throsholding problem we already have a way to get the image transformed so it would have all intensities in lets say 32 bins
+ok so we are interested to find the frequency of local cooccurences of those intensities   
+preferably would be nice to get those intensities directionally; but possibly for increased robustness rotation invariant variant would be better
+
+so we have the matrix of integer like values representing the presence in the bins 
+now we want the absolute differences in all axes of the array and 1 shifted version
+
+we are interested only in absolute values hence -2 and 2 will be considered the same
+
+now problem is that 2 can represent both pair 32 and 30 like as well 2 and 4
+so we can multiply the values by 100 and add those differences
+hence pair 30 and 32 will become 3002 and pair 2 and 4 will become 202
+if we will keep having problems with rounding error after multiplying by 100 we may instead just keep 2 numbers as a single id
+
+next we can do the histogram of such ids and effectively we would sum the frequency of the intensity pairs in the image 
+
+we can add those histogram from different shifts in different axes to get rotation invariance
