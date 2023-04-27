@@ -112,9 +112,8 @@ def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y):
     ids of the supervoxels here are implicit based on which mask and what location we are talking about
     """
     initt=np.zeros(orig_grid_shape)
-    shift_x=shift_x
-    shift_y=shift_y
-    initt[shift_x::2,shift_y::2]=1
+    initt[shift_x::2,shift_y::2,0]=shift_x
+    initt[shift_x::2,shift_y::2,1]=shift_y
     return initt
 
 @partial(jax.jit, static_argnames=['diameter_x','diameter_y','p_x','p_y'])

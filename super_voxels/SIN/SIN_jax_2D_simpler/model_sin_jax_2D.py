@@ -24,6 +24,17 @@ from ml_collections import config_dict
 # from Jax_cuda_med.super_voxels.SIN.SIN_jax.model_sin_jax_utils import *
 from .model_sin_jax_utils_2D import *
 from .render2D import *
+import pandas as pd
+
+def disp_to_pandas(probs,shappe ):
+    probs_to_disp= einops.rearrange(probs,'w h c-> (w h) c')
+    probs_to_disp=jnp.round(probs_to_disp,1)
+    probs_to_disp=list(map(lambda twoo: f"{twoo[0]} {twoo[1]}",list(probs_to_disp)))
+    probs_to_disp=np.array(probs_to_disp).reshape(shappe)
+    return pd.DataFrame(probs_to_disp)
+
+def disp_to_pandas_curr_shape(probs ):
+    return disp_to_pandas(probs,(probs.shape[0],probs.shape[1]) )
 
 class SpixelNet(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
@@ -34,8 +45,11 @@ class SpixelNet(nn.Module):
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,1,0),
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,0,1),
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,1,1)
-                        ])
-        self.initial_masks= einops.repeat(initial_masks,'c w h-> b c w h 1',b=self.cfg.batch_size//jax.local_device_count())
+                        ],axis=0)
+        initial_masks=jnp.sum(initial_masks,axis=0)
+        print(disp_to_pandas_curr_shape(initial_masks))
+       
+        self.initial_masks= einops.repeat(initial_masks,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
     
     @nn.compact
     def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:

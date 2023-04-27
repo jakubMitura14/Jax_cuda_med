@@ -42,7 +42,8 @@ def diff_round(x):
     """
     differentiable version of round function
     """
-    return x - jnp.sin(2*jnp.pi*x)/(2*jnp.pi)
+    # return x - jnp.sin(2*jnp.pi*x)/(2*jnp.pi)
+    return jnp.sin(x*(jnp.pi/2))**2
 
 def get_diameter_no_pad(r):
     """
