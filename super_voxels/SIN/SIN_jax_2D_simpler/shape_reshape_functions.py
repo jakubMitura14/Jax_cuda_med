@@ -28,6 +28,7 @@ import chex
 from .render2D import diff_round,Conv_trio
 import jax.scipy as jsp
 from flax.linen import partitioning as nn_partitioning
+import pandas as pd
 remat = nn_partitioning.remat
 
 
@@ -293,3 +294,14 @@ def get_all_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.
     #        ,shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=0,shift_y=1, r_x=r_x, r_y=r_y ))
     #        ,shape_reshape_constants_to_array(get_shape_reshape_constants(cfg,shift_x=1,shift_y=1, r_x=r_x, r_y=r_y ))]
     # return jnp.stack(arr)
+
+
+def disp_to_pandas(probs,shappe ):
+    probs_to_disp= einops.rearrange(probs,'w h c-> (w h) c')
+    probs_to_disp=jnp.round(probs_to_disp,1)
+    probs_to_disp=list(map(lambda twoo: f"{twoo[0]} {twoo[1]}",list(probs_to_disp)))
+    probs_to_disp=np.array(probs_to_disp).reshape(shappe)
+    return pd.DataFrame(probs_to_disp)
+
+def disp_to_pandas_curr_shape(probs ):
+    return disp_to_pandas(probs,(probs.shape[0],probs.shape[1]) )
