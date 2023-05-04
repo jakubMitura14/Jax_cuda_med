@@ -1,4 +1,4 @@
-FROM nvcr.io/nvdlfwea/jax/jax:23.03-py3
+FROM nvcr.io/nvdlfwea/jax/jax:23.04-py3
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -144,7 +144,7 @@ RUN python3 -m  pip install \
 
 # RUN python3 -m  pip install git+https://github.com/google/flax.git
 
-RUN python3 -m pip install --upgrade "jax[cuda11_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+# RUN python3 -m pip install --upgrade "jax[cuda11_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 
 RUN python3 -m pip install -U -qq "git+https://github.com/google/flax.git@main#egg=flax"
@@ -246,7 +246,7 @@ RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 
 RUN apt install graphviz
 RUN go install github.com/google/pprof@latest
-ENV XLA_PYTHON_CLIENT_MEM_FRACTION=0.87
+ENV XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 RUN apt install nautilus -y
 
 RUN git config --global user.email "jakub.mitura@gmail.com"

@@ -38,7 +38,9 @@ class SpixelNet(nn.Module):
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,0,1),
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,1,1)
                         ],axis=0)
-        initial_masks=jnp.sum(initial_masks,axis=0)      
+        initial_masks=jnp.sum(initial_masks,axis=0)
+        # print(f"initial_masks \n {disp_to_pandas_curr_shape(initial_masks)}")
+
         self.initial_masks= einops.repeat(initial_masks,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
     
     @nn.compact
@@ -62,7 +64,7 @@ class SpixelNet(nn.Module):
                       ,1#r_x
                       ,1#r_y
                       ,translation_val=1
-                      )(image,self.initial_masks,out4 )
+                      )(image,self.initial_masks,out4 ,self.initial_masks)
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
         deconv_multi,masks,losses_2=De_conv_3_dim(self.cfg
                         ,dynamic_cfg
@@ -70,7 +72,7 @@ class SpixelNet(nn.Module):
                       ,2#r_x
                       ,2#r_y
                       ,translation_val=2
-                      )(image,masks,deconv_multi )
+                      )(image,masks,deconv_multi,self.initial_masks )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
         deconv_multi,masks,losses_3=De_conv_3_dim(self.cfg
                       ,dynamic_cfg
@@ -78,7 +80,7 @@ class SpixelNet(nn.Module):
                       ,3#r_x
                       ,3#r_y
                       ,translation_val=4
-                      )(image,masks,deconv_multi)
+                      )(image,masks,deconv_multi,self.initial_masks)
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
         
         #we recreate the image using a supervoxels

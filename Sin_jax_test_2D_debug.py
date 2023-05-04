@@ -74,12 +74,12 @@ cfg = config_dict.ConfigDict()
 cfg.total_steps=2
 # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
 cfg.learning_rate=0.00003
-cfg.num_dim=2
+cfg.num_dim=4
 cfg.batch_size=1
 
 cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
-cfg.img_size = (cfg.batch_size,1,32,32)
-cfg.label_size = (cfg.batch_size,32,32)
+cfg.img_size = (cfg.batch_size,1,64,64)
+cfg.label_size = (cfg.batch_size,64,64)
 cfg.r_x_total= 3
 cfg.r_y_total= 3
 cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total,cfg.num_dim)
@@ -141,7 +141,70 @@ prng,prng_b,prng_c = jax.random.split(prng,num=3)
 model = SpixelNet(cfg)
 image= jax.random.uniform(prng_b,cfg.img_size)
 params = model.init({'params': prng}, image,dynamic_cfg_a)#['params']
-print(params['params']['De_conv_3_dim_2']['Core_remat_staticDe_conv_batched_multimasks_1']['Core_remat_staticConv_0']['bias'])
+# print(params['params']['De_conv_3_dim_2']['Core_remat_staticDe_conv_batched_multimasks_1']['Core_remat_staticConv_0']['bias'])
 
-model.apply(params, image,dynamic_cfg_a)
+losses,masks=model.apply(params, image,dynamic_cfg_a)
+sh_r=get_shape_reshape_constants(cfg,1,1,3,3)
+mask_now=divide_sv_grid(masks,sh_r)
+shhh=mask_now.shape
+masks= jnp.round(masks)
+print(f"dividedd {shhh}")
+for i in range(shhh[1]):
+  print(disp_to_pandas_curr_shape(jnp.round(mask_now[0,i,:,:,:])))
 
+
+def masks_binary(shift_x,shift_y):
+  masks_a=(masks[0,:,:,0])==shift_x
+  masks_b=(masks[0,:,:,1])==shift_y
+  mask_0= jnp.logical_and(masks_a,masks_b).astype(int)    
+  return mask_0
+
+def get_mask_with_num(shift_x,shift_y):
+  bin_mask=masks_binary(shift_x,shift_y)
+  sh_r=get_shape_reshape_constants(cfg,shift_x,shift_y,3,3)
+  bin_mask= einops.rearrange(bin_mask,'w h -> 1 w h 1')
+  mask_now=divide_sv_grid(bin_mask,sh_r)
+  b_dim,pp_dim,w_dim,h_dim,c_dim=mask_now.shape
+  aranged= jnp.arange(1,pp_dim+1)
+  aranged=einops.repeat(aranged,'pp->b pp w h c',b=b_dim,w = w_dim,h= h_dim,c= c_dim)
+  # print(f"aranged \n {disp_to_pandas_curr_shape(aranged[0,:,:,0])} \n")
+  res = jnp.multiply(mask_now,aranged)
+  a=sh_r.axis_len_x//sh_r.diameter_x
+  b=sh_r.axis_len_y//sh_r.diameter_y
+  return recreate_orig_shape(res,sh_r,a,b)[0,:,:,0]
+
+
+
+mask_0=masks_binary(0,0)
+mask_1=masks_binary(1,0)
+mask_2=masks_binary(0,1)
+mask_3=masks_binary(1,1)
+
+mask_0_num=get_mask_with_num(0,0)
+mask_1_num=get_mask_with_num(1,0)
+mask_2_num=get_mask_with_num(0,1)
+mask_3_num=get_mask_with_num(1,1)
+
+
+
+print("\n mask_0 \n ")
+print(pd.DataFrame(mask_0_num))
+
+print("\n mask_1 \n ")
+print(pd.DataFrame(mask_1_num))
+
+print("\n mask_2 \n ")
+print(pd.DataFrame(mask_2_num))
+
+print("\n mask_3 \n ")
+print(pd.DataFrame(mask_3_num))
+
+print("\n mask_num_sum \n ")
+print(pd.DataFrame((mask_0_num+10*(mask_0_num>0)) +(mask_1_num+20*(mask_1_num>0))+(mask_2_num+30*(mask_2_num>0))+(mask_3_num+40*(mask_3_num>0))))
+
+# mask_sum=mask_0+mask_1+mask_2+mask_3  
+# print("\n  suuuum\n  ")
+# print(pd.DataFrame(mask_sum))
+
+krowa check mask after filtering to know is the shape reshape works well
+can save some sv segmentation run loss function over those and display low loss and high loss areas to check is it ok

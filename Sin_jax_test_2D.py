@@ -63,18 +63,25 @@ from super_voxels.SIN.SIN_jax_2D_simpler.model_sin_jax_utils_2D import *
 from super_voxels.SIN.SIN_jax_2D_simpler.shape_reshape_functions import *
 
 
+
+# print("executing TF bug workaround")
+# config = tf.compat.v1.ConfigProto(gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.7) ) 
+# config.gpu_options.allow_growth = True 
+# session = tf.compat.v1.Session(config=config) 
+# tf.compat.v1.keras.backend.set_session(session)
+
 jax.numpy.set_printoptions(linewidth=400)
 
 # config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
-cfg.total_steps=2
+cfg.total_steps=300
 # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
-cfg.learning_rate=0.00003
+cfg.learning_rate=0.00000002
 
-cfg.num_dim=2
-cfg.batch_size=200
+cfg.num_dim=4
+cfg.batch_size=160
 
 cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
 cfg.img_size = (cfg.batch_size,1,256,256)
@@ -310,18 +317,19 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
     batch_labels= einops.rearrange(batch_labels,'c h w b-> b h w c')
     # print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
 
-    batch_images=batch_images[:,:,64:-64,64:-64,14:-14]
-    batch_labels=batch_labels[14:-14,64:-64,64:-64,:]
+    batch_images=batch_images[:,:,64:-64,64:-64,24:-24]
+    # batch_labels=batch_labels[14:-14,64:-64,64:-64,:]
     batch_images= einops.rearrange(batch_images, 'b c x y z-> (b z) c x y  ' )
-    batch_labels= einops.rearrange(batch_labels, 'b x y z-> (b z) x y  ' )
+    # batch_labels= einops.rearrange(batch_labels, 'b x y z-> (b z) x y  ' )
 
 
-    batch_images_prim=batch_images[slicee,:,:,:]
-    batch_label_prim=batch_labels[slicee,:,:]
+    # batch_label_prim=batch_labels[slicee,:,:]
 
 
     batch_images= einops.rearrange(batch_images, '(pm b) c x y-> pm b c x y  ',pm=jax.local_device_count() )
-    batch_labels= einops.rearrange(batch_labels, '(pm b) x y-> pm b x y  ',pm=jax.local_device_count() )
+    batch_images_prim=batch_images[0,slicee,:,:,:]
+
+    # batch_labels= einops.rearrange(batch_labels, '(pm b) x y-> pm b x y  ',pm=jax.local_device_count() )
 
 
 
@@ -357,14 +365,14 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
     #checkpointing
     divisor_checkpoint = 10
 
-    if(index==0 and epoch%divisor_checkpoint==0):
-      chechpoint_epoch_folder=f"{checkPoint_folder}/{epoch}"
-      # os.makedirs(chechpoint_epoch_folder)
+    # if(index==0 and epoch%divisor_checkpoint==0):
+    #   chechpoint_epoch_folder=f"{checkPoint_folder}/{epoch}"
+    #   # os.makedirs(chechpoint_epoch_folder)
 
-      orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-      ckpt = {'model': state, 'config': cfg}
-      save_args = orbax_utils.save_args_from_target(ckpt)
-      orbax_checkpointer.save(chechpoint_epoch_folder, ckpt, save_args=save_args)
+    #   orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    #   ckpt = {'model': state, 'config': cfg}
+    #   save_args = orbax_utils.save_args_from_target(ckpt)
+    #   orbax_checkpointer.save(chechpoint_epoch_folder, ckpt, save_args=save_args)
 
 
     # out_image.block_until_ready()# krowa TODO(remove)
@@ -378,29 +386,43 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
       print(f"batch_images_prim {batch_images_prim.shape}")
 
       image_to_disp=batch_images_prim[0,:,:]
-      print(f"image_to_disp {image_to_disp.shape}")
       image_to_disp=np.rot90(np.array(image_to_disp))
       print(f"mmmmmmmm masks {masks.shape}")
-      masks =masks[0,0,:,:,:]
+      masks =masks[0,slicee,:,:,:]
       masks = jnp.round(masks)
-      masks_a=(masks[:,:,0])==0
-      masks_b=(masks[:,:,1])==0
-      mask_0= jnp.logical_and(masks_a,masks_b).astype(int)
-
-      scale=4
-
       
-      shapp=image_to_disp.shape
-      image_to_disp_big=jax.image.resize(image_to_disp,(shapp[0]*scale,shapp[1]*scale), "linear")     
-      shapp=mask_0.shape
-      mask_0_big=jax.image.resize(mask_0,(shapp[0]*scale,shapp[1]*scale), "linear")  
-      with_boundaries=mark_boundaries(image_to_disp_big, np.round(mask_0_big).astype(int) )
-      with_boundaries= np.array(with_boundaries)
-      with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
-      to_dispp_svs=with_boundaries
+      #overwriting masks each time and saving for some tests and debugging
+      f = h5py.File('/workspaces/Jax_cuda_med/data/hdf5_loc/example_mask.hdf5', 'w')
+      f.create_dataset(f"masks",data= masks)
+      f.close()
+
+      scale=2
+
+      def masks_with_boundaries(shift_x,shift_y):
+        masks_a=(masks[:,:,0])==shift_x
+        masks_b=(masks[:,:,1])==shift_y
+        mask_0= jnp.logical_and(masks_a,masks_b).astype(int)    
+        
+        shapp=image_to_disp.shape
+        image_to_disp_big=jax.image.resize(image_to_disp,(shapp[0]*scale,shapp[1]*scale), "linear")     
+        shapp=mask_0.shape
+        mask_0_big=jax.image.resize(mask_0,(shapp[0]*scale,shapp[1]*scale), "nearest")  
+        with_boundaries=mark_boundaries(image_to_disp_big, np.round(mask_0_big).astype(int) )
+        with_boundaries= np.array(with_boundaries)
+        with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
+        to_dispp_svs=with_boundaries
+        return mask_0,to_dispp_svs
+
+
+
+      mask_0,to_dispp_svs_0=masks_with_boundaries(0,0)
+      mask_1,to_dispp_svs_1=masks_with_boundaries(1,0)
+      mask_2,to_dispp_svs_2=masks_with_boundaries(0,1)
+      mask_3,to_dispp_svs_3=masks_with_boundaries(1,1)
 
       image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
 
+      mask_sum=mask_0+mask_1+mask_2+mask_3
       # def per_area(mask, image ):
       #   mask = jnp.pad(mask,((0,0),(0,0),(2,2),(0,0)),constant_values=((0,0),(0,0),(1,1),(0,0)))
       #   image = jnp.pad(image,((0,0),(0,0),(2,2),(0,0)),constant_values=((0,0),(0,0),(1,1),(0,0)))
@@ -461,17 +483,22 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
       # masks_to_disp=jax.image.resize(masks_to_disp,(shapp[0]*2,shapp[1]*2), "linear")
       with file_writer.as_default():
       #   tf.summary.image(f"masks",plot_heatmap_to_image(masks_to_disp) , step=epoch,max_outputs=2000)
-      #   tf.summary.image(f"masks summ",plot_heatmap_to_image(jnp.sum(masks,axis=0)[:,:,0]) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"masks summ",plot_heatmap_to_image(mask_sum) , step=epoch,max_outputs=2000)
         # tf.summary.image(f"super_vox_mask_0",plot_heatmap_to_image(to_dispp_svs[0,:,:,0], cmap="Greys") , step=epoch,max_outputs=2000)
-        tf.summary.image(f"super_vox_mask_0",to_dispp_svs , step=epoch,max_outputs=2000)
+        tf.summary.image(f"to_dispp_svs_0",to_dispp_svs_0 , step=epoch,max_outputs=2000)
+        tf.summary.image(f"to_dispp_svs_1",to_dispp_svs_1 , step=epoch,max_outputs=2000)
+        tf.summary.image(f"to_dispp_svs_2",to_dispp_svs_2 , step=epoch,max_outputs=2000)
+        tf.summary.image(f"to_dispp_svs_3",to_dispp_svs_3 , step=epoch,max_outputs=2000)
 
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
-      print(f"losses to write {losses.shape}")
       losses= jnp.mean(losses,axis=0)
       # losses= jnp.multiply(losses,loss_weights)
       # rounding_loss,feature_variance_loss,edgeloss,consistency_between_masks_loss =losses
+
+
       with file_writer.as_default():
           tf.summary.scalar(f"train loss", np.mean(epoch_loss), step=epoch)
+          tf.summary.scalar(f"mask_0 mean", np.mean(mask_0.flatten()), step=epoch)
       #     tf.summary.scalar(f"rounding_loss", np.mean(rounding_loss), step=epoch)
       #     tf.summary.scalar(f"feature_variance_loss", np.mean(feature_variance_loss), step=epoch)
       #     tf.summary.scalar(f"consistency_between_masks_loss", np.mean(consistency_between_masks_loss), step=epoch)

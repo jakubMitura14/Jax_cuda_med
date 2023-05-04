@@ -48,63 +48,6 @@ def get_diameter_no_pad(r):
 def get_diameter(r):
     return get_diameter_no_pad(r)+1
 
-def shape_reshape_constants_to_array(shape_reshape_cfg: ml_collections.config_dict.config_dict.ConfigDict):
-    """
-    change shape reshape configuration dict into jax array for compatibility reasons
-    """
-    res_cfg=shape_reshape_cfg
-
-    return jnp.array([
-        res_cfg.to_pad_beg_x #0
-        ,res_cfg.to_remove_from_end_x#1
-        ,res_cfg.axis_len_prim_x#2
-        ,res_cfg.axis_len_x#3
-        ,res_cfg.to_pad_beg_y#4
-        ,res_cfg.to_remove_from_end_y#5
-        ,res_cfg.axis_len_prim_y#6
-        ,res_cfg.axis_len_y#7
-        ,res_cfg.to_pad_end_x#8
-        ,res_cfg.to_pad_end_y#9
-        ,res_cfg.shift_x#10
-        ,res_cfg.shift_y#11
-        ,res_cfg.diameter_x#12
-        ,res_cfg.diameter_y#13
-        ,res_cfg.img_size[0]#14
-        ,res_cfg.img_size[1]#15
-        ,res_cfg.img_size[2]#16
-        ,res_cfg.img_size[3]#17
-        ,res_cfg.curr_image_shape[0]#18
-        ,res_cfg.curr_image_shape[1]#19
-        ,res_cfg.orig_grid_shape[0]#20
-        ,res_cfg.orig_grid_shape[1]#21
-    ])
-
-def array_toshape_reshape_constants(shape_reshape_arr: jnp.ndarray):
-    """
-    change shape reshape configuration dict into jax array for compatibility reasons
-    """
-    res_cfg = config_dict.ConfigDict()
-
-    res_cfg.to_pad_beg_x=shape_reshape_arr[0]#0
-    res_cfg.to_remove_from_end_x=shape_reshape_arr[1]#1
-    res_cfg.axis_len_prim_x=shape_reshape_arr[2]#2
-    res_cfg.axis_len_x=shape_reshape_arr[3]#3
-    res_cfg.to_pad_beg_y=shape_reshape_arr[4]#4
-    res_cfg.to_remove_from_end_y=shape_reshape_arr[5]#5
-    res_cfg.axis_len_prim_y=shape_reshape_arr[6]#6
-    res_cfg.axis_len_y=shape_reshape_arr[7]#7
-    res_cfg.to_pad_end_x=shape_reshape_arr[8]#8
-    res_cfg.to_pad_end_y=shape_reshape_arr[9]#9
-    res_cfg.shift_x=shape_reshape_arr[10]#10
-    res_cfg.shift_y=shape_reshape_arr[11]#11
-    res_cfg.diameter_x=shape_reshape_arr[12]#12
-    res_cfg.diameter_y=shape_reshape_arr[13]#13
-    res_cfg.img_size=(shape_reshape_arr[14:18])
-    res_cfg.curr_image_shape=(shape_reshape_arr[18:20])
-    res_cfg.orig_grid_shape=(shape_reshape_arr[20:])
-    
-    return ml_collections.config_dict.FrozenConfigDict(res_cfg)
-
 
 
 def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y):
@@ -115,6 +58,10 @@ def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y):
     initt=np.zeros(orig_grid_shape)
     initt[shift_x::2,shift_y::2,0]=shift_x
     initt[shift_x::2,shift_y::2,1]=shift_y
+
+    initt[shift_x::2,shift_y::4,2]=1
+    initt[shift_x::4,shift_y::2,3]=1
+
     return initt
 
 @partial(jax.jit, static_argnames=['diameter_x','diameter_y','p_x','p_y'])
@@ -173,14 +120,14 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
     axis_len=axis_len_prim+to_pad_end    
     return for_pad_beg,to_remove_from_end,axis_len_prim,axis_len,to_pad_end     
 
-def get_supervoxel_ids(shape_reshape_cfg_arr):
+def get_supervoxel_ids(shape_reshape_cfg):
     """
     In order to be able to vmap through the supervoxels we need to have a way 
     to tell what id should be present in the area we have and that was given by main part of 
     divide_sv_grid function the supervoxel ids are based on the orig_grid_shape  generally 
     we have the supervoxel every r but here as we jump every 2r we need every second id
     """
-    shape_reshape_cfg=array_toshape_reshape_constants(shape_reshape_cfg_arr)
+    # shape_reshape_cfg=array_toshape_reshape_constants(shape_reshape_cfg_arr)
     res_grid=jnp.mgrid[1:shape_reshape_cfg.orig_grid_shape[0]+1, 1:shape_reshape_cfg.orig_grid_shape[1]+1]
     res_grid=einops.rearrange(res_grid,'p x y-> x y p')
     res_grid= res_grid[shape_reshape_cfg.shift_x: shape_reshape_cfg.orig_grid_shape[0]:2,
@@ -298,10 +245,73 @@ def get_all_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.
 
 def disp_to_pandas(probs,shappe ):
     probs_to_disp= einops.rearrange(probs,'w h c-> (w h) c')
-    probs_to_disp=jnp.round(probs_to_disp,1)
-    probs_to_disp=list(map(lambda twoo: f"{twoo[0]} {twoo[1]}",list(probs_to_disp)))
+    probs_to_disp=np.round(probs_to_disp,1)
+    # probs_to_disp=list(map(lambda twoo: f"{twoo[0]} {twoo[1]}",list(probs_to_disp)))
+    probs_to_disp=np.array(probs_to_disp)
+    probs_to_disp=list(map(lambda twoo: " ".join(list(map(str,twoo))),list(probs_to_disp)))
     probs_to_disp=np.array(probs_to_disp).reshape(shappe)
     return pd.DataFrame(probs_to_disp)
 
 def disp_to_pandas_curr_shape(probs ):
     return disp_to_pandas(probs,(probs.shape[0],probs.shape[1]) )
+
+
+
+
+# def shape_reshape_constants_to_array(shape_reshape_cfg: ml_collections.config_dict.config_dict.ConfigDict):
+#     """
+#     change shape reshape configuration dict into jax array for compatibility reasons
+#     """
+#     res_cfg=shape_reshape_cfg
+
+#     return jnp.array([
+#         res_cfg.to_pad_beg_x #0
+#         ,res_cfg.to_remove_from_end_x#1
+#         ,res_cfg.axis_len_prim_x#2
+#         ,res_cfg.axis_len_x#3
+#         ,res_cfg.to_pad_beg_y#4
+#         ,res_cfg.to_remove_from_end_y#5
+#         ,res_cfg.axis_len_prim_y#6
+#         ,res_cfg.axis_len_y#7
+#         ,res_cfg.to_pad_end_x#8
+#         ,res_cfg.to_pad_end_y#9
+#         ,res_cfg.shift_x#10
+#         ,res_cfg.shift_y#11
+#         ,res_cfg.diameter_x#12
+#         ,res_cfg.diameter_y#13
+#         ,res_cfg.img_size[0]#14
+#         ,res_cfg.img_size[1]#15
+#         ,res_cfg.img_size[2]#16
+#         ,res_cfg.img_size[3]#17
+#         ,res_cfg.curr_image_shape[0]#18
+#         ,res_cfg.curr_image_shape[1]#19
+#         ,res_cfg.orig_grid_shape[0]#20
+#         ,res_cfg.orig_grid_shape[1]#21
+#     ])
+
+# def array_toshape_reshape_constants(shape_reshape_arr: jnp.ndarray):
+#     """
+#     change shape reshape configuration dict into jax array for compatibility reasons
+#     """
+#     res_cfg = config_dict.ConfigDict()
+
+#     res_cfg.to_pad_beg_x=shape_reshape_arr[0]#0
+#     res_cfg.to_remove_from_end_x=shape_reshape_arr[1]#1
+#     res_cfg.axis_len_prim_x=shape_reshape_arr[2]#2
+#     res_cfg.axis_len_x=shape_reshape_arr[3]#3
+#     res_cfg.to_pad_beg_y=shape_reshape_arr[4]#4
+#     res_cfg.to_remove_from_end_y=shape_reshape_arr[5]#5
+#     res_cfg.axis_len_prim_y=shape_reshape_arr[6]#6
+#     res_cfg.axis_len_y=shape_reshape_arr[7]#7
+#     res_cfg.to_pad_end_x=shape_reshape_arr[8]#8
+#     res_cfg.to_pad_end_y=shape_reshape_arr[9]#9
+#     res_cfg.shift_x=shape_reshape_arr[10]#10
+#     res_cfg.shift_y=shape_reshape_arr[11]#11
+#     res_cfg.diameter_x=shape_reshape_arr[12]#12
+#     res_cfg.diameter_y=shape_reshape_arr[13]#13
+#     res_cfg.img_size=(shape_reshape_arr[14:18])
+#     res_cfg.curr_image_shape=(shape_reshape_arr[18:20])
+#     res_cfg.orig_grid_shape=(shape_reshape_arr[20:])
+    
+#     return ml_collections.config_dict.FrozenConfigDict(res_cfg)
+
