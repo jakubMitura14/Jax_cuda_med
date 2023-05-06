@@ -64,8 +64,12 @@ def apply_farid(image, f_filter):
     return jsp.signal.convolve(image, filter, mode='same')
 
 def apply_farid_both(image):
-    return (apply_farid(image,Farid_Gx)**2) + (apply_farid(image,Farid_Gy)**2)
-
+    res= (apply_farid(image,Farid_Gx)**2) + (apply_farid(image,Farid_Gy)**2)
+    #we have some artifacts on bottom and right edges
+    res= res[:,0:-to_pad,0:-to_pad,:]
+    res = jnp.pad( res,((0,0),(0,to_pad),(0,to_pad),(0,0)  ))
+    res= res/jnp.max(res.flatten())
+    return res
 
 def get_diameter_no_pad(r):
     """

@@ -253,7 +253,7 @@ v_v_differentiable_and_bi=jax.vmap(v_differentiable_and_bi,in_axes=(0,0))
 v_v_v_differentiable_and_bi=jax.vmap(v_v_differentiable_and_bi,in_axes=(0,0))
 
 
-def filter_mask_of_intrest(mask,initial_mask_id): #krowa test filter_mask_of_intrest
+def filter_mask_of_intrest(mask,initial_mask_id):
     """
     filters the mask to set to 1 only if it is this that we are currently intressted in 
     """
@@ -624,8 +624,7 @@ class De_conv_batched_for_scan(nn.Module):
         # mask_combined_print=self.select_recreate_orig_shape(mask_combined_prints,mask_index)
         
 
-        # return jnp.mean(losses.flatten()) krowa TODO(unhash)
-        return losses
+        return jnp.mean(losses.flatten())
         # return jnp.mean(jnp.ones(1))
 
     # def __call__(self, image:jnp.ndarray, mask:jnp.ndarray,deconv_multi:jnp.ndarray,shape_reshape_index:int) -> jnp.ndarray:
@@ -713,7 +712,9 @@ class De_conv_batched_multimasks(nn.Module):
         return accum                                            
 
 
-    def get_new_mask_from_probs(self,mask_old:jnp.ndarray,bi_chan_probs:jnp.ndarray,edges_map:jnp.ndarray):
+    def get_new_mask_from_probs(self,mask_old:jnp.ndarray
+                                ,bi_chan_probs:jnp.ndarray
+                                ):
         """ 
         given bi channel probs where first channel will be interpreted as probability of being the same id (1 or 0)
         as the sv backward the axis; and second channel probability of being the same supervoxel forward the axis 
@@ -731,7 +732,7 @@ class De_conv_batched_multimasks(nn.Module):
         old_propositions=jnp.stack([old_forward,old_back],axis=-1)# w h n_dim 2
         #chosen values and its alternative
         bi_chan_probs=v_v_harder_diff_round(bi_chan_probs) 
-        krowa
+        
 
         bi_chan_probs=einops.repeat(bi_chan_probs,'bb w h pr->bb w h d pr',d=self.cfg.num_dim)
 
@@ -786,8 +787,7 @@ class De_conv_batched_multimasks(nn.Module):
         mask_combined=v_v_harder_diff_round(mask_combined)       
         mask_combined_alt=v_v_harder_diff_round(mask_combined_alt)       
 
-        #getting the increased size for a next iteration
-        deconv_multi=remat(De_conv_not_sym)(self.cfg,self.features,self.dim_stride)(deconv_multi)
+
 
 
         #we scan over using diffrent shift configurations
