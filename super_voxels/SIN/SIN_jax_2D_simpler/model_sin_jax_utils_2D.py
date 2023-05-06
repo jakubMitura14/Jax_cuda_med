@@ -713,7 +713,7 @@ class De_conv_batched_multimasks(nn.Module):
         return accum                                            
 
 
-    def get_new_mask_from_probs(self,mask_old:jnp.ndarray,bi_chan_probs:jnp.ndarray):
+    def get_new_mask_from_probs(self,mask_old:jnp.ndarray,bi_chan_probs:jnp.ndarray,edges_map:jnp.ndarray):
         """ 
         given bi channel probs where first channel will be interpreted as probability of being the same id (1 or 0)
         as the sv backward the axis; and second channel probability of being the same supervoxel forward the axis 
@@ -731,6 +731,7 @@ class De_conv_batched_multimasks(nn.Module):
         old_propositions=jnp.stack([old_forward,old_back],axis=-1)# w h n_dim 2
         #chosen values and its alternative
         bi_chan_probs=v_v_harder_diff_round(bi_chan_probs) 
+        krowa
 
         bi_chan_probs=einops.repeat(bi_chan_probs,'bb w h pr->bb w h d pr',d=self.cfg.num_dim)
 
@@ -775,7 +776,7 @@ class De_conv_batched_multimasks(nn.Module):
         mask_new_bi_channel=nn.softmax(mask_new_bi_channel,axis=-1)
 
         #intertwine old and new mask - so a new mask may be interpreted basically as interpolation of old
-        mask_combined,mask_combined_alt=self.get_new_mask_from_probs(mask_old,mask_new_bi_channel)
+        mask_combined,mask_combined_alt=self.get_new_mask_from_probs(mask_old,mask_new_bi_channel,apply_farid_both(resized_image))
         #we want the masks entries to be as close to be 0 or 1 as possible - otherwise feature variance and 
         #separability of supervoxels will be compromised
         # having entries 0 or 1 will maximize the term below so we negate it for loss
