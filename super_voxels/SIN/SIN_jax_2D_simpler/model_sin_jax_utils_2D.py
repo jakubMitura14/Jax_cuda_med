@@ -25,7 +25,7 @@ from ml_collections import config_dict
 from functools import partial
 import toolz
 import chex
-from .render2D import diff_round,Conv_trio
+from .render2D import diff_round,Conv_trio,apply_farid_both
 import jax.scipy as jsp
 from flax.linen import partitioning as nn_partitioning
 from  .shape_reshape_functions import *
@@ -61,7 +61,7 @@ class De_conv_not_sym(nn.Module):
     
 def harder_diff_round(x):
     # return diff_round(diff_round(x))
-    return diff_round(diff_round(x))
+    return diff_round(diff_round(diff_round(x)))
 
     # return diff_round(diff_round(x))
     # return  diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(diff_round(x)))))))))))))
@@ -347,10 +347,7 @@ class Apply_on_single_area(nn.Module):
         #such calculation will lead to be in range 0-1
         feature_variance_loss=feature_variance_loss_main/((feature_variance_loss_main+feature_variance_loss_alt) +epsilon)
 
-
-
-        # return feature_variance_loss krowa TODO(unhash)
-        return feature_variance_loss_main
+        return feature_variance_loss
 
 
 
@@ -694,9 +691,6 @@ class De_conv_batched_multimasks(nn.Module):
         ,Conv_trio(self.cfg,self.features)
         ,Conv_trio(self.cfg,self.features)
         ,Conv_trio(self.cfg,self.features)
-        ,Conv_trio(self.cfg,self.features)
-        ,Conv_trio(self.cfg,self.features)
-        ,Conv_trio(self.cfg,self.features)
         ])(deconv_multi)
 
     @partial(jax.profiler.annotate_function, name="scan_over_masks")
@@ -764,8 +758,10 @@ class De_conv_batched_multimasks(nn.Module):
         
         #some primary convolutions
         resized_image=v_image_resize(image,self.deconved_shape_not_batched,"linear" )
-        #adding information about image as the first channel
-        deconv_multi= jnp.concatenate([v_image_resize(image,self.current_shape_not_batched,"linear" ),deconv_multi],axis=-1)
+        #adding informations about image and old mask as begining channels
+        imm=v_image_resize(image,self.current_shape_not_batched,"linear" )
+
+        deconv_multi= jnp.concatenate([imm,apply_farid_both(imm) ,mask_old,deconv_multi],axis=-1)
         deconv_multi=self.before_mask_scan_scanning_convs(deconv_multi)
         #resisizing image to the deconvolved - increased shape
         # image_resized= einops.rearrange(image,'b w h c->b w (h c)',c=1)

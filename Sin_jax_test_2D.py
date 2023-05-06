@@ -1,5 +1,5 @@
 from matplotlib.pylab import *
-from jax import lax, random, numpy as jnp
+from jax import  numpy as jnp
 from flax import linen as nn
 import numpy as np
 from typing import Any, Callable, Optional, Tuple, Type, List
@@ -76,12 +76,12 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
-cfg.total_steps=300
+cfg.total_steps=7000
 # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
-cfg.learning_rate=0.00000002
+cfg.learning_rate=0.00000006
 
 cfg.num_dim=4
-cfg.batch_size=160
+cfg.batch_size=120
 
 cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
 cfg.img_size = (cfg.batch_size,1,256,256)
@@ -117,7 +117,7 @@ cfg.actual_segmentation_loss_weights=(
     )
 
 #just for numerical stability
-cfg.epsilon=0.0000000001 
+cfg.epsilon=0.00000000002 
 cfg = ml_collections.FrozenConfigDict(cfg)
 
 ##### tensor board
@@ -317,7 +317,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
     batch_labels= einops.rearrange(batch_labels,'c h w b-> b h w c')
     # print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
 
-    batch_images=batch_images[:,:,64:-64,64:-64,24:-24]
+    batch_images=batch_images[:,:,64:-64,64:-64,34:-34]
     # batch_labels=batch_labels[14:-14,64:-64,64:-64,:]
     batch_images= einops.rearrange(batch_images, 'b c x y z-> (b z) c x y  ' )
     # batch_labels= einops.rearrange(batch_labels, 'b x y z-> (b z) x y  ' )

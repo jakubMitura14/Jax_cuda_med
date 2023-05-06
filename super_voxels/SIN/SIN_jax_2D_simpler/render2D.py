@@ -46,6 +46,27 @@ def diff_round(x):
     # return jnp.sin(x*(jnp.pi/2))**2
     return jnp.sin(x*(jnp.pi/2))*jnp.sin(x*(jnp.pi/2))
 
+
+
+import jax.scipy as jsp
+Farid_Gx=jnp.array([[0.004128,0.027308,0.046732,0.27308,0.004128]
+          ,[0.010420,0.068939,0.117974,0.068939,0.010420   ]
+          ,[0.0,0.0,0.0,0.0,0.0]
+          ,[-0.010420,-0.068939,-0.117974,-0.068939,-0.010420   ]
+          ,[-0.004128,-0.027308,-0.046732,-0.27308,-0.004128]          
+        ])
+
+Farid_Gy=jnp.transpose(Farid_Gx)
+
+def apply_farid(image, f_filter):
+    filter= einops.rearrange(f_filter, 'x y-> 1 x y 1')
+    # image= einops.rearrange(image, 'x y-> 1 x y 1')
+    return jsp.signal.convolve(image, filter, mode='same')
+
+def apply_farid_both(image):
+    return (apply_farid(image,Farid_Gx)**2) + (apply_farid(image,Farid_Gy)**2)
+
+
 def get_diameter_no_pad(r):
     """
     so every time we have n elements we can get n+ more elements
