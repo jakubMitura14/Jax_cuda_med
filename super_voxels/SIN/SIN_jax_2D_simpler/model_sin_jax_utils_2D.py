@@ -741,6 +741,7 @@ class De_conv_batched_multimasks(nn.Module):
         chosen_values_alt= jnp.sum(chosen_values_alt,axis=-1)
 
 
+
         mask_combined=einops.rearrange([mask_old,chosen_values],self.rearrange_to_intertwine_einops) 
         mask_combined_alt=einops.rearrange([mask_old,chosen_values_alt],self.rearrange_to_intertwine_einops)
 
