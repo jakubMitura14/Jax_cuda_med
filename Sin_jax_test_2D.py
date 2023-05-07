@@ -97,7 +97,7 @@ cfg.deconves_importances=(0.1,0.5,1.0)
 #some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
 cfg.edge_loss_multiplier=10.0
 cfg.feature_loss_multiplier=10.0
-
+cfg.percent_weak_edges=0.15
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)
