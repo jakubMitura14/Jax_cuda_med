@@ -112,13 +112,14 @@ import chex
 
 
 shapee=(10,10,4)
-mask_shape_end=(1,8)
+mask_shape_end=(10,1)
 dim_stride_curr=1
+
 mask_old= jnp.ones(shapee)
 mask_new= jnp.ones(shapee)*2
 mask_new_bi_channel= jnp.ones((shapee[0],shapee[1],2))*0.5
 rearrange_to_intertwine_einops= 'f h w cc-> h (w f) cc'
-un_rearrange_to_intertwine_einops= 'h (w f)->f h w'
+un_rearrange_to_intertwine_einops= ' h (w f)->h w f'
 mask_combined=einops.rearrange([mask_old,mask_new],rearrange_to_intertwine_einops) 
 edge_map=jnp.ones((shapee[0],shapee[1]))
 
@@ -126,30 +127,38 @@ forward_probs = mask_new_bi_channel[0]*1.5
 back_probs = mask_new_bi_channel[1]
 
 # edge_map=edge_map.at[1,1].set(9)
-edge_map=edge_map.at[3:6,3:6].set(9)
+edge_map=edge_map.at[2:5,2:5].set(9)
+print(f"edge_map \n{edge_map}")
+# edge_map=edge_map.at[3,3].set(9)
+# edge_map=edge_map.at[4,4].set(9)
+# edge_map=edge_map.at[5,5].set(9)
 
-print(f"full edge map \n{edge_map} \n shape {edge_map.shape} \n")
-edge_forward=jnp.take(edge_map, indices=jnp.arange( 2,shapee[dim_stride_curr] ),axis=dim_stride_curr )
-edge_mid=jnp.take(edge_map, indices=jnp.arange( 1,shapee[dim_stride_curr]-1 ),axis=dim_stride_curr )
-edge_back=jnp.take(edge_map, indices=jnp.arange(   0,shapee[dim_stride_curr]-2 ),axis=dim_stride_curr )
+# edge_forward_diff=jax.vmap(jnp.ediff1d,in_axes=1)(edge_map)
+# edge_back_diff=jax.vmap(jnp.ediff1d,in_axes=1)(jnp.flip(edge_map,axis=dim_stride_curr))
 
-edge_forward_diff= edge_forward-edge_mid
-edge_back_diff=edge_back-edge_mid
-print(f"edge_forward \n {edge_forward} \n edge_mid \n{edge_mid} \n edge_back \n{edge_back} \n")
-print(f"edge_forward_diff \n {edge_forward_diff} \n edge_back_diff \n {edge_back_diff} \n edge_back \n {edge_back} \n")
-# edge_forward_diff=  jnp.power((edge_forward-edge_mid),2)
-# edge_back_diff=jnp.power((edge_back-edge_mid),2)
-edge_forward_diff= jnp.pad( edge_forward_diff,((0,0),(1,1)))
-edge_back_diff= jnp.pad( edge_back_diff,((0,0),(1,1)))
+edge_forward_diff=jnp.diff(edge_map,axis=dim_stride_curr)
+edge_back_diff  =jnp.flip(jnp.diff(jnp.flip(edge_map,axis=dim_stride_curr),axis=dim_stride_curr),axis=dim_stride_curr)
 
-edge_forward_diff=einops.rearrange(edge_forward_diff,un_rearrange_to_intertwine_einops,f=2) 
-edge_back_diff=einops.rearrange(edge_back_diff,un_rearrange_to_intertwine_einops,f=2) 
+edge_forward_diff= jnp.power(edge_forward_diff,2)
+edge_back_diff= jnp.power(edge_back_diff,2)
 
-# to_end_grid=jnp.ones(mask_shape_end)
-# old_forward= jnp.concatenate((edge_forward_diffs,to_end_grid) ,axis= dim_stride_curr)
-# edge_back_diff[1,:,:]
-edge_back_diff[1,:,:].nonzero() #(Array([0, 1, 1, 2], dtype=int32), Array([1, 2, 3, 4], dtype=int32))
-edge_back_diff[0,:,:].nonzero() #(Array([1, 1, 2, 2], dtype=int32), Array([1, 2, 3, 4], dtype=int32))
-# edge_back_diff[1,2,4]
-print(f" edge_forward_diff 1 \n {edge_forward_diff[1,:,:]} \n shape {edge_forward_diff[1,:,:].shape}\n ")
-print(f" edge_back_diff 1 \n {edge_back_diff[1,:,:]}")
+to_end_grid=jnp.zeros(mask_shape_end)
+
+edge_forward_diff = jnp.concatenate([edge_forward_diff,to_end_grid],axis=dim_stride_curr)
+edge_back_diff = jnp.concatenate([to_end_grid,edge_back_diff],axis=dim_stride_curr)
+
+# edge_forward_diff= jnp.pad(edge_forward_diff,((0,0),(0,1)))
+# edge_back_diff= jnp.pad(edge_back_diff,((0,0),(1,0)))
+
+
+print(f" edge_forward_diff \n {edge_forward_diff} \n edge_back_diff \n {edge_back_diff}")
+
+# edge_forward_diff=jnp.sum(einops.rearrange(edge_forward_diff,un_rearrange_to_intertwine_einops,f=2),axis=-1)
+# edge_back_diff=jnp.sum(einops.rearrange(edge_back_diff,un_rearrange_to_intertwine_einops,f=2) ,axis=-1)
+edge_forward_diff=einops.rearrange(edge_forward_diff,un_rearrange_to_intertwine_einops,f=2)[:,:,1]
+edge_back_diff=einops.rearrange(edge_back_diff,un_rearrange_to_intertwine_einops,f=2)[:,:,1]
+
+
+
+print(f" edge_forward_diff 1 \n {edge_forward_diff} ")
+print(f" edge_back_diff 1 \n {edge_back_diff}")
