@@ -70,6 +70,7 @@ from super_voxels.SIN.SIN_jax_2D_simpler.shape_reshape_functions import *
 # session = tf.compat.v1.Session(config=config) 
 # tf.compat.v1.keras.backend.set_session(session)
 
+config.update("jax_debug_nans", True)
 jax.numpy.set_printoptions(linewidth=400)
 
 # config.update("jax_debug_nans", True)
@@ -78,10 +79,10 @@ jax.numpy.set_printoptions(linewidth=400)
 cfg = config_dict.ConfigDict()
 cfg.total_steps=7000
 # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
-cfg.learning_rate=0.00000006
+cfg.learning_rate=0.0000001
 
 cfg.num_dim=4
-cfg.batch_size=120
+cfg.batch_size=100
 
 cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
 cfg.img_size = (cfg.batch_size,1,256,256)
@@ -97,7 +98,7 @@ cfg.deconves_importances=(0.1,0.5,1.0)
 #some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
 cfg.edge_loss_multiplier=10.0
 cfg.feature_loss_multiplier=10.0
-cfg.percent_weak_edges=0.15
+cfg.percent_weak_edges=0.0001
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)
@@ -117,7 +118,7 @@ cfg.actual_segmentation_loss_weights=(
     )
 
 #just for numerical stability
-cfg.epsilon=0.00000000002 
+cfg.epsilon=0.0000000000001
 cfg = ml_collections.FrozenConfigDict(cfg)
 
 ##### tensor board
@@ -317,52 +318,28 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
     batch_labels= einops.rearrange(batch_labels,'c h w b-> b h w c')
     # print(f"batch_images {batch_images.shape} batch_labels {batch_labels.shape} batch_images min max {jnp.min(batch_images)} {jnp.max(batch_images)}")
 
-    batch_images=batch_images[:,:,64:-64,64:-64,34:-34]
+    batch_images=batch_images[:,:,64:-64,64:-64,14:-14]
     # batch_labels=batch_labels[14:-14,64:-64,64:-64,:]
     batch_images= einops.rearrange(batch_images, 'b c x y z-> (b z) c x y  ' )
     # batch_labels= einops.rearrange(batch_labels, 'b x y z-> (b z) x y  ' )
 
 
     # batch_label_prim=batch_labels[slicee,:,:]
-
-
-    batch_images= einops.rearrange(batch_images, '(pm b) c x y-> pm b c x y  ',pm=jax.local_device_count() )
-    batch_images_prim=batch_images[0,slicee,:,:,:]
-
-    # batch_labels= einops.rearrange(batch_labels, '(pm b) x y-> pm b x y  ',pm=jax.local_device_count() )
-
-
-
-    # cfg.initial_loss_weights 
-    # cfg.actual_segmentation_loss_weights
-
-    #after we will get some meaningfull initializations we will get to our goal more directly
-
     
     dynamic_cfg=dynamic_cfgs[1]
-#     loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
-#     if(epoch<cfg.initial_weights_epochs_len):
-#       loss_weights=jnp.array(cfg.initial_loss_weights)
-#       dynamic_cfg=dynamic_cfgs[0] 
-#     else:
-#       if(epoch%10==0 or epoch%9==0):
-#       # sharpening the masks so they will become closer to 0 or 1 ...
-#         loss_weights=jnp.array([
-#           10000000 #rounding_loss
-#           ,0.1 #feature_variance_loss
-#           ,0.1 #edgeloss
-#           ,10000 #consistency_between_masks_loss
-#         ])
-
-
 
     loss_weights=jnp.array(cfg.actual_segmentation_loss_weights)
     loss_weights_b= einops.repeat(loss_weights,'a->pm a',pm=jax.local_device_count())
 
-    grads, losss,losses,masks =apply_model(state, batch_images,loss_weights_b,cfg,dynamic_cfg)
-    epoch_loss.append(jnp.mean(jax_utils.unreplicate(losss))) 
-    state = update_model(state, grads)
-    #checkpointing
+    batch_images= einops.rearrange(batch_images, '(fl pm b) c x y->fl pm b c x y  ',pm=jax.local_device_count(),fl=2)
+    
+
+
+    for i in range(2):
+      grads, losss,losses,masks =apply_model(state, batch_images[i,:,:,:,:,:],loss_weights_b,cfg,dynamic_cfg)
+      epoch_loss.append(jnp.mean(jax_utils.unreplicate(losss))) 
+      state = update_model(state, grads)
+      #checkpointing
     divisor_checkpoint = 10
 
     # if(index==0 and epoch%divisor_checkpoint==0):
@@ -381,13 +358,21 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
 
 
     #saving only with index one
-    divisor_logging = 1
+    divisor_logging = 3
     if(index==0 and epoch%divisor_logging==0):
-      print(f"batch_images_prim {batch_images_prim.shape}")
+      # cfgb = config_dict.ConfigDict(cfg)
+      # cfgb.batch_size_pmapped=np.max([1,1])
+      # cfgb.img_size = (1,1,256,256)
+      # cfgb = ml_collections.FrozenConfigDict(cfgb)      
+      grads, losss,losses,masks =apply_model(state, batch_images[0,:,:,:,:,:],loss_weights_b,cfg,dynamic_cfg)
+      
+      batch_images_prim=batch_images[0,0:1,slicee:slicee+1,:,:,:]
 
-      image_to_disp=batch_images_prim[0,:,:]
+      image_to_disp=batch_images_prim[0,0,0,:,:]
+      # print(f"image_to_disp {image_to_disp.shape} batch_images_prim {batch_images_prim.shape}")
+
       image_to_disp=np.rot90(np.array(image_to_disp))
-      print(f"mmmmmmmm masks {masks.shape}")
+      # print(f"mmmmmmmm masks {masks.shape}")
       masks =masks[0,slicee,:,:,:]
       masks = jnp.round(masks)
       
@@ -413,74 +398,156 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
         to_dispp_svs=with_boundaries
         return mask_0,to_dispp_svs
 
-
-
       mask_0,to_dispp_svs_0=masks_with_boundaries(0,0)
       mask_1,to_dispp_svs_1=masks_with_boundaries(1,0)
       mask_2,to_dispp_svs_2=masks_with_boundaries(0,1)
       mask_3,to_dispp_svs_3=masks_with_boundaries(1,1)
 
+      ################################
+      # just below get the image divided by mask 
+      #
+      #
+      #################################
+      curr_image= einops.rearrange(batch_images_prim[0,0,0,:,:],'w h->1 w h 1')
+      # print(f"curr_image {curr_image.shape}")
+      edge_map=apply_farid_both(curr_image)
+      edge_map=edge_map-jnp.min(edge_map.flatten())
+      edge_map= edge_map/(jnp.max(edge_map.flatten())+cfg.epsilon )
+      edge_map= nn.relu(edge_map-cfg.percent_weak_edges)
+      edge_map=edge_map-jnp.min(edge_map.flatten())
+      edge_map= edge_map/(jnp.max(edge_map.flatten())+cfg.epsilon )
+      #we will test edge loss by supplying probs with ones all up axis
+      #we will set axis to 1 as it is the last axis on which deconv is working
+      dim_stride_curr=1+1#+1 becouse of batch
+      edge_map_end = (1,cfg.img_size[2],1,1)
+      un_rearrange_to_intertwine_einops='bb h (w f) cc->bb h w f cc'
+      edge_map_b,edge_forward_diff,edge_back_diff=get_edge_diffs(curr_image
+                                                            ,dim_stride_curr
+                                                            ,edge_map_end
+                                                            ,cfg.epsilon
+                                                            ,un_rearrange_to_intertwine_einops
+                                                            ,cfg)
+      # print(f"edge_map {edge_map.shape} edge_forward_diff {edge_forward_diff.shape}  edge_back_diff {edge_back_diff.shape}")
+
+
+
+      initial_masks= jnp.stack([
+            get_initial_supervoxel_masks(cfg.orig_grid_shape,0,0),
+            get_initial_supervoxel_masks(cfg.orig_grid_shape,1,0),
+            get_initial_supervoxel_masks(cfg.orig_grid_shape,0,1),
+            get_initial_supervoxel_masks(cfg.orig_grid_shape,1,1)
+                ],axis=0)
+      initial_masks=jnp.sum(initial_masks,axis=0)
+
+      def work_on_single_area(curr_id,mask_curr,image,edge_map,edge_forward_diff,edge_back_diff,mask_new_bi_channel):
+        filtered_mask=filter_mask_of_intrest(mask_curr,curr_id)
+        filtered_mask=einops.rearrange(filtered_mask,'w h-> w h 1')
+        masked_image= jnp.multiply(image,filtered_mask)
+        edge_loss=get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,cfg.epsilon)
+        edge_map_loc=edge_map-jnp.min(edge_map.flatten())
+        edge_map_loc=edge_map_loc/(jnp.max(edge_map.flatten()) +0.00001)
+        # print(f"edge_map_loc mean {jnp.mean(edge_map_loc.flatten())} edge_map_loc max {jnp.max(edge_map_loc.flatten())} ")
+        meann= jnp.sum(masked_image.flatten())/(jnp.sum(filtered_mask.flatten())+0.00000000001)
+        image_meaned= jnp.multiply(filtered_mask,meann)
+        # print(f"inn work_on_single_area masked_image {masked_image.shape} image_meaned {image_meaned.shape} image {image.shape} edge_map_loc {edge_map_loc.shape} filtered_mask {filtered_mask.shape}")
+        return edge_map_loc,edge_loss, masked_image, image_meaned
+      
+      v_work_on_single_area=jax.vmap(work_on_single_area)
+      v_v_work_on_single_area=jax.vmap(v_work_on_single_area)
+      masks=einops.rearrange(masks,'x y p ->1 x y p')
+      initial_masks=einops.rearrange(initial_masks,'x y p ->1 x y p')
+      
+      shape_reshape_cfgs=get_all_shape_reshape_constants(cfg,r_x=3,r_y=3)
+      shape_reshape_cfgs_old=get_all_shape_reshape_constants(cfg,r_x=3,r_y=2)
+      
+      def concatenate_to_show_loss(edge_map_loc,masked_image,index):
+        return jnp.concatenate([edge_map_loc[0,index,:,:],masked_image[0,index,:,:]],axis=0)
+      
+      def iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,edge_map,edge_forward_diff,edge_back_diff):
+        shape_reshape_cfg=shape_reshape_cfgs[i]
+        shape_reshape_cfg_old=shape_reshape_cfgs_old[i]
+        curr_ids=initial_masks[:,shape_reshape_cfg.shift_x: shape_reshape_cfg.orig_grid_shape[0]:2,shape_reshape_cfg.shift_y: shape_reshape_cfg.orig_grid_shape[1]:2,: ]
+        curr_ids=einops.rearrange(curr_ids,'b x y p ->b (x y) p')
+        mask_curr=divide_sv_grid(masks,shape_reshape_cfg)
+        curr_image_in=divide_sv_grid(curr_image,shape_reshape_cfg)
+        edge_map_in=divide_sv_grid(edge_map,shape_reshape_cfg)
+
+        shapee_edge_diff=edge_forward_diff.shape
+        mask_new_bi_channel= jnp.ones((shapee_edge_diff[0],shapee_edge_diff[1],shapee_edge_diff[2],2))
+        mask_new_bi_channel=mask_new_bi_channel.at[:,:,:,1].set(0)
+
+        edge_forward_diff_in=divide_sv_grid(edge_forward_diff,shape_reshape_cfg_old)
+        edge_back_diff_in=divide_sv_grid(edge_back_diff,shape_reshape_cfg_old)
+        mask_new_bi_channel_in=divide_sv_grid(mask_new_bi_channel,shape_reshape_cfg_old)
+
+        # print(f"curr_ids {curr_ids.shape} mask_curr {mask_curr.shape} curr_image {curr_image_in.shape} edge_map {edge_map_in.shape} edge_forward_diff {edge_forward_diff_in.shape}  edge_back_diff {edge_back_diff_in.shape} mask_new_bi_channel {mask_new_bi_channel_in.shape}")
+        edge_map_loc,edge_loss, masked_image, image_meaned= v_v_work_on_single_area(curr_ids,mask_curr,curr_image_in,edge_map_in,edge_forward_diff_in,edge_back_diff_in,mask_new_bi_channel_in)
+        
+        indexes_max_edge_loss= (edge_loss==jnp.max(edge_loss.flatten())).nonzero()
+        indexes_min_edge_loss= (edge_loss==jnp.min(edge_loss.flatten())).nonzero()
+        # print(f"indexes_max_edge_loss {indexes_max_edge_loss}")
+
+        minnn=concatenate_to_show_loss(edge_map_loc,masked_image,indexes_max_edge_loss[0])
+        maxx=concatenate_to_show_loss(edge_map_loc,masked_image,indexes_min_edge_loss[0])
+        # print(f"mmmmm minnn {minnn.shape} maxx {maxx.shape}")
+        min_maxx=jnp.concatenate([minnn,maxx], axis=0)
+        #krowa
+
+
+        to_reshape_back_x=np.floor_divide(shape_reshape_cfg.axis_len_x,shape_reshape_cfg.diameter_x)
+        to_reshape_back_y=np.floor_divide(shape_reshape_cfg.axis_len_y,shape_reshape_cfg.diameter_y) 
+        
+        to_reshape_back_x_old=np.floor_divide(shape_reshape_cfg_old.axis_len_x,shape_reshape_cfg_old.diameter_x)
+        to_reshape_back_y_old=np.floor_divide(shape_reshape_cfg_old.axis_len_y,shape_reshape_cfg_old.diameter_y) 
+
+        edge_map_loc=recreate_orig_shape(edge_map_loc,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y)
+        # edge_map_loc=recreate_orig_shape(edge_map_loc,shape_reshape_cfg_old,to_reshape_back_x_old,to_reshape_back_y_old)
+        masked_image=recreate_orig_shape(masked_image,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
+        image_meaned=recreate_orig_shape(image_meaned,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
+        edge_map_loc= jnp.round(edge_map_loc)
+        return edge_map_loc,edge_loss, masked_image, image_meaned,min_maxx
+      curr_image_out_meaned= np.zeros_like(curr_image)
+      edge_map_loc_out= np.zeros_like(curr_image)
+      min_maxx_out= None
+      for i in range(4):        
+        edge_map_loc,edge_loss, masked_image_new, image_meaned,min_maxx= iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,edge_map,edge_forward_diff,edge_back_diff)
+        curr_image_out_meaned=curr_image_out_meaned+image_meaned
+        if(i==0):
+          edge_map_loc_out=edge_map_loc_out+edge_map_loc
+        if(min_maxx_out==None):
+          min_maxx_out=  min_maxx
+        min_maxx_out=jnp.concatenate([min_maxx_out,min_maxx],axis=0)
+      # print(f"initial_masks {initial_masks.shape} curr_image_out_meaned {curr_image_out_meaned.shape} edge_map_loc_out {edge_map_loc_out} edge_map {edge_map}")
+
+
+
       image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
 
       mask_sum=mask_0+mask_1+mask_2+mask_3
-      # def per_area(mask, image ):
-      #   mask = jnp.pad(mask,((0,0),(0,0),(2,2),(0,0)),constant_values=((0,0),(0,0),(1,1),(0,0)))
-      #   image = jnp.pad(image,((0,0),(0,0),(2,2),(0,0)),constant_values=((0,0),(0,0),(1,1),(0,0)))
-      #   return jnp.concatenate([mask,image],axis=0)
-      # v_per_area=jax.vmap(per_area)
-
-      # offset=50
-      # fa=10
-      # fb=15
-      # #setting r_x, r_y to bigger to get the context
-      # r_x=3
-      # r_y=3
-      # def get_svs_to_disp(offset,fa,fb,mask,scale,r_x,r_y):
-      #       #showing single supervoxels
-
-      #       shape_reshape_cfg=get_shape_reshape_constants(cfg,shift_x=0,shift_y=0, r_x=r_x, r_y=r_y )
-      #       # shape_reshape_cfg_smaller=get_shape_reshape_constants(cfg,shift_x=0,shift_y=0, r_x=r_x-1, r_y=r_y-1)
-      #       mask=einops.rearrange(mask,'h w->1 h w 1')
-      #       mask_diveded=divide_sv_grid(mask,shape_reshape_cfg)
-      #       image_to_disp_divided=divide_sv_grid(image_to_disp,shape_reshape_cfg)    
-                      
-      #       to_dispp_svs= v_per_area(mask_diveded,image_to_disp_divided ) 
-      #       print(f"to_dispp_svs {to_dispp_svs.shape}")
-
-      #       to_dispp_svs= to_dispp_svs[:,offset:offset+(fa*fb),:,:,:]
-      #       to_dispp_svs= einops.rearrange(to_dispp_svs,'bb (fa fb) w h cc-> bb (fa w) (fb h) cc', fa=fa,fb=fb)
-      #       shapp=to_dispp_svs.shape
-      #       to_dispp_svs=jax.image.resize(to_dispp_svs,(1,shapp[1]*scale,shapp[2]*scale,1), "linear")
-      #       return to_dispp_svs
-
-      # to_dispp_svs=get_svs_to_disp(offset,fa,fb,masks[0,:,:,0],4,r_x,r_y)
-
-
-
-
-
-
-      # with_boundaries=einops.rearrange(with_boundaries,'a b c-> 1 a b c')
-
-      # print(f"ooo out_image {out_image.shape} min {jnp.min(jnp.ravel(out_image))} max {jnp.max(jnp.ravel(out_image))} ")
-      # print(f"ooo image_to_disp {image_to_disp.shape} with_boundaries {with_boundaries.shape}")
-
-
-
-
-
 
       if(epoch==divisor_logging):
         with file_writer.as_default():
           tf.summary.image(f"image_to_disp",image_to_disp , step=epoch)
-      # masks_0= jnp.pad(masks[0,:,:,0],((0,0),(2,2)),constant_values=((0,0),(1,1)))
-      # masks_1= jnp.pad(masks[1,:,:,0],((0,0),(2,2)),constant_values=((0,0),(1,1)))
-      # masks_2= jnp.pad(masks[2,:,:,0],((0,0),(2,2)),constant_values=((0,0),(1,1)))
-      # masks_3= jnp.pad(masks[3,:,:,0],((0,0),(2,2)),constant_values=((0,0),(1,1)))
-
       # masks_to_disp= einops.rearrange([masks_0,masks_1,masks_2,masks_3], f'(a b) w h ->(a w) (b h)' ,a=2,b=2)
       # shapp=masks_to_disp.shape
       # masks_to_disp=jax.image.resize(masks_to_disp,(shapp[0]*2,shapp[1]*2), "linear")
+      
+      edge_map_loc_out=np.rot90(edge_map_loc_out[0,:,:,0] )
+      edge_map=np.rot90(edge_map[0,:,:,0])
+      curr_image_out_meaned=np.rot90(curr_image_out_meaned[0,:,:,0])
+
+      scale=4
+      shapp=edge_map_loc_out.shape
+      edge_map_loc_out=jax.image.resize(edge_map_loc_out,(shapp[0]*scale,shapp[1]*scale), "linear")     
+      shapp=edge_map.shape
+      edge_map=jax.image.resize(edge_map,(shapp[0]*scale,shapp[1]*scale), "linear")     
+
+      # edge_map_loc_out=einops.rearrange(edge_map_loc_out,'x y ->1 x y 1')
+      # edge_map=einops.rearrange(edge_map,'x y ->1 x y 1')
+      curr_image_out_meaned=einops.rearrange(curr_image_out_meaned,'x y ->1 x y 1')
+      min_maxx_out=einops.rearrange(min_maxx_out,'b x y c->1 (b x) y c')
+
+
       with file_writer.as_default():
       #   tf.summary.image(f"masks",plot_heatmap_to_image(masks_to_disp) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks summ",plot_heatmap_to_image(mask_sum) , step=epoch,max_outputs=2000)
@@ -489,22 +556,24 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
         tf.summary.image(f"to_dispp_svs_1",to_dispp_svs_1 , step=epoch,max_outputs=2000)
         tf.summary.image(f"to_dispp_svs_2",to_dispp_svs_2 , step=epoch,max_outputs=2000)
         tf.summary.image(f"to_dispp_svs_3",to_dispp_svs_3 , step=epoch,max_outputs=2000)
+        tf.summary.image(f"curr_image_out_meaned",curr_image_out_meaned , step=epoch,max_outputs=2000)
+        tf.summary.image(f"edge_map_loc_out",plot_heatmap_to_image(edge_map_loc_out) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"edge_map",plot_heatmap_to_image(edge_map) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"min_maxx_out",min_maxx_out , step=epoch,max_outputs=2000)
 
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
       losses= jnp.mean(losses,axis=0)
       # losses= jnp.multiply(losses,loss_weights)
       # rounding_loss,feature_variance_loss,edgeloss,consistency_between_masks_loss =losses
 
-
       with file_writer.as_default():
-          tf.summary.scalar(f"train loss", np.mean(epoch_loss), step=epoch)
+          tf.summary.scalar(f"train loss ", np.mean(epoch_loss),       step=epoch)
           tf.summary.scalar(f"mask_0 mean", np.mean(mask_0.flatten()), step=epoch)
-      #     tf.summary.scalar(f"rounding_loss", np.mean(rounding_loss), step=epoch)
-      #     tf.summary.scalar(f"feature_variance_loss", np.mean(feature_variance_loss), step=epoch)
-      #     tf.summary.scalar(f"consistency_between_masks_loss", np.mean(consistency_between_masks_loss), step=epoch)
-      #     tf.summary.scalar(f"edgeloss", np.mean(edgeloss), step=epoch)
-
-
+         
+          # tf.summary.scalar(f"rounding_loss", np.mean(rounding_loss), step=epoch)
+          # tf.summary.scalar(f"feature_variance_loss", np.mean(feature_variance_loss), step=epoch)
+          # tf.summary.scalar(f"consistency_between_masks_loss", np.mean(consistency_between_masks_loss), step=epoch)
+          # tf.summary.scalar(f"edgeloss", np.mean(edgeloss), step=epoch)
           # tf.summary.scalar(f"mask 0  mean", np.mean(masks[0,:,:].flatten()), step=epoch)
           # tf.summary.scalar(f"mask 1  mean", np.mean(masks[1,:,:].flatten()), step=epoch)
           # tf.summary.scalar(f"mask 2  mean", np.mean(masks[2,:,:].flatten()), step=epoch)

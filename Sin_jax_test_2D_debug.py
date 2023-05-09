@@ -206,5 +206,5 @@ print(pd.DataFrame((mask_0_num+10*(mask_0_num>0)) +(mask_1_num+20*(mask_1_num>0)
 # print("\n  suuuum\n  ")
 # print(pd.DataFrame(mask_sum))
 
-krowa check mask after filtering to know is the shape reshape works well
-can save some sv segmentation run loss function over those and display low loss and high loss areas to check is it ok
+# krowa check mask after filtering to know is the shape reshape works well
+# can save some sv segmentation run loss function over those and display low loss and high loss areas to check is it ok
