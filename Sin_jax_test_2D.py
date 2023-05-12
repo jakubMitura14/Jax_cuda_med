@@ -98,7 +98,7 @@ cfg.deconves_importances=(0.1,0.5,1.0)
 #some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
 cfg.edge_loss_multiplier=10.0
 cfg.feature_loss_multiplier=10.0
-cfg.percent_weak_edges=0.0001
+cfg.percent_weak_edges=0.25
 
 ### how important we consider diffrent losses at diffrent stages of the training loop
 #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)
@@ -199,9 +199,9 @@ def create_train_state_from_orbax(rng_2,cfg:ml_collections.config_dict.FrozenCon
   # cosine_decay_scheduler = optax.cosine_decay_schedule(0.000005, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   tx = optax.chain(
-        optax.clip_by_global_norm(8.0),  # Clip gradients at norm 
-        # optax.lion(learning_rate=cfg.learning_rate))
-        optax.lion(learning_rate=cosine_decay_scheduler))
+        optax.clip_by_global_norm(6.0),  # Clip gradients at norm 
+        optax.lion(learning_rate=cfg.learning_rate))
+        # optax.lion(learning_rate=cosine_decay_scheduler))
 
 
   orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
@@ -342,14 +342,14 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
       #checkpointing
     divisor_checkpoint = 10
 
-    # if(index==0 and epoch%divisor_checkpoint==0):
-    #   chechpoint_epoch_folder=f"{checkPoint_folder}/{epoch}"
-    #   # os.makedirs(chechpoint_epoch_folder)
+    if(index==0 and epoch%divisor_checkpoint==0):
+      chechpoint_epoch_folder=f"{checkPoint_folder}/{epoch}"
+      # os.makedirs(chechpoint_epoch_folder)
 
-    #   orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    #   ckpt = {'model': state, 'config': cfg}
-    #   save_args = orbax_utils.save_args_from_target(ckpt)
-    #   orbax_checkpointer.save(chechpoint_epoch_folder, ckpt, save_args=save_args)
+      orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+      ckpt = {'model': state, 'config': cfg}
+      save_args = orbax_utils.save_args_from_target(ckpt)
+      orbax_checkpointer.save(chechpoint_epoch_folder, ckpt, save_args=save_args)
 
 
     # out_image.block_until_ready()# krowa TODO(remove)
@@ -358,7 +358,7 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
 
 
     #saving only with index one
-    divisor_logging = 3
+    divisor_logging = 1
     if(index==0 and epoch%divisor_logging==0):
       # cfgb = config_dict.ConfigDict(cfg)
       # cfgb.batch_size_pmapped=np.max([1,1])
@@ -411,23 +411,20 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
       curr_image= einops.rearrange(batch_images_prim[0,0,0,:,:],'w h->1 w h 1')
       # print(f"curr_image {curr_image.shape}")
       edge_map=apply_farid_both(curr_image)
-      edge_map=edge_map-jnp.min(edge_map.flatten())
-      edge_map= edge_map/(jnp.max(edge_map.flatten())+cfg.epsilon )
-      edge_map= nn.relu(edge_map-cfg.percent_weak_edges)
-      edge_map=edge_map-jnp.min(edge_map.flatten())
-      edge_map= edge_map/(jnp.max(edge_map.flatten())+cfg.epsilon )
+
       #we will test edge loss by supplying probs with ones all up axis
       #we will set axis to 1 as it is the last axis on which deconv is working
       dim_stride_curr=1+1#+1 becouse of batch
       edge_map_end = (1,cfg.img_size[2],1,1)
       un_rearrange_to_intertwine_einops='bb h (w f) cc->bb h w f cc'
-      edge_map_b,edge_forward_diff,edge_back_diff=get_edge_diffs(curr_image
+      # print(f"1111 eeeeeedge_map {edge_map.shape} edge_forward_diff {edge_forward_diff.shape}  edge_back_diff {edge_back_diff.shape}")
+
+      edge_map,edge_forward_diff,edge_back_diff=get_edge_diffs(curr_image
                                                             ,dim_stride_curr
                                                             ,edge_map_end
                                                             ,cfg.epsilon
                                                             ,un_rearrange_to_intertwine_einops
                                                             ,cfg)
-      # print(f"edge_map {edge_map.shape} edge_forward_diff {edge_forward_diff.shape}  edge_back_diff {edge_back_diff.shape}")
 
 
 
@@ -443,14 +440,15 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
         filtered_mask=filter_mask_of_intrest(mask_curr,curr_id)
         filtered_mask=einops.rearrange(filtered_mask,'w h-> w h 1')
         masked_image= jnp.multiply(image,filtered_mask)
-        edge_loss=get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,cfg.epsilon)
+
+        edge_loss,loss_mask,edge_forward_diff,edge_back_diff=get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,cfg.epsilon,cfg)
         edge_map_loc=edge_map-jnp.min(edge_map.flatten())
         edge_map_loc=edge_map_loc/(jnp.max(edge_map.flatten()) +0.00001)
         # print(f"edge_map_loc mean {jnp.mean(edge_map_loc.flatten())} edge_map_loc max {jnp.max(edge_map_loc.flatten())} ")
         meann= jnp.sum(masked_image.flatten())/(jnp.sum(filtered_mask.flatten())+0.00000000001)
         image_meaned= jnp.multiply(filtered_mask,meann)
         # print(f"inn work_on_single_area masked_image {masked_image.shape} image_meaned {image_meaned.shape} image {image.shape} edge_map_loc {edge_map_loc.shape} filtered_mask {filtered_mask.shape}")
-        return edge_map_loc,edge_loss, masked_image, image_meaned
+        return edge_map_loc,edge_loss, masked_image, image_meaned,loss_mask,edge_forward_diff,edge_back_diff
       
       v_work_on_single_area=jax.vmap(work_on_single_area)
       v_v_work_on_single_area=jax.vmap(v_work_on_single_area)
@@ -476,12 +474,12 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
         mask_new_bi_channel= jnp.ones((shapee_edge_diff[0],shapee_edge_diff[1],shapee_edge_diff[2],2))
         mask_new_bi_channel=mask_new_bi_channel.at[:,:,:,1].set(0)
 
-        edge_forward_diff_in=divide_sv_grid(edge_forward_diff,shape_reshape_cfg_old)
-        edge_back_diff_in=divide_sv_grid(edge_back_diff,shape_reshape_cfg_old)
-        mask_new_bi_channel_in=divide_sv_grid(mask_new_bi_channel,shape_reshape_cfg_old)
+        edge_forward_diff_in=divide_sv_grid(edge_forward_diff,shape_reshape_cfg)
+        edge_back_diff_in=divide_sv_grid(edge_back_diff,shape_reshape_cfg)
+        mask_new_bi_channel_in=divide_sv_grid(mask_new_bi_channel,shape_reshape_cfg)
 
         # print(f"curr_ids {curr_ids.shape} mask_curr {mask_curr.shape} curr_image {curr_image_in.shape} edge_map {edge_map_in.shape} edge_forward_diff {edge_forward_diff_in.shape}  edge_back_diff {edge_back_diff_in.shape} mask_new_bi_channel {mask_new_bi_channel_in.shape}")
-        edge_map_loc,edge_loss, masked_image, image_meaned= v_v_work_on_single_area(curr_ids,mask_curr,curr_image_in,edge_map_in,edge_forward_diff_in,edge_back_diff_in,mask_new_bi_channel_in)
+        edge_map_loc,edge_loss, masked_image, image_meaned,loss_mask,edge_forward_diff,edge_back_diff= v_v_work_on_single_area(curr_ids,mask_curr,curr_image_in,edge_map_in,edge_forward_diff_in,edge_back_diff_in,mask_new_bi_channel_in)
         
         indexes_max_edge_loss= (edge_loss==jnp.max(edge_loss.flatten())).nonzero()
         indexes_min_edge_loss= (edge_loss==jnp.min(edge_loss.flatten())).nonzero()
@@ -491,8 +489,6 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
         maxx=concatenate_to_show_loss(edge_map_loc,masked_image,indexes_min_edge_loss[0])
         # print(f"mmmmm minnn {minnn.shape} maxx {maxx.shape}")
         min_maxx=jnp.concatenate([minnn,maxx], axis=0)
-        #krowa
-
 
         to_reshape_back_x=np.floor_divide(shape_reshape_cfg.axis_len_x,shape_reshape_cfg.diameter_x)
         to_reshape_back_y=np.floor_divide(shape_reshape_cfg.axis_len_y,shape_reshape_cfg.diameter_y) 
@@ -500,25 +496,40 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
         to_reshape_back_x_old=np.floor_divide(shape_reshape_cfg_old.axis_len_x,shape_reshape_cfg_old.diameter_x)
         to_reshape_back_y_old=np.floor_divide(shape_reshape_cfg_old.axis_len_y,shape_reshape_cfg_old.diameter_y) 
 
+        edge_forward_diff = einops.rearrange(edge_forward_diff, 'b pp w h ->b pp w h 1')
+        edge_back_diff = einops.rearrange(edge_back_diff, 'b pp w h ->b pp w h 1')
+        
         edge_map_loc=recreate_orig_shape(edge_map_loc,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y)
         # edge_map_loc=recreate_orig_shape(edge_map_loc,shape_reshape_cfg_old,to_reshape_back_x_old,to_reshape_back_y_old)
         masked_image=recreate_orig_shape(masked_image,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
         image_meaned=recreate_orig_shape(image_meaned,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
+        loss_mask_out=recreate_orig_shape(loss_mask,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
+        
+
+        edge_forward_diff_out=recreate_orig_shape(edge_forward_diff,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
+        edge_back_diff_out=recreate_orig_shape(edge_back_diff,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
+
+        
         edge_map_loc= jnp.round(edge_map_loc)
-        return edge_map_loc,edge_loss, masked_image, image_meaned,min_maxx
+        return edge_map_loc,edge_loss, masked_image, image_meaned,min_maxx,loss_mask_out,edge_forward_diff_out,edge_back_diff_out
       curr_image_out_meaned= np.zeros_like(curr_image)
       edge_map_loc_out= np.zeros_like(curr_image)
       min_maxx_out= None
+      lossMasks=[]
+      edge_forward_diff_outt=None
+      edge_back_diff_outt=None
       for i in range(4):        
-        edge_map_loc,edge_loss, masked_image_new, image_meaned,min_maxx= iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,edge_map,edge_forward_diff,edge_back_diff)
+        edge_map_loc,edge_loss, masked_image_new, image_meaned,min_maxx,loss_mask_out,edge_forward_diff_out,edge_back_diff_out= iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,edge_map,edge_forward_diff,edge_back_diff)
+        lossMasks.append(loss_mask_out)
         curr_image_out_meaned=curr_image_out_meaned+image_meaned
         if(i==0):
           edge_map_loc_out=edge_map_loc_out+edge_map_loc
+          edge_forward_diff_outt=edge_forward_diff_out
+          edge_back_diff_outt=edge_back_diff_out
         if(min_maxx_out==None):
           min_maxx_out=  min_maxx
         min_maxx_out=jnp.concatenate([min_maxx_out,min_maxx],axis=0)
       # print(f"initial_masks {initial_masks.shape} curr_image_out_meaned {curr_image_out_meaned.shape} edge_map_loc_out {edge_map_loc_out} edge_map {edge_map}")
-
 
 
       image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
@@ -547,7 +558,6 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
       curr_image_out_meaned=einops.rearrange(curr_image_out_meaned,'x y ->1 x y 1')
       min_maxx_out=einops.rearrange(min_maxx_out,'b x y c->1 (b x) y c')
 
-
       with file_writer.as_default():
       #   tf.summary.image(f"masks",plot_heatmap_to_image(masks_to_disp) , step=epoch,max_outputs=2000)
         tf.summary.image(f"masks summ",plot_heatmap_to_image(mask_sum) , step=epoch,max_outputs=2000)
@@ -558,8 +568,16 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
         tf.summary.image(f"to_dispp_svs_3",to_dispp_svs_3 , step=epoch,max_outputs=2000)
         tf.summary.image(f"curr_image_out_meaned",curr_image_out_meaned , step=epoch,max_outputs=2000)
         tf.summary.image(f"edge_map_loc_out",plot_heatmap_to_image(edge_map_loc_out) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"edge_map",plot_heatmap_to_image(edge_map) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"min_maxx_out",min_maxx_out , step=epoch,max_outputs=2000)
+        # tf.summary.image(f"edge_map",plot_heatmap_to_image(edge_map) , step=epoch,max_outputs=2000)
+        # tf.summary.image(f"min_maxx_out",min_maxx_out , step=epoch,max_outputs=2000)
+        tf.summary.image(f"lossMasks 0",plot_heatmap_to_image(np.rot90(lossMasks[0][0,:,:,0])) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"lossMasks 1",plot_heatmap_to_image(np.rot90(lossMasks[1][0,:,:,0])) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"lossMasks 2",plot_heatmap_to_image(np.rot90(lossMasks[2][0,:,:,0])) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"lossMasks 3",plot_heatmap_to_image(np.rot90(lossMasks[3][0,:,:,0])) , step=epoch,max_outputs=2000)
+
+        tf.summary.image(f"edge_forward_diff_outt",plot_heatmap_to_image(np.rot90(edge_forward_diff_outt[0,:,:,0])) , step=epoch,max_outputs=2000)
+        tf.summary.image(f"edge_back_diff_outt",plot_heatmap_to_image(np.rot90(edge_back_diff_outt[0,:,:,0])) , step=epoch,max_outputs=2000)
+
 
       #   tf.summary.image(f"with_boundaries {epoch}",with_boundaries , step=epoch)
       losses= jnp.mean(losses,axis=0)
@@ -623,17 +641,11 @@ def main_train(cfg):
   checkPoint_folder=checkPoint_folder.replace('.','_')
   os.makedirs(checkPoint_folder)
 
-
-
-
-
   for epoch in range(1, cfg.total_steps):
       slicee=15
       for index,dat in enumerate(cached_subj) :
         state=train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_folder)
  
-
-
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
 # tensorboard --logdir=/workspaces/Jax_cuda_med/tensor_board
 

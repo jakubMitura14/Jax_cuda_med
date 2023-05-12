@@ -270,18 +270,34 @@ def filter_mask_of_intrest(mask,initial_mask_id):
 
     return differentiable_and(a,b)        
 
-def get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,epsilon):        
+def get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,epsilon,cfg):        
     """
     we want to compare the edges with probabilities
     generally we should have low probability of being the same supervoxel as neighbour 
     if we have big diffrence between those two voxels in the edge map
     """
-    #first we try to normalize and filter out all weak edges (weak relatively in this particular sv area)
-    # edge_forward_diff=edge_forward_diff-jnp.min(edge_forward_diff.flatten())
-    # edge_back_diff=edge_back_diff-jnp.min(edge_back_diff.flatten())
-    # edge_forward_diff = edge_forward_diff/(jnp.max(edge_forward_diff.flatten())+epsilon )
-    # edge_back_diff = edge_back_diff/(jnp.max(edge_back_diff.flatten())+epsilon )
+    # print(f"gggg get_edge_loss mask_new_bi_channel {mask_new_bi_channel.shape} edge_forward_diff {edge_forward_diff.shape} edge_back_diff {edge_back_diff.shape} ")
 
+    #first we try to normalize and filter out all weak edges (weak relatively in this particular sv area)
+    edge_forward_diff=edge_forward_diff-jnp.min(edge_forward_diff.flatten())
+    edge_back_diff=edge_back_diff-jnp.min(edge_back_diff.flatten())
+    edge_forward_diff = edge_forward_diff/(jnp.max(edge_forward_diff.flatten())+epsilon )
+    edge_back_diff = edge_back_diff/(jnp.max(edge_back_diff.flatten())+epsilon )
+
+    #removing weak edges
+    edge_forward_diff=edge_forward_diff-jnp.min(edge_forward_diff.flatten())
+    edge_back_diff=edge_back_diff-jnp.min(edge_back_diff.flatten())
+    edge_forward_diff= edge_forward_diff/(jnp.max(edge_forward_diff.flatten())+epsilon )
+    edge_back_diff= edge_back_diff/(jnp.max(edge_back_diff.flatten())+epsilon )
+
+    edge_forward_diff= nn.relu(edge_forward_diff-cfg.percent_weak_edges)
+    edge_back_diff= nn.relu(edge_back_diff-cfg.percent_weak_edges)
+
+    edge_forward_diff=edge_forward_diff-jnp.min(edge_forward_diff.flatten())
+    edge_back_diff=edge_back_diff-jnp.min(edge_back_diff.flatten())
+    edge_forward_diff= edge_forward_diff/(jnp.max(edge_forward_diff.flatten())+epsilon )
+    edge_back_diff= edge_back_diff/(jnp.max(edge_back_diff.flatten())+epsilon )
+    #basically setting all remaining edges to 1
     edge_forward_diff_min=jnp.zeros_like(edge_forward_diff)+epsilon
     edge_back_diff_min=jnp.zeros_like(edge_back_diff)+epsilon
 
@@ -291,22 +307,24 @@ def get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,epsilon):
     edge_forward_diff=nn.softmax(edge_forward_diff,axis=-1)
     edge_back_diff=nn.softmax(edge_back_diff,axis=-1)
 
-    print(f"edge_back_diff {edge_back_diff.shape}")
-    edge_forward_diff=edge_forward_diff[:,:,1]
-    edge_back_diff=edge_back_diff[:,:,1]
+    edge_forward_diff=edge_forward_diff[:,:,0,1]
+    edge_back_diff=edge_back_diff[:,:,0,1]
 
-    forward_probs = 1-mask_new_bi_channel[0]
-    back_probs = 1-mask_new_bi_channel[1]
+    forward_probs = 1-mask_new_bi_channel[:,:,0]
+    back_probs = 1-mask_new_bi_channel[:,:,1]
     mask_forward=harder_diff_round(harder_diff_round(edge_forward_diff))
     mask_back=harder_diff_round(harder_diff_round(edge_back_diff))
     # mask_forward=1-harder_diff_round(harder_diff_round(edge_forward_diff))
     # mask_back=1-harder_diff_round(harder_diff_round(edge_back_diff))
     #if mask_forward and mask_back is 1 it do not matter weather forward_probs or back_probs is one
     # 
-    res=masked_cross_entropy_loss(forward_probs,mask_forward,mask_forward,epsilon)
-    res=res+masked_cross_entropy_loss(back_probs,mask_back,mask_back,epsilon)
-
-    return res
+    # res=masked_cross_entropy_loss(forward_probs,mask_forward,mask_forward,epsilon)
+    # res=res+masked_cross_entropy_loss(back_probs,mask_back,mask_back,epsilon)
+    loc_loss= jnp.multiply(optax.l2_loss(forward_probs,mask_forward),mask_forward)
+    loc_loss= jnp.multiply(optax.l2_loss(back_probs,mask_back),mask_back)+loc_loss
+    loc_loss= einops.rearrange(loc_loss,'w h -> w h 1')
+    
+    return jnp.mean(loc_loss.flatten()),loc_loss,edge_forward_diff,edge_back_diff
     #mask_new_bi_channel holds probability of forward as a first channel and probability of back as second
     #so we look up and down but importantly we ignore the spots for the old mask
     #as they will not chenge in this run
@@ -419,8 +437,7 @@ class Apply_on_single_area(nn.Module):
         # shift_x= jnp.remainder(mask_index,2)
         # shift_y=mask_index//2
         # mask_combined_print=filter_mask_of_intrest(jnp.round(mask_combined),shift_x,shift_y)*(mask_index+1)+((area_index+1)*100)
-
-        edge_loss=get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,self.cfg.epsilon)
+        edge_loss,loss_mask,edge_forward_diff,edge_back_diff=get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,self.cfg.epsilon,self.cfg)
         # f_loss= self.get_feature_var_loss(resized_image,mask_combined,mask_combined_alt,self.cfg.epsilon,initial_mask_id)
 
         return edge_loss
@@ -668,10 +685,10 @@ class De_conv_batched_for_scan(nn.Module):
         mask_combined=self.select_shape_reshape_operation(mask_combined,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
         mask_combined_alt=self.select_shape_reshape_operation(mask_combined_alt,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
 
-        edge_forward_diff=self.select_shape_reshape_operation(edge_forward_diff,mask_index,self.shape_reshape_cfg_olds,divide_sv_grid)
-        edge_back_diff=self.select_shape_reshape_operation(edge_back_diff,mask_index,self.shape_reshape_cfg_olds,divide_sv_grid)
+        edge_forward_diff=self.select_shape_reshape_operation(edge_forward_diff,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
+        edge_back_diff=self.select_shape_reshape_operation(edge_back_diff,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
 
-        mask_new_bi_channel=self.select_shape_reshape_operation(mask_new_bi_channel,mask_index,self.shape_reshape_cfg_olds,divide_sv_grid)
+        mask_new_bi_channel=self.select_shape_reshape_operation(mask_new_bi_channel,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
         #needed to know the current id on apply on single area
         initial_masks= self.select_id_choose_operation(initial_masks,mask_index,self.shape_reshape_cfgs)
         initial_masks= einops.rearrange(initial_masks,'b x y p ->b (x y) p')
@@ -714,7 +731,6 @@ def get_edge_diffs(resized_image,dim_stride_curr,edge_map_end,epsilon,un_rearran
     edge_map=apply_farid_both(resized_image)
     edge_forward_diff=jnp.diff(edge_map,axis=dim_stride_curr)
     edge_back_diff  =jnp.flip(jnp.diff(jnp.flip(edge_map,axis=dim_stride_curr),axis=dim_stride_curr),axis=dim_stride_curr)
-
     edge_forward_diff= jnp.sqrt(jnp.power(edge_forward_diff,2))
     edge_back_diff= jnp.sqrt(jnp.power(edge_back_diff,2))
 
@@ -723,20 +739,20 @@ def get_edge_diffs(resized_image,dim_stride_curr,edge_map_end,epsilon,un_rearran
     edge_forward_diff = jnp.concatenate([edge_forward_diff,to_end_grid],axis=dim_stride_curr)
     edge_back_diff = jnp.concatenate([to_end_grid,edge_back_diff],axis=dim_stride_curr)
 
-    #removing weak edges
-    edge_forward_diff=edge_forward_diff-jnp.min(edge_forward_diff.flatten())
-    edge_back_diff=edge_back_diff-jnp.min(edge_back_diff.flatten())
-    edge_forward_diff= edge_forward_diff/(jnp.max(edge_forward_diff.flatten())+epsilon )
-    edge_back_diff= edge_back_diff/(jnp.max(edge_back_diff.flatten())+epsilon )
+    # #removing weak edges
+    # edge_forward_diff=edge_forward_diff-jnp.min(edge_forward_diff.flatten())
+    # edge_back_diff=edge_back_diff-jnp.min(edge_back_diff.flatten())
+    # edge_forward_diff= edge_forward_diff/(jnp.max(edge_forward_diff.flatten())+epsilon )
+    # edge_back_diff= edge_back_diff/(jnp.max(edge_back_diff.flatten())+epsilon )
 
-    edge_forward_diff= nn.relu(edge_forward_diff-cfg.percent_weak_edges)
-    edge_back_diff= nn.relu(edge_back_diff-cfg.percent_weak_edges)
+    # edge_forward_diff= nn.relu(edge_forward_diff-cfg.percent_weak_edges)
+    # edge_back_diff= nn.relu(edge_back_diff-cfg.percent_weak_edges)
 
 
-    edge_forward_diff=edge_forward_diff-jnp.min(edge_forward_diff.flatten())
-    edge_back_diff=edge_back_diff-jnp.min(edge_back_diff.flatten())
-    edge_forward_diff= edge_forward_diff/(jnp.max(edge_forward_diff.flatten())+epsilon )
-    edge_back_diff= edge_back_diff/(jnp.max(edge_back_diff.flatten())+epsilon )
+    # edge_forward_diff=edge_forward_diff-jnp.min(edge_forward_diff.flatten())
+    # edge_back_diff=edge_back_diff-jnp.min(edge_back_diff.flatten())
+    # edge_forward_diff= edge_forward_diff/(jnp.max(edge_forward_diff.flatten())+epsilon )
+    # edge_back_diff= edge_back_diff/(jnp.max(edge_back_diff.flatten())+epsilon )
 
     #choosing only the parts associated with new mask
     # edge_forward_diff=einops.rearrange(edge_forward_diff,un_rearrange_to_intertwine_einops,f=2)[:,:,:,1]
@@ -933,9 +949,9 @@ class De_conv_batched_multimasks(nn.Module):
         #getting new mask thanks to convolutions...
         mask_new_bi_channel=remat(nn.Conv)(2, kernel_size=(5,5))(deconv_multi)
         mask_new_bi_channel=nn.softmax(mask_new_bi_channel,axis=-1)
-        
         #intertwine old and new mask - so a new mask may be interpreted basically as interpolation of old
         mask_combined,mask_combined_alt=self.get_new_mask_from_probs(mask_old,mask_new_bi_channel)
+
         #we want the masks entries to be as close to be 0 or 1 as possible - otherwise feature variance and 
         #separability of supervoxels will be compromised
         # having entries 0 or 1 will maximize the term below so we negate it for loss
@@ -964,11 +980,6 @@ class De_conv_batched_multimasks(nn.Module):
 
 
         return deconv_multi,mask_combined,losses
-
-
-
-
-
 
 class De_conv_3_dim(nn.Module):
     """

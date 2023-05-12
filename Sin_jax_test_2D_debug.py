@@ -33,16 +33,12 @@ from swinTransformer.swin_transformer import SwinTransformer
 from swinTransformer.losses import focal_loss
 from swinTransformer.metrics import dice_metr
 from swinTransformer.optimasation import get_optimiser
-# import augmentations.simpleTransforms
-# from augmentations.simpleTransforms import main_augment
 from testUtils.spleenTest import get_spleen_data
 from jax.config import config
 from skimage.segmentation import mark_boundaries
 import cv2
 import functools
-# from torch.utils.tensorboard import SummaryWriter
-# import torchvision.transforms.functional as F
-# import torchvision
+
 import flax.jax_utils as jax_utils
 import tensorflow as tf
 from jax_smi import initialise_tracking
@@ -141,7 +137,6 @@ prng,prng_b,prng_c = jax.random.split(prng,num=3)
 model = SpixelNet(cfg)
 image= jax.random.uniform(prng_b,cfg.img_size)
 params = model.init({'params': prng}, image,dynamic_cfg_a)#['params']
-# print(params['params']['De_conv_3_dim_2']['Core_remat_staticDe_conv_batched_multimasks_1']['Core_remat_staticConv_0']['bias'])
 
 losses,masks=model.apply(params, image,dynamic_cfg_a)
 sh_r=get_shape_reshape_constants(cfg,1,1,3,3)
@@ -167,12 +162,11 @@ def get_mask_with_num(shift_x,shift_y):
   b_dim,pp_dim,w_dim,h_dim,c_dim=mask_now.shape
   aranged= jnp.arange(1,pp_dim+1)
   aranged=einops.repeat(aranged,'pp->b pp w h c',b=b_dim,w = w_dim,h= h_dim,c= c_dim)
-  # print(f"aranged \n {disp_to_pandas_curr_shape(aranged[0,:,:,0])} \n")
+
   res = jnp.multiply(mask_now,aranged)
   a=sh_r.axis_len_x//sh_r.diameter_x
   b=sh_r.axis_len_y//sh_r.diameter_y
   return recreate_orig_shape(res,sh_r,a,b)[0,:,:,0]
-
 
 
 mask_0=masks_binary(0,0)
@@ -184,8 +178,6 @@ mask_0_num=get_mask_with_num(0,0)
 mask_1_num=get_mask_with_num(1,0)
 mask_2_num=get_mask_with_num(0,1)
 mask_3_num=get_mask_with_num(1,1)
-
-
 
 print("\n mask_0 \n ")
 print(pd.DataFrame(mask_0_num))
