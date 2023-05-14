@@ -1,0 +1,3 @@
+https://www.researchgate.net/publication/343156325_Custom_Dilated_Edge_Detection_Filters
+ 
+ We can get edge in mask by second order derivative and some more advanced kernel on image

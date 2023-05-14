@@ -132,9 +132,7 @@ def apply_model(state, image,label,model):
   def loss_fn(params):
     loss,out_image,res_grid=state.apply_fn({'params': params}, image,label)#, rngs={'texture': random.PRNGKey(2)}
     return loss,(out_image,res_grid) #(loss.copy(),out_image)
-    # loss,grid = state.apply_fn({'params': params}, image,label)
-    # print(f"loss {loss} ")
-    # return loss,grid 
+
   grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
   (loss, (out_image,res_grid)), grads = grad_fn(state.params)
   # losss,grid_res=pair
