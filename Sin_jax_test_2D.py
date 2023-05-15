@@ -70,7 +70,7 @@ from super_voxels.SIN.SIN_jax_2D_simpler.shape_reshape_functions import *
 # session = tf.compat.v1.Session(config=config) 
 # tf.compat.v1.keras.backend.set_session(session)
 
-config.update("jax_debug_nans", True)
+# config.update("jax_debug_nans", True)
 jax.numpy.set_printoptions(linewidth=400)
 
 # config.update("jax_debug_nans", True)
@@ -209,6 +209,7 @@ def create_train_state_from_orbax(rng_2,cfg:ml_collections.config_dict.FrozenCon
 
   orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
   raw_restored = orbax_checkpointer.restore('/workspaces/Jax_cuda_med/data/checkpoints/edges_deep_12_05_2023/120',item=params)
+
 
 
   return train_state.TrainState.create(

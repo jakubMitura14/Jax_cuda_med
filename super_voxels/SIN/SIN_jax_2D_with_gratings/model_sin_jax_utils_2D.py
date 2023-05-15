@@ -159,9 +159,9 @@ def get_edge_loss(mask_new_bi_channel,edge_forward_diff,edge_back_diff,epsilon,c
     # mask_forward=1-harder_diff_round(harder_diff_round(edge_forward_diff))
     # mask_back=1-harder_diff_round(harder_diff_round(edge_back_diff))
     #if mask_forward and mask_back is 1 it do not matter weather forward_probs or back_probs is one
-    # 
     # res=masked_cross_entropy_loss(forward_probs,mask_forward,mask_forward,epsilon)
     # res=res+masked_cross_entropy_loss(back_probs,mask_back,mask_back,epsilon)
+
     loc_loss= jnp.multiply(optax.l2_loss(forward_probs,mask_forward),mask_forward)
     loc_loss= jnp.multiply(optax.l2_loss(back_probs,mask_back),mask_back)+loc_loss
     loc_loss= einops.rearrange(loc_loss,'w h -> w h 1')

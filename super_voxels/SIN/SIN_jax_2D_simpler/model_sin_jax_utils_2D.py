@@ -423,19 +423,18 @@ class Apply_on_single_area(nn.Module):
         feature_variance_loss_main=get_translated_mask_variance(resized_image, mask_combined_curr
                                                         ,self.translation_val, (self.diameter_x,
                                                                                 self.diameter_y ) ,self.cfg.feature_loss_multiplier,self.cfg.epsilon )
-         #feature_variance_loss_main should be small becouse we want to minimize the variance of features in chosen supervoxel
+        #feature_variance_loss_main should be small becouse we want to minimize the variance of features in chosen supervoxel
         #feature_variance_loss_alt should be big
 
         #such calculation will lead to be in range 0-1
 
-        # feature_variance_loss=feature_variance_loss_main/((feature_variance_loss_main+feature_variance_loss_alt) +epsilon)
+        #feature_variance_loss=feature_variance_loss_main/((feature_variance_loss_main+feature_variance_loss_alt) +epsilon)
         max_vol=(self.diameter_x-1)*(self.diameter_y-1)
         mean_vol=max_vol/self.cfg.masks_num
         current_mask_sum=jnp.sum(mask_combined_curr.flatten())
         volume_correction= jnp.power((current_mask_sum-mean_vol),2)
         feature_variance_loss_main=feature_variance_loss_main+ (volume_correction/self.cfg.volume_corr)*feature_variance_loss_main
 
-        # return feature_variance_loss
         return feature_variance_loss_main
 
 
