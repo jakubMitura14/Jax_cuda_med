@@ -177,20 +177,20 @@ def get_2d_grating_to_scan(carried,parameters_per_wave):
         creating 3d wave sinusoidal grating of given properties
         X,Y,Z are taken from the meshgrid
         """
-        wavelength, alphaa,amplitude,shift_x,shift_y, shift_amplitude=parameters_per_wave
+        wavelength, alphaa,amplitude,shift_x,shift_y=parameters_per_wave
         X,Y,wavelength_old,grating_old,diameter =carried
 
-        for_correct_range= jnp.array([diameter,1.0,wavelength/2,wavelength/2,2.0,2.0])
+        for_correct_range= jnp.array([diameter,1.0,wavelength/2,wavelength/2,2.0])
         parameters_per_wave=jnp.multiply(parameters_per_wave,for_correct_range)
-        parameters_per_wave=parameters_per_wave-jnp.array([0.0,0.0,0.0,0.0,1.0,1.0])
+        parameters_per_wave=parameters_per_wave-jnp.array([0.0,0.0,0.0,0.0,1.0])
 
-        wavelength, alphaa,shift_x,shift_y,amplitude,shift_amplitude=parameters_per_wave
+        wavelength, alphaa,shift_x,shift_y,amplitude=parameters_per_wave
 
         wavelength_new=wavelength+jnp.array([0.0])#+wavelength_old
         alpha = jnp.pi*alphaa
         grating = (jnp.sin(
                           2*jnp.pi*((X*jnp.cos(alpha)+shift_x) + (Y*jnp.sin(alpha)+shift_y )) / wavelength
-                      )*amplitude)+shift_amplitude
+                      )*amplitude)
 
         grating_new=grating+grating_old
         curried_new=  X,Y,wavelength_new,grating_new,diameter
@@ -232,9 +232,9 @@ class Sinusoidal_grating_3d(nn.Module):
             # fft= Conv_trio(self.cfg,channels=4,strides=(2,2))(fft)               
             # image_part= Conv_trio(self.cfg,channels=2)(jnp.concatenate([image_part,fft],axis=-1))
 
-            params_grating=remat(nn.Dense)(features=self.cfg.num_waves*6)(jnp.ravel(image_part))
+            params_grating=remat(nn.Dense)(features=self.cfg.num_waves*5)(jnp.ravel(image_part))
             
-            params_grating=jnp.reshape(params_grating,(self.cfg.num_waves,6))
+            params_grating=jnp.reshape(params_grating,(self.cfg.num_waves,5))
             params_grating =nn.sigmoid(params_grating)  #  sigmoid always between 0 and 1
 
             #creating required meshgrid
@@ -329,7 +329,7 @@ def train_epoch(model,state, image_batched, mask_batched):
     with file_writer.as_default():
       tf.summary.scalar(f"train loss ", np.mean(epoch_loss),       step=epoch)
 
-    if(epoch%10==0):
+    if(epoch%30==0):
       with file_writer.as_default():
         for i in range(10):
             i=i*10
