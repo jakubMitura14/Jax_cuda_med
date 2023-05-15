@@ -68,10 +68,10 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
-cfg.total_steps=3
+cfg.total_steps=300
 # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
 # cfg.learning_rate=0.0000001
-cfg.learning_rate=0.00000002
+cfg.learning_rate=0.002
 
 cfg.num_dim=4
 cfg.batch_size=50
@@ -97,9 +97,28 @@ cfg.feature_loss_multiplier=10.0
 cfg.percent_weak_edges=0.45
 #just for numerical stability
 cfg.epsilon=0.0000000000001
-cfg.num_waves=10
+cfg.num_waves=20
 
 cfg = ml_collections.FrozenConfigDict(cfg)
+
+
+##### tensor board
+#just removing to reduce memory usage of tensorboard logs
+shutil.rmtree('/workspaces/Jax_cuda_med/data/tensor_board')
+os.makedirs("/workspaces/Jax_cuda_med/data/tensor_board")
+
+profiler_dir='/workspaces/Jax_cuda_med/data/profiler_data'
+shutil.rmtree(profiler_dir)
+os.makedirs(profiler_dir)
+
+
+initialise_tracking()
+
+logdir="/workspaces/Jax_cuda_med/data/tensor_board"
+# plt.rcParams["savefig.bbox"] = 'tight'
+file_writer = tf.summary.create_file_writer(logdir)
+
+
 
 f = h5py.File('/workspaces/Jax_cuda_med/data/hdf5_loc/example_mask.hdf5', 'r+')
 masks=f['masks'][:,:,:]    
@@ -195,22 +214,21 @@ class Sinusoidal_grating_3d(nn.Module):
 
         @nn.compact
         def __call__(self,image_part: jnp.ndarray ,mask: jnp.ndarray ) -> jnp.ndarray:
-            
-            print(f"bbbbb imagee {image_part.shape} maskk {mask.shape} ")
+           
 
             #adding the discrete cosine transform to make learning easier
             image_mean=jnp.mean(image_part.flatten())
             fft=jax.scipy.fft.dctn(image_part)
             # image_part= jnp.stack([image_part,fft],axis=-1)
             image_part=einops.rearrange(image_part,'x y c-> 1 x y c')
+            image_part= Conv_trio(self.cfg,channels=8,strides=(2,2))(image_part)
             image_part= Conv_trio(self.cfg,channels=4,strides=(2,2))(image_part)
-            image_part= Conv_trio(self.cfg,channels=2,strides=(2,2))(image_part)
             image_part= Conv_trio(self.cfg,channels=2,strides=(2,2))(image_part)
             params_mean=remat(nn.Dense)(features=2)(jnp.ravel(image_part))
             fft=einops.rearrange(fft,'x y c-> 1 x y c')
+            fft= Conv_trio(self.cfg,channels=8,strides=(2,2))(fft)
             fft= Conv_trio(self.cfg,channels=4,strides=(2,2))(fft)
-            fft= Conv_trio(self.cfg,channels=2,strides=(2,2))(fft)
-            fft= Conv_trio(self.cfg,channels=2,strides=(2,2))(fft)               
+            fft= Conv_trio(self.cfg,channels=4,strides=(2,2))(fft)               
             image_part= Conv_trio(self.cfg,channels=2)(jnp.concatenate([image_part,fft],axis=-1))
 
             params_grating=remat(nn.Dense)(features=self.cfg.num_waves*6)(jnp.ravel(image_part))
@@ -235,7 +253,7 @@ class Sinusoidal_grating_3d(nn.Module):
             res=einops.rearrange(res,'x y-> x y 1')
             res=jnp.multiply(res,mask)
             #choosing only the significant parameters we purposufully ignoring shifts
-            print(f"rrrrrrrrrr {res.shape}")
+
             return res#,params_grating[:,0:3],wavelength_news
 
 
@@ -259,11 +277,9 @@ class Grating_model(nn.Module):
     @nn.compact
     def __call__(self, image: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
         
-        print(f"aaaaq imagee {image.shape} maskk {mask.shape} ")
-
         #first we do a convolution - mostly strided convolution to get the reduced representation     
         grating_res=self.grating_res(image,mask)
-        loss= optax.l2_loss(image,grating_res)
+        loss= optax.l2_loss(jnp.multiply(image,mask),grating_res)
         return jnp.mean(loss.flatten()),grating_res
         # return jnp.mean(image.flatten())
 
@@ -309,6 +325,22 @@ def train_epoch(model,state, image_batched, mask_batched):
     grads, losss,losses,masks =apply_model(state, image_batched,mask_batched )
     epoch_loss.append(jnp.mean(jax_utils.unreplicate(losss))) 
     state = update_model(state, grads)    
+    with file_writer.as_default():
+      tf.summary.scalar(f"train loss ", np.mean(epoch_loss),       step=epoch)
+
+    if(epoch%10==0):
+      with file_writer.as_default():
+        for i in range(10):
+            i=i*10
+            imagee= jnp.concatenate([masks[0,i,:,:,0],jnp.multiply(image_batched[0,i,:,:,0],mask_batched[0,i,:,:,0] ) ]  )
+            tf.summary.image(f"imagee {i}",plot_heatmap_to_image(imagee) , step=epoch,max_outputs=2000)        
+        
+        for i in range(10):
+            i=1+i*10
+            imagee= jnp.concatenate([masks[0,i,:,:,0],jnp.multiply(image_batched[0,i,:,:,0],mask_batched[0,i,:,:,0] ) ]  )
+            tf.summary.image(f"imagee {i}",plot_heatmap_to_image(imagee) , step=epoch,max_outputs=2000)
+
+
     return state
 
 
@@ -335,4 +367,5 @@ print(f"ssss filtered_mask {filtered_mask.shape}  curr_image_in {curr_image_in.s
 
 state = create_train_state(rng_2,cfg,model)
 for epoch in range(1, cfg.total_steps):
+    print(f"**** epoch {epoch}")
     state=train_epoch(model,state, curr_image_in, filtered_mask)
