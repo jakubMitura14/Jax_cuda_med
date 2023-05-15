@@ -68,7 +68,7 @@ jax.numpy.set_printoptions(linewidth=400)
 # config.update("jax_disable_jit", True)
 # config.update('jax_platform_name', 'cpu')
 cfg = config_dict.ConfigDict()
-cfg.total_steps=300
+cfg.total_steps=301
 # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
 # cfg.learning_rate=0.0000001
 cfg.learning_rate=0.002
@@ -186,7 +186,7 @@ def get_2d_grating_to_scan(carried,parameters_per_wave):
 
         wavelength, alphaa,shift_x,shift_y,amplitude=parameters_per_wave
 
-        wavelength_new=wavelength+jnp.array([0.0])#+wavelength_old
+        wavelength_new=wavelength+wavelength_old
         alpha = jnp.pi*alphaa
         grating = (jnp.sin(
                           2*jnp.pi*((X*jnp.cos(alpha)+shift_x) + (Y*jnp.sin(alpha)+shift_y )) / wavelength
@@ -197,7 +197,7 @@ def get_2d_grating_to_scan(carried,parameters_per_wave):
         return  curried_new,wavelength_new
 
 
-class Sinusoidal_grating_3d(nn.Module):
+class Sinusoidal_grating_2d(nn.Module):
         """
         getting sinusoidal gratings added to get a exture given parameters; and those significant used parameters
         parameters would be the directon of the grating - described by 2 angles; wavelength and amplitude
@@ -221,9 +221,9 @@ class Sinusoidal_grating_3d(nn.Module):
             fft=jax.scipy.fft.dctn(image_part)
             # image_part= jnp.stack([image_part,fft],axis=-1)
             image_part=einops.rearrange(image_part,'x y c-> 1 x y c')
-            image_part= Conv_trio(self.cfg,channels=8,strides=(2,2))(image_part)
             image_part= Conv_trio(self.cfg,channels=4,strides=(2,2))(image_part)
-            image_part= Conv_trio(self.cfg,channels=2,strides=(2,2))(image_part)
+            image_part= Conv_trio(self.cfg,channels=1,strides=(2,2))(image_part)
+            # image_part= Conv_trio(self.cfg,channels=1,strides=(2,2))(image_part)
             params_mean=nn.Dense(features=20)(jnp.ravel(image_part))
             params_mean=nn.Dense(features=2)(params_mean)
             # fft=einops.rearrange(fft,'x y c-> 1 x y c')
@@ -233,16 +233,13 @@ class Sinusoidal_grating_3d(nn.Module):
             # image_part= Conv_trio(self.cfg,channels=2)(jnp.concatenate([image_part,fft],axis=-1))
 
             params_grating=remat(nn.Dense)(features=self.cfg.num_waves*5)(jnp.ravel(image_part))
-            
             params_grating=jnp.reshape(params_grating,(self.cfg.num_waves,5))
             params_grating =nn.sigmoid(params_grating)  #  sigmoid always between 0 and 1
 
             #creating required meshgrid
             half= self.diameter//2
             x = jnp.arange(-half, half)# we have 0 between so we take intentionally diameter no pad
-            X, Y = jnp.meshgrid(x, x)
-            
-
+            X, Y = jnp.meshgrid(x, x)       
             #initial variables for scan
             initt=(X,Y,jnp.array([0.0]),jnp.zeros_like(X,dtype=float),float(self.diameter))
             # wavelength, alphaa,betaa,amplitude,shift_x,shift_y,shift_z, shift_amplitude=parameters_per_wave
@@ -259,7 +256,7 @@ class Sinusoidal_grating_3d(nn.Module):
 
 
 
-v_Sinusoidal_grating_3d=nn.vmap(Sinusoidal_grating_3d
+v_Sinusoidal_grating_2d=nn.vmap(Sinusoidal_grating_2d
                                 ,in_axes=(0,0)
                                 ,out_axes=0
                                 ,variable_axes={'params': None}
@@ -272,8 +269,8 @@ class Grating_model(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     
     def setup(self):
-      self.grating_res=v_Sinusoidal_grating_3d(self.cfg,get_diameter(3))
-      # self.grating_res=Sinusoidal_grating_3d(self.cfg,get_diameter(3))
+      self.grating_res=v_Sinusoidal_grating_2d(self.cfg,get_diameter(3))
+      # self.grating_res=Sinusoidal_grating_2d(self.cfg,get_diameter(3))
     
     @nn.compact
     def __call__(self, image: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
@@ -329,7 +326,7 @@ def train_epoch(model,state, image_batched, mask_batched):
     with file_writer.as_default():
       tf.summary.scalar(f"train loss ", np.mean(epoch_loss),       step=epoch)
 
-    if(epoch%30==0):
+    if(epoch%100==0):
       with file_writer.as_default():
         for i in range(10):
             i=i*10
