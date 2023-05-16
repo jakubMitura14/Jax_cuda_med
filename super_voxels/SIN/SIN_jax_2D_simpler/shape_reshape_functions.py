@@ -142,7 +142,7 @@ def divide_sv_grid(res_grid: jnp.ndarray,shape_reshape_cfg):
     any voxels associated with this supervoxels- the "radius" of this cube hence can be calculated based on the amount of dilatations made
     becouse of this overlapping we need to be able to have at least 8 diffrent divisions
     we can work them out on the basis of the fact where we start at each axis at 0 or r - and do it for
-    all axis permutations 2**3 =8
+    all axis permutations 2**3=8
     we need also to take care about padding after removing r from each axis the grid need to be divisible by 2*r+1
     as the first row and column do not grow back by construction if there is no shift we always need to add r padding rest of pad to the end
     in case no shift is present all padding should go at the end

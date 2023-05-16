@@ -58,7 +58,7 @@ class SpixelNet(nn.Module):
         # out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
         # out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-        deconv_multi,masks,losses_1 =De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_1,out_image=De_conv_3_dim(self.cfg
                         ,dynamic_cfg
                        ,64
                       ,1#r_x
@@ -66,7 +66,7 @@ class SpixelNet(nn.Module):
                       ,translation_val=1
                       )(image,self.initial_masks,out4 ,self.initial_masks)
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
-        deconv_multi,masks,losses_2=De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_2,out_image=De_conv_3_dim(self.cfg
                         ,dynamic_cfg
                       ,32
                       ,2#r_x
@@ -74,7 +74,7 @@ class SpixelNet(nn.Module):
                       ,translation_val=2
                       )(image,masks,deconv_multi,self.initial_masks )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
-        deconv_multi,masks,losses_3=De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_3,out_image=De_conv_3_dim(self.cfg
                       ,dynamic_cfg
                       ,16
                       ,3#r_x
@@ -89,7 +89,7 @@ class SpixelNet(nn.Module):
                                     ,losses_2*self.cfg.deconves_importances[1]
                                     ,losses_3*self.cfg.deconves_importances[2]
                                     ],axis=0),axis=0)
-        return (losses,masks)
+        return (losses,masks,out_image)
 
 
         #TODO in original learning rate for biases in convolutions is 0 - good to try omitting biases

@@ -71,7 +71,7 @@ cfg = config_dict.ConfigDict()
 cfg.total_steps=301
 # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
 # cfg.learning_rate=0.0000001
-cfg.learning_rate=0.002
+cfg.learning_rate=0.00002
 
 cfg.num_dim=4
 cfg.batch_size=50
@@ -97,7 +97,7 @@ cfg.feature_loss_multiplier=10.0
 cfg.percent_weak_edges=0.45
 #just for numerical stability
 cfg.epsilon=0.0000000000001
-cfg.num_waves=20
+cfg.num_waves=2
 
 cfg = ml_collections.FrozenConfigDict(cfg)
 
@@ -214,17 +214,16 @@ class Sinusoidal_grating_2d(nn.Module):
 
         @nn.compact
         def __call__(self,image_part: jnp.ndarray ,mask: jnp.ndarray ) -> jnp.ndarray:
-           
-
             #adding the discrete cosine transform to make learning easier
             image_mean=jnp.mean(image_part.flatten())
             fft=jax.scipy.fft.dctn(image_part)
             # image_part= jnp.stack([image_part,fft],axis=-1)
             image_part=einops.rearrange(image_part,'x y c-> 1 x y c')
-            image_part= Conv_trio(self.cfg,channels=4,strides=(2,2))(image_part)
+            image_part= Conv_trio(self.cfg,channels=2,strides=(2,2))(image_part)
+            image_part= Conv_trio(self.cfg,channels=2,strides=(2,2))(image_part)
             image_part= Conv_trio(self.cfg,channels=1,strides=(2,2))(image_part)
-            # image_part= Conv_trio(self.cfg,channels=1,strides=(2,2))(image_part)
-            params_mean=nn.Dense(features=20)(jnp.ravel(image_part))
+
+            params_mean=nn.Dense(features=10)(jnp.ravel(image_part))
             params_mean=nn.Dense(features=2)(params_mean)
             # fft=einops.rearrange(fft,'x y c-> 1 x y c')
             # fft= Conv_trio(self.cfg,channels=8,strides=(2,2))(fft)
@@ -251,7 +250,6 @@ class Sinusoidal_grating_2d(nn.Module):
             res=einops.rearrange(res,'x y-> x y 1')
             res=jnp.multiply(res,mask)
             #choosing only the significant parameters we purposufully ignoring shifts
-
             return res#,params_grating[:,0:3],wavelength_news
 
 
