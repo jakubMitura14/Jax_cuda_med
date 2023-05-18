@@ -11,14 +11,14 @@ def get_cfg():
     cfg.learning_rate=0.0000001
 
     cfg.num_dim=4
-    cfg.batch_size=100
+    cfg.batch_size=10
 
     cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
-    cfg.img_size = (cfg.batch_size,1,256,256)
-    cfg.label_size = (cfg.batch_size,256,256)
+    cfg.img_size = (cfg.batch_size,256,256,1)
+    cfg.label_size = (cfg.batch_size,256,256,1)
     cfg.r_x_total= 3
     cfg.r_y_total= 3
-    cfg.orig_grid_shape= (cfg.img_size[2]//2**cfg.r_x_total,cfg.img_size[3]//2**cfg.r_y_total,cfg.num_dim)
+    cfg.orig_grid_shape= (cfg.img_size[1]//2**cfg.r_x_total,cfg.img_size[2]//2**cfg.r_y_total,cfg.num_dim)
     cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
     cfg.volume_corr= 10000# for standardizing the volume - we want to penalize the very big and very small supervoxels 
                         # the bigger the number here the smaller the penalty

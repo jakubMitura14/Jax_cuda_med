@@ -28,7 +28,9 @@ def apply_on_single(dat):
 
 def add_batches(cached_subj,cfg):
   cached_subj=list(map(apply_on_single,cached_subj ))
-  batch_images,batch_labels=toolz.sandbox.core.unzip(cached_subj)
+  batch_images,batch_labels=list(toolz.sandbox.core.unzip(cached_subj))
+  batch_images= list(batch_images)
+  batch_labels= list(batch_labels)
   batch_images= jnp.concatenate(batch_images,axis=0 )
   batch_labels= jnp.concatenate(batch_labels,axis=0 ) #b y z
   #padding to be able to use batch size efficiently
@@ -39,6 +41,7 @@ def add_batches(cached_subj,cfg):
      batch_labels= jnp.pad(batch_labels,((0,to_pad),(0,0),(0,0)))
   batch_images= einops.rearrange(batch_images,'(d pm b) x y->d pm b x y 1',b=cfg.batch_size_pmapped,pm=jax.local_device_count())  
   batch_labels= einops.rearrange(batch_labels,'(d pm b) x y->d pm b x y 1',b=cfg.batch_size_pmapped,pm=jax.local_device_count())  
+  print(f"add_batches batch_images {batch_images.shape} batch_labels {batch_labels.shape}")
   return batch_images,batch_labels
 
 

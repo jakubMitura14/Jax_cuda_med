@@ -1,4 +1,4 @@
-FROM nvcr.io/nvdlfwea/jax/jax:23.04-py3
+FROM nvcr.io/nvdlfwea/jax/jax:23.02-py3
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -142,7 +142,7 @@ RUN python3 -m  pip install \
  
 # RUN python3 -m  pip install git+https://github.com/google/flax.git
 
-# RUN python3 -m pip install --upgrade "jax[cuda11_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+RUN python3 -m pip install --upgrade "jax[cuda11_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 
 RUN python3 -m pip install -U -qq "git+https://github.com/google/flax.git@main#egg=flax"
@@ -157,8 +157,8 @@ RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numP
 
 
 
-RUN git clone https://github.com/google-research/big_vision  && \
-    cd big_vision/  && \
+RUN git clone https://github.com/google-research/big_vision ${HOME}/externalRepos/big_vision && \
+    cd ${HOME}/externalRepos/big_vision  && \
     python3 -m pip install -r big_vision/requirements.txt 
 
 

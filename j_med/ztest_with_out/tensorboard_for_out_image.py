@@ -25,10 +25,10 @@ import tensorflow as tf
 
 from jax_smi import initialise_tracking
 from skimage.segmentation import mark_boundaries
-from super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_2D import SpixelNet
-from super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_utils_2D import *
-from super_voxels.SIN.SIN_jax_2D_with_gratings.shape_reshape_functions import *
-from testUtils.tensorboard_utils import *
+from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_2D import SpixelNet
+from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_utils_2D import *
+from ..super_voxels.SIN.SIN_jax_2D_with_gratings.shape_reshape_functions import *
+from ..testUtils.tensorboard_utils import *
 
 def setup_tensorboard():
     jax.numpy.set_printoptions(linewidth=400)

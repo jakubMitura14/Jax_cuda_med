@@ -193,7 +193,7 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
     """
     diameter_x=get_diameter(r_x)
     diameter_y=get_diameter(r_y)
-    curr_image_shape= (cfg.img_size[2]//2**(cfg.r_x_total-r_x),cfg.img_size[3]//2**(cfg.r_y_total-r_y))
+    curr_image_shape= (cfg.img_size[1]//2**(cfg.r_x_total-r_x),cfg.img_size[2]//2**(cfg.r_y_total-r_y))
     # shift_x=int(shift_x)
     # shift_y=int(shift_y)
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(curr_image_shape,0,r_x,shift_x,cfg.orig_grid_shape,diameter_x)
@@ -254,64 +254,4 @@ def disp_to_pandas(probs,shappe ):
 
 def disp_to_pandas_curr_shape(probs ):
     return disp_to_pandas(probs,(probs.shape[0],probs.shape[1]) )
-
-
-
-
-# def shape_reshape_constants_to_array(shape_reshape_cfg: ml_collections.config_dict.config_dict.ConfigDict):
-#     """
-#     change shape reshape configuration dict into jax array for compatibility reasons
-#     """
-#     res_cfg=shape_reshape_cfg
-
-#     return jnp.array([
-#         res_cfg.to_pad_beg_x #0
-#         ,res_cfg.to_remove_from_end_x#1
-#         ,res_cfg.axis_len_prim_x#2
-#         ,res_cfg.axis_len_x#3
-#         ,res_cfg.to_pad_beg_y#4
-#         ,res_cfg.to_remove_from_end_y#5
-#         ,res_cfg.axis_len_prim_y#6
-#         ,res_cfg.axis_len_y#7
-#         ,res_cfg.to_pad_end_x#8
-#         ,res_cfg.to_pad_end_y#9
-#         ,res_cfg.shift_x#10
-#         ,res_cfg.shift_y#11
-#         ,res_cfg.diameter_x#12
-#         ,res_cfg.diameter_y#13
-#         ,res_cfg.img_size[0]#14
-#         ,res_cfg.img_size[1]#15
-#         ,res_cfg.img_size[2]#16
-#         ,res_cfg.img_size[3]#17
-#         ,res_cfg.curr_image_shape[0]#18
-#         ,res_cfg.curr_image_shape[1]#19
-#         ,res_cfg.orig_grid_shape[0]#20
-#         ,res_cfg.orig_grid_shape[1]#21
-#     ])
-
-# def array_toshape_reshape_constants(shape_reshape_arr: jnp.ndarray):
-#     """
-#     change shape reshape configuration dict into jax array for compatibility reasons
-#     """
-#     res_cfg = config_dict.ConfigDict()
-
-#     res_cfg.to_pad_beg_x=shape_reshape_arr[0]#0
-#     res_cfg.to_remove_from_end_x=shape_reshape_arr[1]#1
-#     res_cfg.axis_len_prim_x=shape_reshape_arr[2]#2
-#     res_cfg.axis_len_x=shape_reshape_arr[3]#3
-#     res_cfg.to_pad_beg_y=shape_reshape_arr[4]#4
-#     res_cfg.to_remove_from_end_y=shape_reshape_arr[5]#5
-#     res_cfg.axis_len_prim_y=shape_reshape_arr[6]#6
-#     res_cfg.axis_len_y=shape_reshape_arr[7]#7
-#     res_cfg.to_pad_end_x=shape_reshape_arr[8]#8
-#     res_cfg.to_pad_end_y=shape_reshape_arr[9]#9
-#     res_cfg.shift_x=shape_reshape_arr[10]#10
-#     res_cfg.shift_y=shape_reshape_arr[11]#11
-#     res_cfg.diameter_x=shape_reshape_arr[12]#12
-#     res_cfg.diameter_y=shape_reshape_arr[13]#13
-#     res_cfg.img_size=(shape_reshape_arr[14:18])
-#     res_cfg.curr_image_shape=(shape_reshape_arr[18:20])
-#     res_cfg.orig_grid_shape=(shape_reshape_arr[20:])
-    
-#     return ml_collections.config_dict.FrozenConfigDict(res_cfg)
 
