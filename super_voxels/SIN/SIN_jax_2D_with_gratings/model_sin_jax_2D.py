@@ -46,7 +46,7 @@ class SpixelNet(nn.Module):
     @nn.compact
     def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
-        image=einops.rearrange(image,'b c w h-> b w h c')
+        
         out4=remat(nn.Sequential)([
             Conv_trio(self.cfg,channels=16)
             ,Conv_trio(self.cfg,channels=16,strides=(2,2))

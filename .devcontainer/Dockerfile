@@ -129,7 +129,9 @@ RUN python3 -m  pip install \
     # optax==git+https://github.com/deepmind/optax.git \
     more-itertools \
     seaborn \
-    orbax-checkpoint==0.2.1
+    orbax-checkpoint==0.2.1 \
+    monai-weekly \
+    jraph
     # jax-cosmo==0.1.0 \
     # more-itertools \
     # optax
@@ -137,26 +139,27 @@ RUN python3 -m  pip install \
 
     # git+https://github.com/deepmind/optax.git
 # RUN python3 -m  pip install optax    
-    
-
-
-
-
+ 
 # RUN python3 -m  pip install git+https://github.com/google/flax.git
 
 # RUN python3 -m pip install --upgrade "jax[cuda11_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 
 RUN python3 -m pip install -U -qq "git+https://github.com/google/flax.git@main#egg=flax"
+RUN python3 -m pip install git+https://github.com/deepmind/optax.git 
 
-RUN python3 -m  pip install git+https://github.com/deepmind/optax.git 
-RUN python3 -m  pip install jraph 
 # RUN python3 -m  pip install git+git://github.com/deepmind/jraph.git
 # RUN python3 -m  pip install -q git+https://github.com/cpgoodri/jax_transformations3d.git
 
 RUN git clone https://github.com/pyro-ppl/numpyro.git ${HOME}/externalRepos/numPyro && \
     cd ${HOME}/externalRepos/numPyro && \
     pip install -e .[dev] 
+
+
+
+RUN git clone https://github.com/google-research/big_vision  && \
+    cd big_vision/  && \
+    python3 -m pip install -r big_vision/requirements.txt 
 
 
 # RUN python3 -m  pip install git+https://github.com/deepmind/PGMax.git
@@ -186,7 +189,6 @@ RUN python3 -m  pip install git+https://github.com/google/jaxopt
 
 
 
-RUN python3 -m  pip install monai-weekly
 
 
 # RUN python3 -m pip uninstall -y horovod

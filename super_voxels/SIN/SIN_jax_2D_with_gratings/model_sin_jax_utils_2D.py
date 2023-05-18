@@ -543,6 +543,7 @@ class De_conv_batched_multimasks(nn.Module):
     def __call__(self, image:jnp.ndarray, mask_old:jnp.ndarray,deconv_multi:jnp.ndarray,initial_masks:jnp.ndarray) -> jnp.ndarray:
         
         resized_image=v_image_resize(image,self.deconved_shape_not_batched,"linear" )
+        edge_map=apply_farid_both(resized_image)
         deconv_multi=remat(De_conv_not_sym)(self.cfg,self.features,self.dim_stride)(deconv_multi)
         mask_old_deconved=remat(De_conv_not_sym)(self.cfg,1,self.dim_stride)(mask_old)
         #adding informations about image and old mask as begining channels
@@ -566,7 +567,8 @@ class De_conv_batched_multimasks(nn.Module):
                                     ,mask_combined
                                     ,mask_combined_alt
                                     ,initial_masks
-                                    ,mask_new_bi_channel) 
+                                    ,mask_new_bi_channel
+                                    ,edge_map) 
         #multiplying for numerical stability as typically values are very small
         loss_main_out_image=jnp.mean(optax.l2_loss(out_image, resized_image).flatten())
         loss_main_out_image_alt=jnp.mean(optax.l2_loss(out_image_alt, resized_image).flatten())
