@@ -83,6 +83,7 @@ v_v_work_on_single_area=jax.vmap(v_work_on_single_area)
 
 
 def iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old,initial_masks):
+    print(f"curr_image {curr_image.shape}")
     shape_reshape_cfg=shape_reshape_cfgs[i]
     shape_reshape_cfg_old=shape_reshape_cfgs_old[i]
     curr_ids=initial_masks[:,shape_reshape_cfg.shift_x: shape_reshape_cfg.orig_grid_shape[0]:2,shape_reshape_cfg.shift_y: shape_reshape_cfg.orig_grid_shape[1]:2,: ]
@@ -109,9 +110,9 @@ def iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old
 
 
 
-def work_on_areas(cfg,batch_images_prim):
+def work_on_areas(cfg,batch_images_prim,masks):
 
-    curr_image= einops.rearrange(batch_images_prim[0,0,:,:],'w h->1 w h 1')        
+    curr_image= einops.rearrange(batch_images_prim[0,:,:,0],'w h->1 w h 1')        
     initial_masks= jnp.stack([
         get_initial_supervoxel_masks(cfg.orig_grid_shape,0,0),
         get_initial_supervoxel_masks(cfg.orig_grid_shape,1,0),
@@ -136,10 +137,10 @@ def work_on_areas(cfg,batch_images_prim):
 
     return curr_image_out_meaned    
 
-def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label):
-    image_to_disp=batch_images_prim[0,:,0]
-    masks =masks[0,slicee,:,:,:]
-    out_imageee=out_imageee[0,slicee,:,:,0]
+def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks,out_imageee):
+    image_to_disp=batch_images_prim[0,:,:,0]
+    masks =masks[slicee,:,:,:]
+    out_imageee=out_imageee[slicee,:,:,0]
     masks = jnp.round(masks)
         
     scale=2
@@ -150,7 +151,7 @@ def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label):
     image_to_disp=np.rot90(np.array(image_to_disp))
 
 
-    curr_image_out_meaned=work_on_areas(cfg,batch_images_prim)
+    curr_image_out_meaned=work_on_areas(cfg,batch_images_prim,masks)
 
 
     image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')

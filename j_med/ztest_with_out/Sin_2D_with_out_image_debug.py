@@ -101,11 +101,20 @@ def update_fn(params, opt, rng, image, dynamic_cfg,cfg,sched_fn,tx,step,model):
     return jnp.mean(losses) 
 
   learning_rate = sched_fn(step) * cfg.lr
-  l, grads = gsam_gradient(loss_fn=loss_fn, params=params, inputs=image,
-      targets=dynamic_cfg, lr=learning_rate, **cfg.gsam)
+  
+  l=None
+  grads=None
+  if(cfg.gsam):
+    l, grads = gsam_gradient(loss_fn=loss_fn, params=params, inputs=image,
+        targets=dynamic_cfg, lr=learning_rate, **cfg.gsam)
+  else:
+      grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+      l, grads = grad_fn(params,image,dynamic_cfg)
+
+     
   #targets is just a third argyment to loss function
 
-  l, grads = jax.lax.pmean((l, grads), axis_name="batch")
+  # l, grads = jax.lax.pmean((l, grads), axis_name="batch")
   updates, opt = tx.update(grads, opt, params)
   params = optax.apply_updates(params, updates)
 
@@ -122,34 +131,33 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
   # params_repl = flax.jax_utils.replicate(params_cpu)
   # opt_repl = flax.jax_utils.replicate(opt_cpu)
   rngs_loop = rng_loop
-
-  params_repl, opt_repl, rngs_loop, loss_value = update_fn(
-    params_repl, opt_repl, rngs_loop,
-    batch_images,
-    dynamic_cfg,
-    cfg,
-    sched_fns[0],
-    tx,
-    index,
-    model)
+  print(f" pre update_fn ")
+  # params_repl, opt_repl, rngs_loop, loss_value = update_fn(
+  #   params_repl, opt_repl, rngs_loop,
+  #   batch_images,
+  #   dynamic_cfg,
+  #   cfg,
+  #   sched_fns[0],
+  #   tx,
+  #   index,
+  #   model)
     # flax.jax_utils.replicate(cfg),
     # flax.jax_utils.replicate(sched_fns[0]),
     # flax.jax_utils.replicate(tx),
     # flax.jax_utils.replicate(index)
     # ,flax.jax_utils.replicate(model))
   #if indicated in configuration will save the parameters
-  save_checkpoint(index,epoch,cfg,checkPoint_folder,params_repl)
+  # save_checkpoint(index,epoch,cfg,checkPoint_folder,params_repl)
   
  # out_image.block_until_ready()# 
-  divisor_logging = 5
-  if(index==0 and epoch%divisor_logging==0):
-    losses,masks,out_image=model.apply({'params': params_repl}, batch_images,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
-    #overwriting masks each time and saving for some tests and debugging
-    save_examples_to_hdf5(masks,batch_images_prim,curr_label)
-    #saving images for monitoring ...
-    mask_0=save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label)
-    with file_writer.as_default():
-        tf.summary.scalar(f"mask_0 mean", np.mean(mask_0.flatten()), step=epoch)    
+
+  losses,masks,out_image=model.apply({'params': params_repl}, batch_images,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
+  #overwriting masks each time and saving for some tests and debugging
+  save_examples_to_hdf5(masks,batch_images_prim,curr_label)
+  #saving images for monitoring ...
+  mask_0=save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks,out_image)
+  with file_writer.as_default():
+      tf.summary.scalar(f"mask_0 mean", np.mean(mask_0.flatten()), step=epoch)    
 
   with file_writer.as_default():
       tf.summary.scalar(f"train loss ", np.mean(epoch_loss),       step=epoch)
@@ -160,7 +168,7 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
 
 
 def main_train(cfg):
-  slicee=49#57 was nice
+  slicee=4#57 was nice
 
   prng = jax.random.PRNGKey(42)
   model = SpixelNet(cfg)
@@ -179,16 +187,20 @@ def main_train(cfg):
   opt_cpu =opt_cpu(params_cpu)
   sched_fns_cpu = [jax.jit(sched_fn, backend="cpu") for sched_fn in sched_fns]
   
-  batch_images_prim=batch_images[0,0,slicee:slicee+1,:,:,:]
+  batch_images_prim=batch_images[0,0,slicee,:,:,:]
+  batch_images_prim=einops.rearrange(batch_images_prim,'w h c->1 w h c ')
   curr_label=batch_labels[0,0,slicee,:,:,0]
 
   params_repl = params_cpu
   opt_repl = opt_cpu
 
 
+
   for epoch in range(1, cfg.total_steps):
       prng, rng_loop = jax.random.split(prng, 2)
       for index in range(batch_images.shape[0]) :
+        print(f"**** epoch {epoch} index {index}")
+
         params_repl,opt_repl=train_epoch(batch_images[index,0,:,:,:,:],batch_labels[index,0,:,:,:,:],batch_images_prim,curr_label,epoch,index,tx, sched_fns,params_cpu,model,cfg,dynamic_cfgs,checkPoint_folder,opt_cpu,sched_fns_cpu,rng_loop,slicee,params_repl, opt_repl)
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
 # tensorboard --logdir=/workspaces/Jax_cuda_med/tensor_board
