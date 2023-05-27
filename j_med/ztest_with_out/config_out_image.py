@@ -11,7 +11,7 @@ def get_cfg():
     cfg.learning_rate=0.0000001
 
     cfg.num_dim=4
-    cfg.batch_size=220
+    cfg.batch_size=160
 
     cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
     cfg.img_size = (cfg.batch_size,256,256,1)
@@ -76,7 +76,7 @@ def get_cfg():
 
     #setting how frequent the checkpoints should be performed
     cfg.divisor_checkpoint=10
-    cfg.divisor_logging=5
+    cfg.divisor_logging=8
     cfg.to_save_check_point=False
 
     cfg.is_gsam=False

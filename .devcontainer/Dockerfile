@@ -99,7 +99,7 @@ RUN python3 -m  pip install \
     report_guided_annotation==0.2.7
 
 RUN python3 -m  pip install \
-    # ott-jax \ 
+    ott-jax==0.4.0 \ 
     # evojax[extra] \
     # jraph \
     toolz==0.12.0\
