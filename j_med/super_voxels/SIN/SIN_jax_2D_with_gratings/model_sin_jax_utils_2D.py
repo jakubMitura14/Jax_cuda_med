@@ -127,7 +127,8 @@ def translate_in_axis(mask:jnp.ndarray, axis:int,is_forward:int,translation_val:
     to_pad=np.array([[0,0],[0,0]])
     is_back=1-is_forward
     to_pad[axis,is_back]=translation_val
-    return  jnp.pad(mask,to_pad)
+    res= jnp.pad(mask,to_pad)
+    return res
 
 
 
@@ -207,11 +208,11 @@ class Apply_on_single_area(nn.Module):
         # out_image=self.get_out_image(mask_combined, initial_mask_id,resized_image )
         # out_image_alt=self.get_out_image(mask_combined_alt, initial_mask_id,resized_image )
         mask_combined_curr=filter_mask_of_intrest(mask_combined,initial_mask_id)
-        eroded_mask=get_eroded_mask(mask_combined_curr,self.mask_shape)
+        eroded_mask=get_eroded_mask(mask_combined_curr,(self.diameter_x,self.diameter_y))
         # eroded_mask= einops.rearrange(eroded_mask,'w h -> w h 1')
         masked_edges= jnp.multiply(eroded_mask,edge_map)
         loss=jnp.sum(masked_edges.flatten())
-        
+        masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
 
 
         # adding penalty for cossing the edge - so we subtract gradients of the mask fro mask 
@@ -429,7 +430,8 @@ class De_conv_batched_for_scan(nn.Module):
         resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,masked_edges_old,loss_old,edge_map=curried
         # shape apply reshape 
         masked_edges,loss = self.shape_apply_reshape(resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,mask_index,edge_map)
-        return ( (resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,(masked_edges+masked_edges_old),(loss+loss_old,edge_map)) , None )
+        loss= jnp.mean(loss.flatten())
+        return ( (resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,(masked_edges+masked_edges_old),(loss+loss_old),edge_map) , None )
 
 
 
@@ -528,7 +530,7 @@ class De_conv_batched_multimasks(nn.Module):
 
         #krowa edge_map diffs to calculate here
         
-        curried= (resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,jnp.zeros_like(resized_image),0.0,edge_map)
+        curried= (resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,jnp.zeros_like(resized_image),jnp.zeros(1,),edge_map)
         curried,accum= self.scanned_de_cov_batched(self.cfg
                                                     ,self.dynamic_cfg
                                                    ,self.dim_stride
