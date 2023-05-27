@@ -140,16 +140,19 @@ def update_fn(state, image, dynamic_cfg,cfg,model):
   # l=None
   # grads=None
   # if(cfg.is_gsam):
-  #   l, grads = gsam_gradient(loss_fn=loss_fn, params=params, inputs=image,
-  #       targets=dynamic_cfg, lr=learning_rate, **cfg.gsam)
+  l, grads = gsam_gradient(loss_fn=loss_fn, params=state.params, inputs=image,
+      targets=dynamic_cfg, lr=cfg.lr, **cfg.gsam)
+  l, grads = jax.lax.pmean((l, grads), axis_name="batch")    
   # else:
-  grad_fn = jax.value_and_grad(loss_fn)
-  l, grads = grad_fn(state.params,image,dynamic_cfg)
+  # grad_fn = jax.value_and_grad(loss_fn)
+  # l, grads = grad_fn(state.params,image,dynamic_cfg)
   # state = update_model(state, grads)
   state.apply_gradients(grads=grads)
   #targets is just a third argyment to loss function
 
-  l = jax.lax.pmean((l), axis_name="batch")
+  # l = jax.lax.pmean((l), axis_name="batch")
+
+
   # updates, opt = tx.update(grads, opt, params)
   # params = optax.apply_updates(params, updates)
   # gs = jax.tree_leaves(bv_optax.replace_frozen(cfg.schedule, grads, 0.))
