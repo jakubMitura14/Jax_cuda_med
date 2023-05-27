@@ -83,7 +83,6 @@ v_v_work_on_single_area=jax.vmap(v_work_on_single_area)
 
 
 def iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old,initial_masks):
-    print(f"curr_image {curr_image.shape}")
     shape_reshape_cfg=shape_reshape_cfgs[i]
     shape_reshape_cfg_old=shape_reshape_cfgs_old[i]
     curr_ids=initial_masks[:,shape_reshape_cfg.shift_x: shape_reshape_cfg.orig_grid_shape[0]:2,shape_reshape_cfg.shift_y: shape_reshape_cfg.orig_grid_shape[1]:2,: ]
@@ -139,8 +138,8 @@ def work_on_areas(cfg,batch_images_prim,masks):
 
 def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks,out_imageee):
     image_to_disp=batch_images_prim[0,:,:,0]
-    masks =masks[slicee,:,:,:]
-    out_imageee=out_imageee[slicee,:,:,0]
+    masks =masks[0,slicee,:,:,:]
+    out_imageee=out_imageee[0,slicee,:,:,0]
     masks = jnp.round(masks)
         
     scale=2
