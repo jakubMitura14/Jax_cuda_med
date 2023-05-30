@@ -212,7 +212,7 @@ class Apply_on_single_area(nn.Module):
         mask_combined_curr= einops.rearrange(mask_combined_curr,'w h -> w h 1')
         masked_image= jnp.multiply(mask_combined_curr,resized_image)
         loss=jnp.mean(masked_edges.flatten())
-        # masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
+        
 
         meann= jnp.sum(masked_image.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
         varr= jnp.power( jnp.multiply((masked_image-meann),mask_combined_curr),2)
@@ -226,7 +226,8 @@ class Apply_on_single_area(nn.Module):
         # all edges should be at the mask borders
 
         # return out_image,varr
-        return masked_edges,(varr*loss)
+        masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
+        return masked_edges,(varr*loss*1000)
 
 
 v_Apply_on_single_area=nn.vmap(Apply_on_single_area
