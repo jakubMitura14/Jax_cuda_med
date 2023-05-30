@@ -74,7 +74,7 @@ import os
 import sys
 import pathlib
 
-# config.update("jax_debug_nans", True)
+config.update("jax_debug_nans", True)
 
 #get configuration
 cfg= get_cfg()
@@ -114,9 +114,15 @@ def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cf
   #jax.random.split(rng_2,num=1 )
   params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input,dynamic_cfg)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
   # cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
+  decay_scheduler=optax.linear_schedule(cfg.learning_rate, cfg.learning_rate/10, cfg.total_steps, transition_begin=0)
+  
   tx = optax.chain(
-        optax.clip_by_global_norm(6.0),  # Clip gradients at norm 
-        optax.lion(learning_rate=cfg.learning_rate))
+        optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
+        # optax.lion(learning_rate=cfg.learning_rate)
+        optax.lion(learning_rate=decay_scheduler)
+        # optax.adafactor()
+        
+        )
 
   return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
@@ -141,19 +147,19 @@ def update_fn(state, image, dynamic_cfg,cfg,model):
   # grads=None
   # if(cfg.is_gsam):
 
-  l, grads = gsam_gradient(loss_fn=loss_fn, params=state.params, inputs=image,
-      targets=dynamic_cfg, lr=cfg.lr, **cfg.gsam)
+  # l, grads = gsam_gradient(loss_fn=loss_fn, params=state.params, inputs=image,
+  #     targets=dynamic_cfg, lr=cfg.lr, **cfg.gsam)
   # l, grads = jax.lax.pmean((l, grads), axis_name="batch")    
 
   # else:
-  # grad_fn = jax.value_and_grad(loss_fn)
-  # l, grads = grad_fn(state.params,image,dynamic_cfg)
+  grad_fn = jax.value_and_grad(loss_fn)
+  l, grads = grad_fn(state.params,image,dynamic_cfg)
   state=state.apply_gradients(grads=grads)
 
   # state = update_model(state, grads)
   #targets is just a third argyment to loss function
 
-  l = jax.lax.pmean((l), axis_name="batch")
+  # l = jax.lax.pmean((l), axis_name="batch")
 
 
   # updates, opt = tx.update(grads, opt, params)
@@ -236,7 +242,7 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
 
 
 def main_train(cfg):
-  slicee=4#57 was nice
+  slicee=57#57 was nice
 
   prng = jax.random.PRNGKey(42)
   model = SpixelNet(cfg)

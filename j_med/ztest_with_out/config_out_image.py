@@ -5,10 +5,10 @@ from ml_collections import config_dict
 
 def get_cfg():
     cfg = config_dict.ConfigDict()
-    cfg.total_steps=7000
+    cfg.total_steps=8000
     # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
     # cfg.learning_rate=0.0000001
-    cfg.learning_rate=0.000000002
+    cfg.learning_rate=0.00000001
 
     cfg.num_dim=4
     cfg.batch_size=140

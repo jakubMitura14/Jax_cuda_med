@@ -1,3 +1,6 @@
+matlab - Calculating the mutual information between two histograms 
+https://stats.stackexchange.com/questions/139368/calculating-the-mutual-information-between-two-histograms
+
 paper about radiomics stability !
 
 https://www.researchgate.net/publication/353057032_Impact_of_Lesion_Delineation_and_Intensity_Quantisation_on_the_Stability_of_Texture_Features_from_Lung_Nodules_on_CT_A_Reproducible_Study

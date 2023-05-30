@@ -42,6 +42,8 @@ def add_batches(cached_subj,cfg):
   batch_images= einops.rearrange(batch_images,'(d pm b) x y->d pm b x y 1',b=cfg.batch_size_pmapped,pm=jax.local_device_count())  
   batch_labels= einops.rearrange(batch_labels,'(d pm b) x y->d pm b x y 1',b=cfg.batch_size_pmapped,pm=jax.local_device_count())  
   print(f"add_batches batch_images {batch_images.shape} batch_labels {batch_labels.shape}")
+  batch_images=batch_images[:-1,:,:,:,:,:]
+  batch_labels=batch_labels[:-1,:,:,:,:,:]
   return batch_images,batch_labels
 
 

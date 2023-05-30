@@ -60,8 +60,7 @@ class De_conv_not_sym(nn.Module):
         return jax.nn.gelu(x)
     
 def harder_diff_round(x):
-    # return diff_round(diff_round(x))
-    return diff_round(diff_round(diff_round(x)))
+    return diff_round(diff_round(x))
 
 v_harder_diff_round=jax.vmap(harder_diff_round)
 v_v_harder_diff_round=jax.vmap(v_harder_diff_round)
@@ -192,7 +191,7 @@ class Apply_on_single_area(nn.Module):
         mask_combined_curr=filter_mask_of_intrest(mask_combined,initial_mask_id)
         mask_combined_curr= einops.rearrange(mask_combined_curr,'w h -> w h 1')
         masked_image= jnp.multiply(mask_combined_curr,resized_image ).flatten()
-        meannn=jnp.sum(masked_image)/jnp.sum(mask_combined_curr.flatten() )
+        meannn=jnp.sum(masked_image)/ (jnp.sum(mask_combined_curr.flatten() )+self.cfg.epsilon)
         return mask_combined_curr*meannn
 
     @nn.compact
@@ -209,10 +208,15 @@ class Apply_on_single_area(nn.Module):
         # out_image_alt=self.get_out_image(mask_combined_alt, initial_mask_id,resized_image )
         mask_combined_curr=filter_mask_of_intrest(mask_combined,initial_mask_id)
         eroded_mask=get_eroded_mask(mask_combined_curr,(self.diameter_x,self.diameter_y))
-        # eroded_mask= einops.rearrange(eroded_mask,'w h -> w h 1')
         masked_edges= jnp.multiply(eroded_mask,edge_map)
-        loss=jnp.sum(masked_edges.flatten())
-        masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
+        mask_combined_curr= einops.rearrange(mask_combined_curr,'w h -> w h 1')
+        masked_image= jnp.multiply(mask_combined_curr,resized_image)
+        loss=jnp.mean(masked_edges.flatten())
+        # masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
+
+        meann= jnp.sum(masked_image.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
+        varr= jnp.power( jnp.multiply((masked_image-meann),mask_combined_curr),2)
+        varr=jnp.sum(varr.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
 
 
         # adding penalty for cossing the edge - so we subtract gradients of the mask fro mask 
@@ -221,7 +225,8 @@ class Apply_on_single_area(nn.Module):
         # we want to minimize the amount of edges in the reduced mask
         # all edges should be at the mask borders
 
-        return masked_edges,loss
+        # return out_image,varr
+        return masked_edges,(varr*loss)
 
 
 v_Apply_on_single_area=nn.vmap(Apply_on_single_area
@@ -430,6 +435,10 @@ class De_conv_batched_for_scan(nn.Module):
         resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,masked_edges_old,loss_old,edge_map=curried
         # shape apply reshape 
         masked_edges,loss = self.shape_apply_reshape(resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,mask_index,edge_map)
+        
+        #adding power to add more penalty for bigger values TODO - consider
+        #loss= jnp.mean(jnp.power((loss.flatten()+1),2))
+        
         loss= jnp.mean(loss.flatten())
         return ( (resized_image,mask_combined,mask_combined_alt,initial_masks,mask_new_bi_channel,(masked_edges+masked_edges_old),(loss+loss_old),edge_map) , None )
 
@@ -514,8 +523,8 @@ class De_conv_batched_multimasks(nn.Module):
         ,Conv_trio(self.cfg,self.features)
         ,Conv_trio(self.cfg,self.features)
         ,Conv_trio(self.cfg,self.features)
-        ,Conv_trio(self.cfg,self.features)
-        ,Conv_trio(self.cfg,self.features)
+        # ,Conv_trio(self.cfg,self.features)
+        # ,Conv_trio(self.cfg,self.features)
         ])(deconv_multi)
 
     @partial(jax.profiler.annotate_function, name="scan_over_masks")
@@ -600,11 +609,12 @@ class De_conv_batched_multimasks(nn.Module):
     def __call__(self, image:jnp.ndarray, mask_old:jnp.ndarray,deconv_multi:jnp.ndarray,initial_masks:jnp.ndarray) -> jnp.ndarray:
         resized_image=v_image_resize(image,self.deconved_shape_not_batched,"linear" )
         edge_map=apply_farid_both(resized_image)
+        edge_map=edge_map/jnp.max(edge_map.flatten())
         deconv_multi=remat(De_conv_not_sym)(self.cfg,self.features,self.dim_stride)(deconv_multi)
         mask_old_deconved=remat(De_conv_not_sym)(self.cfg,1,self.dim_stride)(mask_old)
         #adding informations about image and old mask as begining channels
 
-        deconv_multi= jnp.concatenate([resized_image,mask_old_deconved,deconv_multi],axis=-1)
+        deconv_multi= jnp.concatenate([resized_image,edge_map,mask_old_deconved,deconv_multi],axis=-1)
         deconv_multi=self.before_mask_scan_scanning_convs(deconv_multi)
         #resisizing image to the deconvolved - increased shape
         #getting new mask thanks to convolutions...
