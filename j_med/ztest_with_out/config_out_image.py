@@ -9,52 +9,33 @@ def get_cfg():
     # cfg.learning_rate=0.00002 #used for warmup with average coverage loss
     # cfg.learning_rate=0.0000001
     cfg.learning_rate=0.00000001
+    cfg.convolution_channels=32
 
+    #true_num_dim - number of the dimensions num_dim is number of the masks needed to describe it
+    cfg.true_num_dim=2
     cfg.num_dim=4
     cfg.batch_size=140
 
     cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
     cfg.img_size = (cfg.batch_size,256,256,1)
-    cfg.label_size = (cfg.batch_size,256,256,1)
+    cfg.img_size_pmapped = (cfg.batch_size_pmapped,256,256,1)
+    cfg.masks_size = (cfg.batch_size_pmapped,256,256,cfg.num_dim)
+    cfg.label_size = (cfg.batch_size_pmapped,256,256,1)
+    cfg.deconv_multi_zero_shape = (cfg.batch_size_pmapped,256,256,cfg.convolution_channels)
     cfg.r_x_total= 3
     cfg.r_y_total= 3
     cfg.orig_grid_shape= (cfg.img_size[1]//2**cfg.r_x_total,cfg.img_size[2]//2**cfg.r_y_total,cfg.num_dim)
     cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
     cfg.volume_corr= 10000# for standardizing the volume - we want to penalize the very big and very small supervoxels 
                         # the bigger the number here the smaller the penalty
-
     ##getting the importance of the losses associated with deconvolutions
     ## generally last one is most similar to the actual image - hence should be most important
     cfg.deconves_importances=(0.1,0.5,1.0)
-    #some constant multipliers related to the fact that those losses are disproportionally smaller than the other ones
-    cfg.edge_loss_multiplier=10.0
-    cfg.feature_loss_multiplier=10.0
-    cfg.percent_weak_edges=0.45
-
-    ### how important we consider diffrent losses at diffrent stages of the training loop
-    #0)consistency_loss,1)rounding_loss,2)feature_variance_loss,3)edgeloss,4)average_coverage_loss,5)consistency_between_masks_loss,6)
-    cfg.initial_weights_epochs_len=0 #number of epochs when initial_loss_weights would be used
-    cfg.initial_loss_weights=(
-        1.0 #rounding_loss
-        ,0000.1 #feature_variance_loss
-        ,0000.1 #edgeloss
-        ,1.0 #consistency_between_masks_loss
-        )
-
-    cfg.actual_segmentation_loss_weights=(
-        0.1 #rounding_loss
-        ,1.0 #feature_variance_loss
-        ,1.0 #edgeloss
-        ,0.00001 #consistency_between_masks_loss
-        )
 
     #just for numerical stability
     cfg.epsilon=0.0000000000001
-
     cfg.optax_name = 'big_vision.scale_by_adafactor'
-
     cfg.optax = dict(beta2_cap=0.95)
-
 
     cfg.lr = cfg.learning_rate
     cfg.wd = 0.00001 # default is 0.0001; paper used 0.3, effective wd=0.3*lr

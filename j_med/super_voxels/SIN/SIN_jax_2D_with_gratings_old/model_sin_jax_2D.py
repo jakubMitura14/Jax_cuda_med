@@ -39,25 +39,10 @@ class SpixelNet(nn.Module):
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,1,1)
                         ],axis=0)
         initial_masks=jnp.sum(initial_masks,axis=0)
-        x_pad_masks=(self.cfg.masks_size[1]-self.cfg.orig_grid_shape[0])//2
-        y_pad_masks=(self.cfg.masks_size[2]-self.cfg.orig_grid_shape[1])//2
-        self.x_pad=x_pad_masks
-        self.y_pad=y_pad_masks
-
-
         # print(f"initial_masks \n {disp_to_pandas_curr_shape(initial_masks)}")
 
         self.initial_masks= einops.repeat(initial_masks,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
-        self.masks_0= jnp.pad(self.initial_masks,((0,0),(x_pad_masks,x_pad_masks),(y_pad_masks,y_pad_masks),(0,0)))
-
-        self.scanned_De_conv_3_dim=  nn.scan(De_conv_3_dim,
-                                variable_broadcast="params", #parametters are shared
-                                split_rngs={'params': False},
-                                length=self.cfg.r_x_total,
-                                in_axes=(0,0,0,0)
-                                ,out_axes=(0) )#losses
-
-
+    
     @nn.compact
     def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
@@ -67,16 +52,43 @@ class SpixelNet(nn.Module):
             ,Conv_trio(self.cfg,channels=32,strides=(2,2))
             ,Conv_trio(self.cfg,channels=64,strides=(2,2))
         ])(image)
+        # out1=Conv_trio(self.cfg,channels=16)(image)
+        # out2=Conv_trio(self.cfg,channels=16,strides=(2,2))(out1)
+        # out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
+        # out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-
-        deconv_multi_zero=jnp.pad(out4, ((0,0),(self.x_pad,self.x_pad),(self.y_pad,self.y_pad),(0,0)))
-
-        losses_0=jnp.aray([0.0])
-        curried=image,self.masks_0,deconv_multi_zero,self.initial_masks,losses_0,self.x_pad, self.y_pad 
-        curried_out,_ =self.self.scanned_De_conv_3_dim(self.cfg,dynamic_cfg)(curried,jnp.arange(1,self.cfg.r_x_total+1) ,  jnp.arange(1,self.cfg.r_x_total+1) , jnp.array(list(self.cfg.deconves_importances)) )
-        image,masks,deconv_multi_zero,initial_masks,losses,x_pad, y_pad =curried_out
-
-        return (losses,masks)
+        deconv_multi,masks,losses_1,out_image=De_conv_3_dim(self.cfg
+                        ,dynamic_cfg
+                       ,64
+                      ,1#r_x
+                      ,1#r_y
+                      ,translation_val=1
+                      )(image,self.initial_masks,out4 ,self.initial_masks)
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
+        deconv_multi,masks,losses_2,out_image=De_conv_3_dim(self.cfg
+                        ,dynamic_cfg
+                      ,32
+                      ,2#r_x
+                      ,2#r_y
+                      ,translation_val=2
+                      )(image,masks,deconv_multi,self.initial_masks )
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
+        deconv_multi,masks,losses_3,out_image=De_conv_3_dim(self.cfg
+                      ,dynamic_cfg
+                      ,16
+                      ,3#r_x
+                      ,3#r_y
+                      ,translation_val=4
+                      )(image,masks,deconv_multi,self.initial_masks)
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
+        
+        #we recreate the image using a supervoxels
+        #adding corrections as local loses are not equally important
+        losses= jnp.mean(jnp.stack([losses_1*self.cfg.deconves_importances[0]
+                                    ,losses_2*self.cfg.deconves_importances[1]
+                                    ,losses_3*self.cfg.deconves_importances[2]
+                                    ],axis=0),axis=0)
+        return (losses,masks,out_image)
 
 
         #TODO in original learning rate for biases in convolutions is 0 - good to try omitting biases

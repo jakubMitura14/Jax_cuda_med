@@ -24,21 +24,11 @@ from flax.training import train_state  # Useful dataclass to keep train state
 from torch.utils.data import DataLoader
 import h5py
 import jax
-
-
-
-from ..testUtils.spleenTest import get_spleen_data
-from ..testUtils.tensorboard_utils import *
 from ml_collections import config_dict
-# import augmentations.simpleTransforms
-# from augmentations.simpleTransforms import main_augment
 from jax.config import config
 from skimage.segmentation import mark_boundaries
 import cv2
 import functools
-# from torch.utils.tensorboard import SummaryWriter
-# import torchvision.transforms.functional as F
-# import torchvision
 import flax.jax_utils as jax_utils
 import tensorflow as tf
 from jax_smi import initialise_tracking
@@ -54,6 +44,16 @@ from datetime import datetime
 from flax.training import orbax_utils
 from flax.core.frozen_dict import freeze
 import flax
+
+from ..testUtils.spleenTest import get_spleen_data
+from ..testUtils.tensorboard_utils import *
+# import augmentations.simpleTransforms
+# from augmentations.simpleTransforms import main_augment
+
+# from torch.utils.tensorboard import SummaryWriter
+# import torchvision.transforms.functional as F
+# import torchvision
+
 from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_2D import SpixelNet
 from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_utils_2D import *
 from ..super_voxels.SIN.SIN_jax_2D_with_gratings.shape_reshape_functions import *
@@ -74,7 +74,11 @@ import os
 import sys
 import pathlib
 
-config.update("jax_debug_nans", True)
+# config.update("jax_debug_nans", True)
+# Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
+# it unavailable to JAX.
+tf.config.experimental.set_visible_devices([], 'GPU')
+
 
 #get configuration
 cfg= get_cfg()
