@@ -634,7 +634,10 @@ class De_conv_batched_multimasks(nn.Module):
         edge_map=apply_farid_both(resized_image)
         edge_map=edge_map/jnp.max(edge_map.flatten())
         krowa remove padding
+        krowa keep dim_stride constant just transpose image as needed
         deconv_multi=remat(De_conv_not_sym)(self.cfg,self.cfg.convolution_channels,dim_stride)(deconv_multi)
+        retranspose deconv to original orientation
+
         mask_old_deconved=remat(De_conv_not_sym)(self.cfg,1,dim_stride)(mask_old)
         #adding informations about image and old mask as begining channels
         deconv_multi= jnp.concatenate([resized_image,edge_map,mask_old_deconved,deconv_multi],axis=-1)
