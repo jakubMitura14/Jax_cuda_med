@@ -136,10 +136,10 @@ def work_on_areas(cfg,batch_images_prim,masks):
 
     return curr_image_out_meaned    
 
-def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks,out_imageee):
+def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks):
     image_to_disp=batch_images_prim[0,:,:,0]
     masks =masks[0,slicee,:,:,:]
-    out_imageee=out_imageee[0,slicee,:,:,0]
+    # out_imageee=out_imageee[0,slicee,:,:,0]
     masks = jnp.round(masks)
         
     scale=2
@@ -154,7 +154,7 @@ def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks,
 
 
     image_to_disp=einops.rearrange(image_to_disp,'a b-> 1 a b 1')
-    out_imageee=einops.rearrange(out_imageee,'x y ->1 x y 1')
+    # out_imageee=einops.rearrange(out_imageee,'x y ->1 x y 1')
 
     mask_sum=mask_0+mask_1+mask_2+mask_3
     with file_writer.as_default():
@@ -168,8 +168,8 @@ def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks,
         tf.summary.image(f"to_dispp_svs_1",to_dispp_svs_1 , step=epoch,max_outputs=2000)
         tf.summary.image(f"to_dispp_svs_2",to_dispp_svs_2 , step=epoch,max_outputs=2000)
         tf.summary.image(f"to_dispp_svs_3",to_dispp_svs_3 , step=epoch,max_outputs=2000)
-        tf.summary.image(f"out_imageee",out_imageee , step=epoch,max_outputs=2000)
-        tf.summary.image(f"out_imageee_heat",plot_heatmap_to_image(out_imageee[0,:,:,0]) , step=epoch,max_outputs=2000)
+        # tf.summary.image(f"out_imageee",out_imageee , step=epoch,max_outputs=2000)
+        # tf.summary.image(f"out_imageee_heat",plot_heatmap_to_image(out_imageee[0,:,:,0]) , step=epoch,max_outputs=2000)
         tf.summary.image(f"curr_image_out_meaned",curr_image_out_meaned , step=epoch,max_outputs=2000)
 
         tf.summary.image(f"curr_label",plot_heatmap_to_image(np.rot90(curr_label)) , step=epoch,max_outputs=2000)    

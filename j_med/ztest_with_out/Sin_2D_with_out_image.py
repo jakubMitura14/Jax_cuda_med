@@ -143,7 +143,7 @@ def update_fn(state, image, dynamic_cfg,cfg,model):
   """Train for a single step."""
   measurements = {}
   def loss_fn(params,image,dynamic_cfg):
-    losses,masks,out_image=model.apply({'params': params}, image,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
+    losses,masks=model.apply({'params': params}, image,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
     return jnp.mean(losses) 
 
   # learning_rate = sched_fn(step) * cfg.lr
@@ -177,17 +177,15 @@ def update_fn(state, image, dynamic_cfg,cfg,model):
 
   return state,l
 
-# def predict_fn(params, image,model,dynamic_cfg):
-#   losses,masks,out_image=model.apply({'params': params}, image,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
-#   return losses,masks,out_image
+
 
 
 @partial(jax.pmap, axis_name="batch",static_broadcasted_argnums=(2,3,4,5))
 def simple_apply(state, image, dynamic_cfg,cfg,step,model):
-  losses,masks,out_image=model.apply({'params': state.params}, image,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
+  losses,masks=model.apply({'params': state.params}, image,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
 
 
-  return losses,masks,out_image
+  return losses,masks
 
 
 
@@ -225,15 +223,14 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
 
   # save_checkpoint(index,epoch,cfg,checkPoint_folder,params_repl)
   
- # out_image.block_until_ready()# 
 
   if(index==0 and epoch%cfg.divisor_logging==0):
     # losses,masks,out_image=model.apply({'params': state.params}, batch_images[0,:,:,:,:],dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
-    losses,masks,out_image=simple_apply(state, batch_images, dynamic_cfg,cfg,index,model)
+    losses,masks=simple_apply(state, batch_images, dynamic_cfg,cfg,index,model)
     #overwriting masks each time and saving for some tests and debugging
     save_examples_to_hdf5(masks,batch_images_prim,curr_label)
     #saving images for monitoring ...
-    mask_0=save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks,out_image)
+    mask_0=save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks)
     with file_writer.as_default():
         tf.summary.scalar(f"mask_0 mean", np.mean(mask_0.flatten()), step=epoch)    
 
