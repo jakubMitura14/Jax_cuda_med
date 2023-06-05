@@ -415,8 +415,16 @@ class De_conv_batched_multimasks(nn.Module):
                                 length=self.cfg.masks_num,
                                 in_axes=(0)
                                 ,out_axes=(0) )#losses
-
-
+        self.deconv_old=De_conv_not_sym(self.cfg,1,1)
+        self.deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,1)
+        self.convss=remat(nn.Sequential)([
+            Conv_trio(self.cfg,self.cfg.convolution_channels)
+            ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+            ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+            ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+            ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+            ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+            ])
     # def resize_image_op(self,image,index):
     #     x_pad_new=self.x_pad_new_all[index]
     #     y_pad_new=self.y_pad_new_all[index]
@@ -446,16 +454,16 @@ class De_conv_batched_multimasks(nn.Module):
         return nn.switch(indexx, [ a0,a1,a2,a3,a4,a5 ], self, curried)
         # return nn.switch(indexx, main_fun_ops, self)
 
-    @partial(jax.profiler.annotate_function, name="before_mask_scan_scanning_convs")
-    def before_mask_scan_scanning_convs(self,deconv_multi):
-        return remat(nn.Sequential)([
-        Conv_trio(self.cfg,self.cfg.convolution_channels)
-        ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-        ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-        ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-        ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-        ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-        ])(deconv_multi)
+    # @partial(jax.profiler.annotate_function, name="before_mask_scan_scanning_convs")
+    # def before_mask_scan_scanning_convs(self,deconv_multi):
+    #     return remat(nn.Sequential)([
+    #     Conv_trio(self.cfg,self.cfg.convolution_channels)
+    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
+    #     ])(deconv_multi)
 
     @partial(jax.profiler.annotate_function, name="scan_over_masks")
     def scan_over_masks(self,resized_image:jnp.ndarray
@@ -556,8 +564,11 @@ class De_conv_batched_multimasks(nn.Module):
         deconv_multi= jnp.swapaxes(deconv_multi,1,(dim_stride+1))
         mask_old= jnp.swapaxes(mask_old,1,(dim_stride+1))
 
-        mask_old_deconved=De_conv_not_sym(self.cfg,1,dim_stride)(mask_old)
-        deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,dim_stride)(deconv_multi)
+        mask_old_deconved=self.deconv_old(mask_old)
+        deconv_multi=self.deconv_multi(deconv_multi)
+
+        # mask_old_deconved=De_conv_not_sym(self.cfg,1,dim_stride)(mask_old)
+        # deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,dim_stride)(deconv_multi)
         #retranspose deconv to original orientation
         deconv_multi= jnp.swapaxes(deconv_multi,(dim_stride+1),1)
         mask_old= jnp.swapaxes(mask_old,(dim_stride+1),1)
@@ -586,7 +597,7 @@ class De_conv_batched_multimasks(nn.Module):
         mask_old,deconv_multi,mask_old_deconved=self.work_on_deconv_and_mask(deconv_multi,mask_old,x_pad_old, y_pad_old,dim_stride )
         #adding informations about image and old mask as begining channels
         deconv_multi= jnp.concatenate([resized_image,edge_map,mask_old_deconved,deconv_multi],axis=-1)
-        deconv_multi=self.before_mask_scan_scanning_convs(deconv_multi)
+        deconv_multi=self.convss(deconv_multi)
         #resisizing image to the deconvolved - increased shape
         #getting new mask thanks to convolutions...
         mask_new_bi_channel=remat(nn.Conv)(2, kernel_size=(5,5))(deconv_multi)
