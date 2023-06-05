@@ -217,6 +217,10 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
     res_cfg.diameter_y=diameter_y
     res_cfg.img_size=cfg.img_size
     res_cfg.curr_image_shape=curr_image_shape
+
+    res_cfg.to_reshape_back_x=np.floor_divide(res_cfg.axis_len_x,res_cfg.diameter_x)
+    res_cfg.to_reshape_back_y=np.floor_divide(res_cfg.axis_len_y,res_cfg.diameter_y)    
+
     res_cfg = ml_collections.config_dict.FrozenConfigDict(res_cfg)
 
     return res_cfg

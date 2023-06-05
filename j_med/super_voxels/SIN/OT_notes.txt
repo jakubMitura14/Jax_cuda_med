@@ -1,0 +1,4 @@
+We can do downsampling interpolation of the other representation of the sv histograms by getting the Wasserstein barycenters of the surrounding supervoxels 
+
+so we basically can do the same procedure as primary supervoxels but with measuring the OT cost between SV histogram and minimize sum of those consts
+and do the downsampling by wasserstein barycenters

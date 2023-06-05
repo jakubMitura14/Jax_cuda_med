@@ -127,7 +127,7 @@ def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cf
         # optax.adafactor()
         
         )
-
+  print(f"ppppppppparams  {params}")
   return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
