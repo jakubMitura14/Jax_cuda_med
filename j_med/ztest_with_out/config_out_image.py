@@ -20,6 +20,7 @@ def get_cfg():
     cfg.img_size = (cfg.batch_size,256,256,1)
     cfg.img_size_pmapped = (cfg.batch_size_pmapped,256,256,1)
     cfg.masks_size = (cfg.batch_size_pmapped,256,256,cfg.num_dim)
+    cfg.bi_channel_size = (cfg.batch_size_pmapped,256,256,2)
     cfg.label_size = (cfg.batch_size_pmapped,256,256,1)
     cfg.deconv_multi_zero_shape = (cfg.batch_size_pmapped,256,256,cfg.convolution_channels)
     cfg.r_x_total= 3

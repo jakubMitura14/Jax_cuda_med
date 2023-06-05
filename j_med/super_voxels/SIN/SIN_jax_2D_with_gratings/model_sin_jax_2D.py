@@ -105,9 +105,11 @@ class SpixelNet(nn.Module):
         ])(image)
 
         deconv_multi_zero=jnp.pad(out4, ((0,0),(self.x_pad,self.x_pad),(self.y_pad,self.y_pad),(0,0)))
-        print(f"deconv_multi_zero {deconv_multi_zero.shape}")
+        # print(f"deconv_multi_zero {deconv_multi_zero.shape}")
         losses_0=jnp.array([0.0])
         curried=image,self.masks_0,deconv_multi_zero,self.initial_masks,losses_0,self.x_pad, self.y_pad 
+        # print(f"00000 image {image.shape} deconv_multi_zero {deconv_multi_zero.shape} ")
+
         curried_out,_ =self.scanned_De_conv_batched_multimasks(self.cfg
                                                                ,dynamic_cfg
                                                                ,self.deconved_shape_not_batched
