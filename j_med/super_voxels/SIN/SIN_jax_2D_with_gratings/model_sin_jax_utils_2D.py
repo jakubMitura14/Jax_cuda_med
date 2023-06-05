@@ -320,7 +320,7 @@ class De_conv_batched_for_scan(nn.Module):
         return jax.lax.switch(index,self.shape_reshape_operations,arr)
 
     def id_choose_operation(self,initial_masks,index):
-        return initial_masks[:,self.shape_reshape_cfgs_all[index].shift_x: self.cfg.orig_grid_shape[0]:2,self.shape_reshape_cfgs_all[index].shift_y: self.orig_grid_shape[1]:2 ]
+        return initial_masks[:,self.shape_reshape_cfgs_all[index].shift_x: self.cfg.orig_grid_shape[0]:2,self.shape_reshape_cfgs_all[index].shift_y: self.cfg.orig_grid_shape[1]:2 ]
 
     def select_id_choose_operation(self,initial_masks,index):
         return jax.lax.switch(index,self.id_choose_operations,initial_masks)
@@ -651,8 +651,8 @@ class De_conv_batched_multimasks(nn.Module):
                                     ,main_loop_index
                                     ) 
         
-        mask_combined=jnp.pad(mask_combined, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))     
-
+        # mask_combined=jnp.pad(mask_combined, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))     
+        print(f"llll {mask_combined.shape}")
         new_loss=(losses_old + (loss*loss_weight))
         return (image,mask_combined,deconv_multi,initial_masks,new_loss ,x_pad_new, y_pad_new)
 

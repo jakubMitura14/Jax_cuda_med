@@ -197,8 +197,8 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
     diameter_x_max=get_diameter(cfg.r_x_total)
     diameter_y_max=get_diameter(cfg.r_y_total)
 
-    to_pad_single_sv_x=(diameter_x_max,diameter_x)//2
-    to_pad_single_sv_y=(diameter_y_max,diameter_y)//2
+    to_pad_single_sv_x=(diameter_x_max-diameter_x)//2
+    to_pad_single_sv_y=(diameter_y_max-diameter_y)//2
 
     curr_image_shape= (cfg.img_size[1]//2**(cfg.r_x_total-r_x),cfg.img_size[2]//2**(cfg.r_y_total-r_y))
 
