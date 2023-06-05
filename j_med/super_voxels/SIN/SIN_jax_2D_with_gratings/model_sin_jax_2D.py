@@ -47,6 +47,7 @@ class SpixelNet(nn.Module):
         y_pad_new=(self.cfg.masks_size[2]-deconved_shape_not_batched[1])//2 
         loss_weight=self.cfg.deconves_importances[r_x-1]
         shape_reshape_cfgs=get_all_shape_reshape_constants(self.cfg,r_x=r_x,r_y=r_y)  
+        
         return r_x,r_y , dim_stride, deconved_shape_not_batched,x_pad_new,y_pad_new, loss_weight,shape_reshape_cfgs,not_deconved_shape_not_batched
 
     def setup(self):
@@ -88,8 +89,10 @@ class SpixelNet(nn.Module):
         self.y_pad_new= np.array([y_pad_masks]+list(y_pad_new))
         self.loss_weight= np.array(list(loss_weight))
         self.not_deconved_shape_not_batched= np.array(list(not_deconved_shape_not_batched))
-        self.shape_reshape_cfgs_all= list(itertools.chain(list(shape_reshape_cfgs)))
-        
+        shape_reshape_cfgs= list(shape_reshape_cfgs)
+        self.shape_reshape_cfgs_all= list(map(list, shape_reshape_cfgs ))
+        self.shape_reshape_cfgs_all= list(itertools.chain(*list(shape_reshape_cfgs)))
+
 
     @nn.compact
     def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:

@@ -74,7 +74,7 @@ import os
 import sys
 import pathlib
 
-# config.update("jax_debug_nans", True)
+config.update("jax_debug_nans", True)
 # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
 # it unavailable to JAX.
 tf.config.experimental.set_visible_devices([], 'GPU')

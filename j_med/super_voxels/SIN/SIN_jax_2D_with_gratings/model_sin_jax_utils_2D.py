@@ -296,7 +296,6 @@ class De_conv_batched_for_scan(nn.Module):
 
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     dynamic_cfg: ml_collections.config_dict.config_dict.ConfigDict
-    deconved_shape_not_batched:jnp.ndarray
     shape_reshape_cfgs_all:list
 
 
@@ -415,8 +414,8 @@ class De_conv_batched_multimasks(nn.Module):
                                 length=self.cfg.masks_num,
                                 in_axes=(0)
                                 ,out_axes=(0) )#losses
-        self.deconv_old=De_conv_not_sym(self.cfg,1,1)
-        self.deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,1)
+        self.deconv_old=De_conv_not_sym(self.cfg,1,0)
+        self.deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,0)
         self.convss=remat(nn.Sequential)([
             Conv_trio(self.cfg,self.cfg.convolution_channels)
             ,Conv_trio(self.cfg,self.cfg.convolution_channels)
@@ -481,7 +480,6 @@ class De_conv_batched_multimasks(nn.Module):
         curried= (resized_image,mask_combined,initial_masks,mask_new_bi_channel,jnp.zeros(1,),edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,main_loop_index)
         curried,accum= self.scanned_de_cov_batched(self.cfg
                                                     ,self.dynamic_cfg
-                                                    ,self.deconved_shape_not_batched
                                                     ,self.shape_reshape_cfgs_all
                                                     )(curried,jnp.arange(self.cfg.masks_num) )
         resized_image,mask_combined,initial_masks,mask_new_bi_channel,loss,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,main_loop_index=curried
@@ -578,7 +576,7 @@ class De_conv_batched_multimasks(nn.Module):
 
     def main_fun_op(self,curried,index):
                 #getting image and edge map of wanted size 
-        image,mask_old,deconv_multi,initial_masks,losses_old,x_pad, y_pad =curried
+        
         x_pad_old=self.x_pad_new_all[index]
         y_pad_old=self.y_pad_new_all[index]
         x_pad_new=self.x_pad_new_all[index+1]
@@ -591,10 +589,22 @@ class De_conv_batched_multimasks(nn.Module):
         deconved_shape_not_batched=self.deconved_shape_not_batched_all[index]
         not_deconved_shape_not_batched=self.not_deconved_shape_not_batched_all[index]
 
+        return x_pad_old,y_pad_old,x_pad_new,y_pad_new,dim_stride,r_x,r_y,loss_weight,deconved_shape_not_batched,not_deconved_shape_not_batched
+
+    @partial(jax.profiler.annotate_function, name="De_conv_batched_multimasks")
+    @nn.compact
+    # def __call__(self, image:jnp.ndarray, mask_old:jnp.ndarray,deconv_multi:jnp.ndarray,initial_masks:jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, curried:jnp.ndarray,main_loop_index:int) -> jnp.ndarray:
+
+        image,mask_old,deconv_multi,initial_masks,losses_old,x_pad, y_pad =curried
+        x_pad_old,y_pad_old,x_pad_new,y_pad_new,dim_stride,r_x,r_y,loss_weight,deconved_shape_not_batched,not_deconved_shape_not_batched= self.select_main_fun(curried,main_loop_index)
+        #some usufull constants
         resized_image=v_image_resize(image,deconved_shape_not_batched,"linear" )       
         edge_map=apply_farid_both(resized_image)
         edge_map=edge_map/jnp.max(edge_map.flatten())
         mask_old,deconv_multi,mask_old_deconved=self.work_on_deconv_and_mask(deconv_multi,mask_old,x_pad_old, y_pad_old,dim_stride )
+        
+        
         #adding informations about image and old mask as begining channels
         deconv_multi= jnp.concatenate([resized_image,edge_map,mask_old_deconved,deconv_multi],axis=-1)
         deconv_multi=self.convss(deconv_multi)
@@ -628,7 +638,7 @@ class De_conv_batched_multimasks(nn.Module):
                                     ,dim_stride
                                     ,x_pad_new
                                     ,y_pad_new
-                                    ,index
+                                    ,main_loop_index
                                     ) 
         
         mask_combined=jnp.pad(mask_combined, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))     
@@ -637,15 +647,6 @@ class De_conv_batched_multimasks(nn.Module):
         return (image,mask_combined,deconv_multi,initial_masks,new_loss ,x_pad_new, y_pad_new)
 
 
-    @partial(jax.profiler.annotate_function, name="De_conv_batched_multimasks")
-    @nn.compact
-    # def __call__(self, image:jnp.ndarray, mask_old:jnp.ndarray,deconv_multi:jnp.ndarray,initial_masks:jnp.ndarray) -> jnp.ndarray:
-    def __call__(self, curried:jnp.ndarray,main_loop_index:int) -> jnp.ndarray:
-
-        #some usufull constants
-     
-
-        return self.select_main_fun(curried,main_loop_index)
 
 # class De_conv_3_dim(nn.Module):
 #     """
