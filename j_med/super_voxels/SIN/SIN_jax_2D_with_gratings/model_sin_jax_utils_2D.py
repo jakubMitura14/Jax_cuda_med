@@ -654,7 +654,9 @@ class De_conv_batched_multimasks(nn.Module):
         # mask_combined=jnp.pad(mask_combined, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))     
         print(f"llll {mask_combined.shape}")
         new_loss=(losses_old + (loss*loss_weight))
-        return (image,mask_combined,deconv_multi,initial_masks,new_loss ,x_pad_new, y_pad_new)
+
+        
+        return ((image,mask_combined,deconv_multi,initial_masks,new_loss ,x_pad_new, y_pad_new),None)
 
 
 # class De_conv_3_dim(nn.Module):
