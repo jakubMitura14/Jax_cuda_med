@@ -263,7 +263,7 @@ batched_v_Apply_on_single_area=nn.vmap(v_Apply_on_single_area
 
 v_image_resize=jax.vmap(jax.image.resize,in_axes=(0,None,None))
 
-def roll_in(probs,dim_stride,probs_shape):
+def roll_in(probs):
     """
     as the probabilities are defined on already on dilatated array we have a lot of redundancy
     basically if new layer A looks forwrd to old layer B it is the same as old layer B looking at A
@@ -273,8 +273,10 @@ def roll_in(probs,dim_stride,probs_shape):
     """
     probs_back=probs[:,:,:,0]
     probs_forward=probs[:,:,:,1]
-    probs_back=jnp.take(probs_back, indices=jnp.arange(1,probs_shape[dim_stride]),axis=dim_stride )
-    probs_forward=jnp.take(probs_forward, indices=jnp.arange(0,probs_shape[dim_stride]-1),axis=dim_stride )
+    probs_back=probs_back[:,1:,:]
+    probs_forward=probs_forward[:,0:-1,:]
+    # probs_back=jnp.take(probs_back, indices=jnp.arange(1,probs_shape[dim_stride]),axis=dim_stride )
+    # probs_forward=jnp.take(probs_forward, indices=jnp.arange(0,probs_shape[dim_stride]-1),axis=dim_stride )
     probs=jnp.stack([probs_forward,probs_back],axis=-1)
     return probs
 
@@ -335,7 +337,7 @@ class De_conv_batched_for_scan(nn.Module):
 
 
     @partial(jax.profiler.annotate_function, name="shape_apply_reshape")
-    def shape_apply_reshape(self,resized_image,mask_combined,initial_masks,mask_new_bi_channel,mask_index,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,main_loop_index):
+    def shape_apply_reshape(self,resized_image,mask_combined,initial_masks,mask_index,edge_map,main_loop_index):
         index= main_loop_index*self.cfg.masks_num  +mask_index
 
         resized_image=self.select_shape_reshape_operation(resized_image,index)
@@ -371,16 +373,17 @@ class De_conv_batched_for_scan(nn.Module):
     @partial(jax.profiler.annotate_function, name="De_conv_batched_for_scan")
     @nn.compact
     def __call__(self, curried:jnp.ndarray, mask_index:int) -> jnp.ndarray:
-        resized_image,mask_combined,initial_masks,mask_new_bi_channel,loss_old,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,main_loop_index=curried
+        resized_image,mask_combined,initial_masks,loss_old,edge_map,main_loop_index=curried
 
         # shape apply reshape 
-        loss = self.shape_apply_reshape(resized_image,mask_combined,initial_masks,mask_new_bi_channel,mask_index,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,main_loop_index)
+        loss = self.shape_apply_reshape(resized_image,mask_combined,initial_masks,mask_index,edge_map,main_loop_index)
         
         #adding power to add more penalty for bigger values TODO - consider
         #loss= jnp.mean(jnp.power((loss.flatten()+1),2))
         
         loss= jnp.mean(loss.flatten())
-        return ( (resized_image,mask_combined,initial_masks,mask_new_bi_channel,(loss+loss_old),edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,main_loop_index) , None )
+        
+        return ( (resized_image,mask_combined,initial_masks,(loss+loss_old),edge_map,main_loop_index) , None )
 
 
 
@@ -410,7 +413,7 @@ class De_conv_batched_multimasks(nn.Module):
     def setup(self):
         cfg=self.cfg
         # self.resize_image_ops=list(map(lambda index: functools.partial(self.resize_image_op,index=index) ,range(self.deconved_shape_not_batched_all.shape[0])))
-        self.main_fun_ops=list(map(lambda index: functools.partial(self.main_fun_op,index=index) ,range(self.r_x_all.shape[0])))
+        # self.main_fun_ops=list(map(lambda index: functools.partial(self.main_fun_op,index=index) ,range(self.r_x_all.shape[0])))
         # self.main_fun_ops=list(map(self.main_fun_op ,range(self.r_x_all.shape[0])))
         self.scanned_de_cov_batched=  nn.scan(De_conv_batched_for_scan,
                                 variable_broadcast="params", #parametters are shared
@@ -418,8 +421,10 @@ class De_conv_batched_multimasks(nn.Module):
                                 length=self.cfg.masks_num,
                                 in_axes=(0)
                                 ,out_axes=(0) )#losses
+        
+        self.deconv_multii=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,0)
         self.deconv_old=De_conv_not_sym(self.cfg,1,0)
-        self.deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,0)
+
         self.convss=remat(nn.Sequential)([
             Conv_trio(self.cfg,self.cfg.convolution_channels)
             ,Conv_trio(self.cfg,self.cfg.convolution_channels)
@@ -437,56 +442,59 @@ class De_conv_batched_multimasks(nn.Module):
     
     # def resize_image(self,image,index):
     #     return jax.lax.switch(index,self.resize_image_ops,image)
-    def select_main_fun(self,curried,indexx):
+    def select_fun_with_index(self,curried,indexx,funn):
         # main_fun_ops=list(map(lambda funn: functools.partial(funn,curried=curried) ,self.main_fun_ops))
         def a0(self,curried):
-            return self.main_fun_op(curried,0)
+            return funn(curried,0)
         def a1(self,curried):
-            return self.main_fun_op(curried,1)
+            return funn(curried,1)
         def a2(self,curried):
-            return self.main_fun_op(curried,2)
+            return funn(curried,2)
         def a3(self,curried):
-            return self.main_fun_op(curried,3)
+            return funn(curried,3)
         def a4(self,curried):
-            return self.main_fun_op(curried,4)
+            return funn(curried,4)
         def a5(self,curried):
-            return self.main_fun_op(curried,5)
-       
-        # return nn.switch(index,self.main_fun_ops,self,curried)
-        # main_fun_ops[0]()
-        return nn.switch(indexx, [ a0,a1,a2,a3,a4,a5 ], self, curried)
-        # return nn.switch(indexx, main_fun_ops, self)
+            return funn(curried,5)
 
-    # @partial(jax.profiler.annotate_function, name="before_mask_scan_scanning_convs")
-    # def before_mask_scan_scanning_convs(self,deconv_multi):
-    #     return remat(nn.Sequential)([
-    #     Conv_trio(self.cfg,self.cfg.convolution_channels)
-    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-    #     ,Conv_trio(self.cfg,self.cfg.convolution_channels)
-    #     ])(deconv_multi)
+        return nn.switch(indexx, [ a0,a1,a2,a3,a4,a5 ], self, curried)
+
+    # def select_main_fun_b(self,curried,indexx):
+    #     # main_fun_op_as=list(map(lambda funn: functools.partial(funn,curried=curried) ,self.main_fun_op_bs))
+    #     def a0(self,curried):
+    #         return self.main_fun_op_b(curried,0)
+    #     def a1(self,curried):
+    #         return self.main_fun_op_b(curried,1)
+    #     def a2(self,curried):
+    #         return self.main_fun_op_b(curried,2)
+    #     def a3(self,curried):
+    #         return self.main_fun_op_b(curried,3)
+    #     def a4(self,curried):
+    #         return self.main_fun_op_b(curried,4)
+    #     def a5(self,curried):
+    #         return self.main_fun_op_b(curried,5)
+
+    #     return nn.switch(indexx, [ a0,a1,a2,a3,a4,a5 ], self, curried)    
+
+
 
     @partial(jax.profiler.annotate_function, name="scan_over_masks")
     def scan_over_masks(self,resized_image:jnp.ndarray
                         ,mask_combined:jnp.ndarray
                         ,initial_masks:jnp.ndarray
-                        ,mask_new_bi_channel:jnp.ndarray
                         ,edge_map:jnp.ndarray
-                        ,r_x:int,r_y:int,dim_stride:int
-                        ,x_pad_new:int,y_pad_new:int
                         ,main_loop_index:int
                         ):
         
 
        
-        curried= (resized_image,mask_combined,initial_masks,mask_new_bi_channel,jnp.zeros(1,),edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,main_loop_index)
+        curried= (resized_image,mask_combined,initial_masks,jnp.zeros(1,),edge_map,main_loop_index)
+
         curried,accum= self.scanned_de_cov_batched(self.cfg
                                                     ,self.dynamic_cfg
                                                     ,self.shape_reshape_cfgs_all
                                                     )(curried,jnp.arange(self.cfg.masks_num) )
-        resized_image,mask_combined,initial_masks,mask_new_bi_channel,loss,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,main_loop_index=curried
+        resized_image,mask_combined,initial_masks,loss,edge_map,main_loop_index=curried
         #comparing synthesized image and new one
         return loss                                       
 
@@ -495,95 +503,101 @@ class De_conv_batched_multimasks(nn.Module):
 
     def get_new_mask_from_probs(self,mask_old:jnp.ndarray
                                 ,bi_chan_probs:jnp.ndarray
-                                ,r_x:int,r_y:int,dim_stride:int
-                                ,not_deconved_shape_not_batched
                                 ):
         """ 
         given bi channel probs where first channel will be interpreted as probability of being the same id (1 or 0)
         as the sv backward the axis; and second channel probability of being the same supervoxel forward the axis 
         """
-        dim_stride_curr=dim_stride+1
+        dim_stride_curr=1
+        print(f"mask_old {mask_old.shape} bi_chan_probs {bi_chan_probs.shape}")
+        # recreate_channels_einops='b (h c) w-> b h w c'
+        # rearrange_to_intertwine_einops='f bb h w cc->bb (h f) w cc'
 
-        probs_shape= (self.cfg.batch_size_pmapped,self.cfg.img_size[1]//2**(self.cfg.r_x_total -r_x),self.cfg.img_size[2]//2**(self.cfg.r_y_total-r_y),2)
+        # probs_shape= (self.cfg.batch_size_pmapped,self.cfg.img_size[1],self.cfg.img_size[2],2)
         # mask_shape = (self.cfg.batch_size_pmapped,self.cfg.img_size[1]//2**(self.cfg.r_x_total-rss[0]),self.cfg.img_size[2]//2**(self.cfg.r_y_total-rss[1]),self.cfg.num_dim)
-        mask_shape = not_deconved_shape_not_batched
-        mask_shape_list=[self.cfg.batch_size_pmapped]+list(mask_shape)
-        mask_shape_list[dim_stride_curr]=1  
-        mask_shape_list[-1]=self.cfg.num_dim      
-        mask_shape_end=tuple(mask_shape_list)
+        # mask_shape = not_deconved_shape_not_batched
+        # mask_shape_list=[self.cfg.batch_size_pmapped]+list(mask_shape)
+        # mask_shape_list[dim_stride_curr]=1  
+        # mask_shape_list[-1]=self.cfg.num_dim      
+        # mask_shape_end=tuple(mask_shape_list)
 
-        recreate_channels_einops_list=[
-            'b (h c) w-> b h w c'
-            ,'b h (w c)-> b h w c'
-         ]
-        recreate_channels_einops=recreate_channels_einops_list[dim_stride]
+        # recreate_channels_einops_list=[
+        #     'b (h c) w-> b h w c'
+        #     ,'b h (w c)-> b h w c'
+        #  ]
+        # recreate_channels_einops=recreate_channels_einops_list[dim_stride]
 
-        rearrange_to_intertwine_einopses=['f bb h w cc->bb (h f) w cc', 'f bb h w cc->bb h (w f) cc']
-        rearrange_to_intertwine_einops=  rearrange_to_intertwine_einopses[dim_stride]
+        # rearrange_to_intertwine_einopses=['f bb h w cc->bb (h f) w cc', 'f bb h w cc->bb h (w f) cc']
+        # rearrange_to_intertwine_einops=  rearrange_to_intertwine_einopses[dim_stride]
 
 
-        rolled_probs=roll_in(bi_chan_probs,dim_stride_curr,probs_shape)
+        rolled_probs=roll_in(bi_chan_probs)
         rolled_probs = jnp.sum(rolled_probs,axis=-1)
 
         # retaking this last probability looking out that was discarded in roll in
-        end_prob=jnp.take(bi_chan_probs, indices=probs_shape[dim_stride_curr]-1,axis=dim_stride_curr )
-        end_prob=jnp.expand_dims(end_prob,dim_stride_curr)[:,:,:,1]*2 #times 2 as it was not summed up
+        end_prob=bi_chan_probs[:,-1,:,:]
+        end_prob=jnp.expand_dims(end_prob,1)[:,:,:,1]*2 #times 2 as it was not summed up
+
+        # end_prob=jnp.take(bi_chan_probs, indices=probs_shape[dim_stride_curr]-1,axis=dim_stride_curr )
+        # end_prob=jnp.expand_dims(end_prob,dim_stride_curr)[:,:,:,1]*2 #times 2 as it was not summed up
+
         rolled_probs = jnp.concatenate((rolled_probs,end_prob) ,axis= dim_stride_curr )
         #rearranging two get last dim =2 so the softmax will make sense
-        rolled_probs=einops.rearrange(rolled_probs,recreate_channels_einops,c=2) 
+        rolled_probs=einops.rearrange(rolled_probs,'b (h c) w-> b h w c',c=2) 
         rolled_probs= nn.softmax(rolled_probs,axis=-1)
         rolled_probs = v_v_harder_diff_round(rolled_probs)
 
         #we get propositions forward and backward od old mask
-        old_forward=jnp.take(mask_old, indices=jnp.arange(1,not_deconved_shape_not_batched[dim_stride]),axis=dim_stride_curr )
-        old_back =jnp.take(mask_old, indices=jnp.arange(0,not_deconved_shape_not_batched[dim_stride]),axis=dim_stride_curr )
+        old_forward=mask_old[:,1:,:,:]
+        old_back=mask_old.copy()
+        # old_forward=jnp.take(mask_old, indices=jnp.arange(1,not_deconved_shape_not_batched[dim_stride]),axis=dim_stride_curr )
+        # old_back =jnp.take(mask_old, indices=jnp.arange(0,not_deconved_shape_not_batched[dim_stride]),axis=dim_stride_curr )
+        
+        
         #in order to get correct shape we need to add zeros to forward
-        to_end_grid=jnp.zeros(mask_shape_end)
-        old_forward= jnp.concatenate((old_forward,to_end_grid) ,axis= dim_stride_curr)
-      
+        # to_end_grid=jnp.zeros(mask_shape_end)
+        # old_forward= jnp.concatenate((old_forward,to_end_grid) ,axis= dim_stride_curr)
+        old_forward= jnp.pad(old_forward,((0,0),(0,1),(0,0),(0,0)))
+
 
         old_propositions=jnp.stack([old_forward,old_back],axis=-1)# w h n_dim 2
         #chosen values and its alternative
         rolled_probs=v_v_harder_diff_round(rolled_probs) 
 
         rolled_probs=einops.repeat(rolled_probs,'bb w h pr->bb w h d pr',d=self.cfg.num_dim)
-
-
+        print(f"old_propositions {old_propositions.shape} rolled_probs {rolled_probs.shape} ")
         chosen_values=jnp.multiply(old_propositions,rolled_probs)
         chosen_values= jnp.sum(chosen_values,axis=-1)
 
-        mask_combined=einops.rearrange([mask_old,chosen_values],rearrange_to_intertwine_einops) 
+        mask_combined=einops.rearrange([mask_old,chosen_values],'f bb h w cc->bb (h f) w cc') 
         
         return mask_combined
 
 
-    def work_on_deconv_and_mask(self,deconv_multi,mask_old,x_pad_old, y_pad_old,dim_stride,not_deconved_shape_not_batched ):
-        #remove padding
-        deconv_multi= deconv_multi[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
-        mask_old= mask_old[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
+    # def work_on_deconv_and_mask(self,deconv_multi,mask_old,x_pad_old, y_pad_old,dim_stride,not_deconved_shape_not_batched ):
+    #     #remove padding
+    #     deconv_multi= deconv_multi[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
+    #     mask_old= mask_old[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
 
-        #keep dim_stride constant just transpose image as needed we add 1 becouse of batch dimension
-        deconv_multi= jnp.swapaxes(deconv_multi,1,(dim_stride+1))
-        mask_old= jnp.swapaxes(mask_old,1,(dim_stride+1))
+    #     #keep dim_stride constant just transpose image as needed we add 1 becouse of batch dimension
+    #     deconv_multi= jnp.swapaxes(deconv_multi,1,(dim_stride+1))
+    #     mask_old= jnp.swapaxes(mask_old,1,(dim_stride+1))
 
-        mask_old_deconved=self.deconv_old(mask_old)
-        deconv_multi=self.deconv_multi(deconv_multi)
+    #     mask_old_deconved=self.deconv_old(mask_old)
+    #     deconv_multi=self.deconv_multi(deconv_multi)
 
-        # mask_old_deconved=De_conv_not_sym(self.cfg,1,dim_stride)(mask_old)
-        # deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,dim_stride)(deconv_multi)
-        #retranspose deconv to original orientation
-        deconv_multi= jnp.swapaxes(deconv_multi,(dim_stride+1),1)
-        mask_old= jnp.swapaxes(mask_old,(dim_stride+1),1)
-        mask_old_deconved= jnp.swapaxes(mask_old_deconved,(dim_stride+1),1)
-        return mask_old,deconv_multi,mask_old_deconved
+    #     # mask_old_deconved=De_conv_not_sym(self.cfg,1,dim_stride)(mask_old)
+    #     # deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,dim_stride)(deconv_multi)
+    #     #retranspose deconv to original orientation
+    #     deconv_multi= jnp.swapaxes(deconv_multi,(dim_stride+1),1)
+    #     mask_old= jnp.swapaxes(mask_old,(dim_stride+1),1)
+    #     mask_old_deconved= jnp.swapaxes(mask_old_deconved,(dim_stride+1),1)
+    #     return mask_old,deconv_multi,mask_old_deconved
 
-
-    def main_fun_op(self,curried,index):
-                #getting image and edge map of wanted size 
-        image,mask_old,deconv_multi,initial_masks,losses_old,x_pad, y_pad =curried
-
-        # print(f"fffffffff image {image.shape} mask_old {mask_old.shape} deconv_multi {deconv_multi.shape} initial_masks {initial_masks.shape}")
-
+    def get_iteration_constants(self,index):
+        """
+        get some constants that are constant in a given iteration 
+        """
         x_pad_old=self.x_pad_new_all[index]
         y_pad_old=self.y_pad_new_all[index]
         x_pad_new=self.x_pad_new_all[index+1]
@@ -595,38 +609,111 @@ class De_conv_batched_multimasks(nn.Module):
         loss_weight=self.loss_weight_all[index]
         deconved_shape_not_batched=self.deconved_shape_not_batched_all[index]
         not_deconved_shape_not_batched=self.not_deconved_shape_not_batched_all[index]
+        return x_pad_old, y_pad_old, x_pad_new, y_pad_new, dim_stride, r_x, r_y, loss_weight, deconved_shape_not_batched,not_deconved_shape_not_batched
+
+
+    # def main_fun_op(self,curried,index):
+    #             #getting image and edge map of wanted size 
+    #     image,mask_old,deconv_multi,initial_masks,losses_old,x_pad, y_pad =curried
+
+    #     # print(f"fffffffff image {image.shape} mask_old {mask_old.shape} deconv_multi {deconv_multi.shape} initial_masks {initial_masks.shape}")
+    #     x_pad_old, y_pad_old, x_pad_new, y_pad_new, dim_stride, r_x, r_y, loss_weight, deconved_shape_not_batched,not_deconved_shape_not_batched= self.get_iteration_constants(index)
+
+    #     resized_image=v_image_resize(image,deconved_shape_not_batched,"linear" )       
+    #     edge_map=apply_farid_both(resized_image)
+    #     edge_map=edge_map/jnp.max(edge_map.flatten())
+    #     deconv_multi= deconv_multi[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
+    #     mask_old= mask_old[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
+
+    #     #keep dim_stride constant just transpose image as needed we add 1 becouse of batch dimension
+    #     deconv_multi= jnp.swapaxes(deconv_multi,1,(dim_stride+1))
+    #     mask_old= jnp.swapaxes(mask_old,1,(dim_stride+1))
+
+    #     aaaaaaaaaaaaaaaaaaaaaaa
+    #     mask_old_deconved=self.deconv_old(mask_old)
+    #     deconv_multi=self.deconv_multi(deconv_multi)
+    #     aaaaaaaaaaaaaaaaaaaa
+
+    #     # mask_old_deconved=De_conv_not_sym(self.cfg,1,dim_stride)(mask_old)
+    #     # deconv_multi=De_conv_not_sym(self.cfg,self.cfg.convolution_channels,dim_stride)(deconv_multi)
+    #     #retranspose deconv to original orientation
+    #     deconv_multi= jnp.swapaxes(deconv_multi,(dim_stride+1),1)
+    #     mask_old= jnp.swapaxes(mask_old,(dim_stride+1),1)
+    #     mask_old_deconved= jnp.swapaxes(mask_old_deconved,(dim_stride+1),1)
+
+    #     #adding informations about image and old mask as begining channels
+    #     deconv_multi= jnp.concatenate([resized_image,edge_map,mask_old_deconved,deconv_multi],axis=-1)
+        
+    #     aaaaaaaaaaaaaaaaaaa
+    #     deconv_multi=self.convss(deconv_multi)
+    #     #resisizing image to the deconvolved - increased shape
+    #     #getting new mask thanks to convolutions...
+    #     mask_new_bi_channel=remat(nn.Conv)(2, kernel_size=(5,5))(deconv_multi)
+    #     aaaaaaaaaaaaaaaaaaa
+
+
+    #     mask_new_bi_channel=nn.softmax(mask_new_bi_channel,axis=-1)
+    #     #intertwine old and new mask - so a new mask may be interpreted basically as interpolation of old
+    #     mask_combined=self.get_new_mask_from_probs(mask_old,mask_new_bi_channel,r_x,r_y,dim_stride,not_deconved_shape_not_batched)
+    #     #we want the masks entries to be as close to be 0 or 1 as possible - otherwise feature variance and 
+    #     #separability of supervoxels will be compromised
+    #     # having entries 0 or 1 will maximize the term below so we negate it for loss
+    #     # rounding_loss_val=jnp.mean(jnp.array([rounding_loss(mask_combined),rounding_loss(mask_combined_alt)]))
+    #     #making the values closer to 1 or 0 in a differentiable way
+    #     mask_combined=v_v_harder_diff_round(mask_combined)     
+
+    #     #pad resized image and other inputs that require it
+
+    #     # print(f"aaaaaaaa x_pad_new {x_pad_new} y_pad_new {y_pad_new} resized_image {resized_image.shape} edge_map {edge_map.shape} mask_new_bi_channel {mask_new_bi_channel.shape} deconv_multi {edge_map.shape}")
+    #     resized_image=jnp.pad(resized_image, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
+    #     mask_combined=jnp.pad(mask_combined, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
+    #     mask_new_bi_channel=jnp.pad(mask_new_bi_channel, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
+    #     edge_map=jnp.pad(edge_map, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
+    #     deconv_multi=jnp.pad(deconv_multi, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
+    #     # print(f"bbbbbbbbb resized_image {resized_image.shape} initial_masks {initial_masks.shape} mask_new_bi_channel {mask_new_bi_channel.shape} edge_map {edge_map.shape} image {image.shape} deconv_multi {deconv_multi.shape} mask_combined {mask_combined.shape}")
+
+    #     return resized_image,initial_masks,mask_new_bi_channel,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,losses_old,loss_weight,image,deconv_multi,mask_combined       
+
+    def my_resize(self,image,index):
+                #getting image and edge map of wanted size 
+        
+
+        # print(f"fffffffff image {image.shape} mask_old {mask_old.shape} deconv_multi {deconv_multi.shape} initial_masks {initial_masks.shape}")
+        x_pad_old, y_pad_old, x_pad_new, y_pad_new, dim_stride, r_x, r_y, loss_weight, deconved_shape_not_batched,not_deconved_shape_not_batched= self.get_iteration_constants(index)
 
         resized_image=v_image_resize(image,deconved_shape_not_batched,"linear" )       
-        edge_map=apply_farid_both(resized_image)
-        edge_map=edge_map/jnp.max(edge_map.flatten())
-        mask_old,deconv_multi,mask_old_deconved=self.work_on_deconv_and_mask(deconv_multi,mask_old,x_pad_old, y_pad_old,dim_stride,not_deconved_shape_not_batched)
-        #adding informations about image and old mask as begining channels
-        deconv_multi= jnp.concatenate([resized_image,edge_map,mask_old_deconved,deconv_multi],axis=-1)
-        deconv_multi=self.convss(deconv_multi)
-        #resisizing image to the deconvolved - increased shape
-        #getting new mask thanks to convolutions...
-        mask_new_bi_channel=remat(nn.Conv)(2, kernel_size=(5,5))(deconv_multi)
-        mask_new_bi_channel=nn.softmax(mask_new_bi_channel,axis=-1)
-        #intertwine old and new mask - so a new mask may be interpreted basically as interpolation of old
+        resized_image=jnp.pad(resized_image, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
+
+        return resized_image,dim_stride,loss_weight
+
+    def my_swap(self,arr,index):
+        x_pad_old, y_pad_old, x_pad_new, y_pad_new, dim_stride, r_x, r_y, loss_weight, deconved_shape_not_batched,not_deconved_shape_not_batched= self.get_iteration_constants(index)
+        return jnp.swapaxes(arr,1,(dim_stride+1))
+
+    def my_swap_back(self,arr,index):
+        x_pad_old, y_pad_old, x_pad_new, y_pad_new, dim_stride, r_x, r_y, loss_weight, deconved_shape_not_batched,not_deconved_shape_not_batched= self.get_iteration_constants(index)
+        return jnp.swapaxes(arr,(dim_stride+1),1)
+
+    def main_fun_op_b(self,curried,index):
+                #getting image and edge map of wanted size 
+        image,mask_old,deconv_multi,initial_masks,losses_old,x_pad, y_pad =curried
+        # print(f"fffffffff image {image.shape} mask_old {mask_old.shape} deconv_multi {deconv_multi.shape} initial_masks {initial_masks.shape}")
+        x_pad_old, y_pad_old, x_pad_new, y_pad_new, dim_stride, r_x, r_y, loss_weight, deconved_shape_not_batched,not_deconved_shape_not_batched= self.get_iteration_constants(index)
+
         mask_combined=self.get_new_mask_from_probs(mask_old,mask_new_bi_channel,r_x,r_y,dim_stride,not_deconved_shape_not_batched)
-        #we want the masks entries to be as close to be 0 or 1 as possible - otherwise feature variance and 
-        #separability of supervoxels will be compromised
-        # having entries 0 or 1 will maximize the term below so we negate it for loss
-        # rounding_loss_val=jnp.mean(jnp.array([rounding_loss(mask_combined),rounding_loss(mask_combined_alt)]))
+
+
         #making the values closer to 1 or 0 in a differentiable way
         mask_combined=v_v_harder_diff_round(mask_combined)     
 
         #pad resized image and other inputs that require it
-
-        # print(f"aaaaaaaa x_pad_new {x_pad_new} y_pad_new {y_pad_new} resized_image {resized_image.shape} edge_map {edge_map.shape} mask_new_bi_channel {mask_new_bi_channel.shape} deconv_multi {edge_map.shape}")
-        resized_image=jnp.pad(resized_image, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
         mask_combined=jnp.pad(mask_combined, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
         mask_new_bi_channel=jnp.pad(mask_new_bi_channel, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
         edge_map=jnp.pad(edge_map, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
         deconv_multi=jnp.pad(deconv_multi, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))
-        # print(f"bbbbbbbbb resized_image {resized_image.shape} initial_masks {initial_masks.shape} mask_new_bi_channel {mask_new_bi_channel.shape} edge_map {edge_map.shape} image {image.shape} deconv_multi {deconv_multi.shape} mask_combined {mask_combined.shape}")
 
-        return resized_image,initial_masks,mask_new_bi_channel,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,losses_old,loss_weight,image,deconv_multi,mask_combined       
+        # print(f"bbbbbbbbb resized_image {resized_image.shape} initial_masks {initial_masks.shape} mask_new_bi_channel {mask_new_bi_channel.shape} edge_map {edge_map.shape} image {image.shape} deconv_multi {deconv_multi.shape} mask_combined {mask_combined.shape}")
+        return initial_masks,mask_new_bi_channel,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,losses_old,loss_weight,image,deconv_multi,mask_combined       
 
 
     @partial(jax.profiler.annotate_function, name="De_conv_batched_multimasks")
@@ -634,29 +721,69 @@ class De_conv_batched_multimasks(nn.Module):
     # def __call__(self, image:jnp.ndarray, mask_old:jnp.ndarray,deconv_multi:jnp.ndarray,initial_masks:jnp.ndarray) -> jnp.ndarray:
     def __call__(self, curried:jnp.ndarray,main_loop_index:int) -> jnp.ndarray:
 
+        image,mask_old,deconv_multi,initial_masks,losses_old=curried
 
-        resized_image,initial_masks,mask_new_bi_channel,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,losses_old,loss_weight,image,deconv_multi,mask_combined =self.select_main_fun(curried,main_loop_index)
+        resized_image,dim_stride,loss_weight=self.select_fun_with_index(image,main_loop_index,self.my_resize)
 
+        # resized_image,dim_stride=self.select_main_fun_a(image,main_loop_index)
+        # resized_image= resized_image[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
+
+        edge_map=apply_farid_both(resized_image)
+        edge_map=edge_map/jnp.max(edge_map.flatten())
+        # deconv_multi= deconv_multi[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
+        # mask_old= mask_old[:,x_pad_old:self.cfg.img_size[1]-x_pad_old,y_pad_old:self.cfg.img_size[2]-y_pad_old,:]
+
+        #keep dim_stride constant just transpose image as needed we add 1 becouse of batch dimension
+        # deconv_multi= jnp.swapaxes(deconv_multi,1,(dim_stride+1))
+        # mask_old= jnp.swapaxes(mask_old,1,(dim_stride+1))
+        
+        deconv_multi= self.select_fun_with_index(deconv_multi,main_loop_index,self.my_swap)
+        mask_old= self.select_fun_with_index(mask_old,main_loop_index,self.my_swap)
+        #trimming to make it full size after deconvolution
+        deconv_multi= jax.lax.dynamic_slice(deconv_multi,(0,self.cfg.img_size[1]//4, 0,0), (self.cfg.batch_size_pmapped,self.cfg.img_size[1]//2,self.cfg.img_size[2],self.cfg.convolution_channels))
+        mask_old= jax.lax.dynamic_slice(mask_old,(0,self.cfg.img_size[1]//4, 0,0), (self.cfg.batch_size_pmapped,self.cfg.img_size[1]//2,self.cfg.img_size[2], self.cfg.num_dim ))
+        #deconvolutions
+
+        mask_old_deconved=self.deconv_old(mask_old)
+        deconv_multi=self.deconv_multii(deconv_multi) 
+        #retranspose deconv to original orientation
+
+
+        deconv_multi= self.select_fun_with_index(deconv_multi,main_loop_index,self.my_swap_back)
+        # mask_old= self.select_fun_with_index(mask_old,main_loop_index,self.my_swap_back)
+        mask_old_deconved= self.select_fun_with_index(mask_old_deconved,main_loop_index,self.my_swap_back)
+
+        #adding informations about image and old mask as begining channels
+        deconv_multi= jnp.concatenate([resized_image,edge_map,mask_old_deconved,deconv_multi],axis=-1)      
+        deconv_multi=self.convss(deconv_multi)
+        #resisizing image to the deconvolved - increased shape
+        #getting new mask thanks to convolutions...
+        mask_new_bi_channel=remat(nn.Conv)(2, kernel_size=(5,5))(deconv_multi)
+
+        #swap axes
+        deconv_multi= self.select_fun_with_index(deconv_multi,main_loop_index,self.my_swap)
+
+        mask_combined=self.get_new_mask_from_probs(mask_old,mask_new_bi_channel)
+        #making the values closer to 1 or 0 in a differentiable way
+        mask_combined=v_v_harder_diff_round(mask_combined)  
+
+        deconv_multi= self.select_fun_with_index(deconv_multi,main_loop_index,self.my_swap_back)
+        mask_combined= self.select_fun_with_index(mask_combined,main_loop_index,self.my_swap_back)
+
+        
+        # argss=(mask_new_bi_channel,mask_old, resized_image,mask_combined,edge_map,deconv_multi,initial_masks,losses_old)
+        # initial_masks,mask_new_bi_channel,edge_map,r_x,r_y,dim_stride,x_pad_new,y_pad_new,losses_old,loss_weight,image,deconv_multi,mask_combined=self.select_main_fun_b(argss,main_loop_index)
         #some usufull constants
         loss=self.scan_over_masks(resized_image
                                     ,mask_combined
                                     ,initial_masks
-                                    ,mask_new_bi_channel
                                     ,edge_map
-                                    ,r_x
-                                    ,r_y
-                                    ,dim_stride
-                                    ,x_pad_new
-                                    ,y_pad_new
-                                    ,main_loop_index
-                                    ) 
+                                    ,main_loop_index ) 
         
         # mask_combined=jnp.pad(mask_combined, ((0,0),(x_pad_new,x_pad_new),(y_pad_new,y_pad_new),(0,0)))     
-        print(f"llll {mask_combined.shape}")
         new_loss=(losses_old + (loss*loss_weight))
-
-        
-        return ((image,mask_combined,deconv_multi,initial_masks,new_loss ,x_pad_new, y_pad_new),None)
+       
+        return ((image,mask_combined,deconv_multi,initial_masks,new_loss),None)
 
 
 # class De_conv_3_dim(nn.Module):

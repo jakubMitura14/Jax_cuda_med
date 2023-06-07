@@ -66,13 +66,12 @@ class SpixelNet(nn.Module):
 
         self.initial_masks= einops.repeat(initial_masks,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
         self.masks_0= jnp.pad(self.initial_masks,((0,0),(x_pad_masks,x_pad_masks),(y_pad_masks,y_pad_masks),(0,0)))
-
         self.scanned_De_conv_batched_multimasks=  nn.scan(De_conv_batched_multimasks,
                                         variable_broadcast="params", #parametters are shared
                                         split_rngs={'params': False},
                                         length=self.cfg.masks_num,
                                         in_axes=(0)
-                                        ,out_axes=(0) )#losses
+                                        ,out_axes=(0))  #losses
         # preparing the 
         aa=list(product(range(1,cfg.r_x_total+1),range(0,cfg.r_y_total+1)))
         aa= list(filter(lambda tupl: tupl[0]>=tupl[1] and (tupl[1]+1)>=(tupl[0]) ,aa))
@@ -101,13 +100,13 @@ class SpixelNet(nn.Module):
             Conv_trio(self.cfg,channels=16)
             ,Conv_trio(self.cfg,channels=16,strides=(2,2))
             ,Conv_trio(self.cfg,channels=32,strides=(2,2))
-            ,Conv_trio(self.cfg,channels=64,strides=(2,2))
+            ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
         ])(image)
 
         deconv_multi_zero=jnp.pad(out4, ((0,0),(self.x_pad,self.x_pad),(self.y_pad,self.y_pad),(0,0)))
         # print(f"deconv_multi_zero {deconv_multi_zero.shape}")
         losses_0=jnp.array([0.0])
-        curried=image,self.masks_0,deconv_multi_zero,self.initial_masks,losses_0,self.x_pad, self.y_pad 
+        curried=image,self.masks_0,deconv_multi_zero,self.initial_masks,losses_0
         # print(f"00000 image {image.shape} deconv_multi_zero {deconv_multi_zero.shape} ")
 
         curried_out,_ =self.scanned_De_conv_batched_multimasks(self.cfg
@@ -121,7 +120,7 @@ class SpixelNet(nn.Module):
                                                                ,self.y_pad_new
                                                                ,self.loss_weight
                                                                ,self.not_deconved_shape_not_batched)(curried,self.main_loop_indicies)
-        image,masks,deconv_multi_zero,initial_masks,losses,x_pad, y_pad =curried_out
+        image,masks,deconv_multi_zero,initial_masks,losses =curried_out
 
         return (losses,masks)
 
