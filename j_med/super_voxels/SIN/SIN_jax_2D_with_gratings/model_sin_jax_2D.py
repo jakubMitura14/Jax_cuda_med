@@ -27,31 +27,26 @@ from .render2D import *
 import pandas as pd
 
 
+def get_dn(prim_image_shape,tupl):
+    name,props=tupl
+    k_s=props['kernel_size']
+    prim_image_shape=list(prim_image_shape)
+    prim_image_shape[-1]=props['in_channels']
+    dn = lax.conv_dimension_numbers(tuple(prim_image_shape),     # only ndim matters, not shape
+                                (k_s[0],k_s[1],props['in_channels'],props['in_channels']  ),  # only ndim matters, not shape 
+                                ('NHWC', 'HWIO', 'NHWC'))  # the important bit
+    print(f"dn {dn}")
+    return dn
+
+
+
+
+
+
 class SpixelNet(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     
-    def add_data_to_iter(self,tupl):
-        """  
-        as we know what possible rx r y and dim stride are possible we can also precalculate
-        some quntities like deconved_shape_not_batched x_pad_new y_pad_new
-        """
-        r_x=tupl[0]
-        r_y=tupl[1]
-        dim_stride=tupl[2]
-        rss=[r_x,r_y]
-        rss[dim_stride]=rss[dim_stride]-1
-
-        not_deconved_shape_not_batched = [self.cfg.img_size[1]//2**(self.cfg.r_x_total-rss[0]),self.cfg.img_size[2]//2**(self.cfg.r_y_total-rss[1]),1]
-        deconved_shape_not_batched = [self.cfg.img_size[1]//2**(self.cfg.r_x_total -r_x),self.cfg.img_size[2]//2**(self.cfg.r_y_total-r_y),1]
-        x_pad_new=(self.cfg.masks_size[1]-deconved_shape_not_batched[0])//2
-        y_pad_new=(self.cfg.masks_size[2]-deconved_shape_not_batched[1])//2 
-        loss_weight=self.cfg.deconves_importances[r_x-1]
-        shape_reshape_cfgs=get_all_shape_reshape_constants(self.cfg,r_x=r_x,r_y=r_y)  
-        
-        return r_x,r_y , dim_stride, deconved_shape_not_batched,x_pad_new,y_pad_new, loss_weight,shape_reshape_cfgs,not_deconved_shape_not_batched
-
     def setup(self):
-        cfg=self.cfg
         initial_masks= jnp.stack([
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,0,0),
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,1,0),
@@ -59,40 +54,30 @@ class SpixelNet(nn.Module):
                    get_initial_supervoxel_masks(self.cfg.orig_grid_shape,1,1)
                         ],axis=0)
         initial_masks=jnp.sum(initial_masks,axis=0)
-        x_pad_masks=(self.cfg.masks_size[1]-self.cfg.orig_grid_shape[0])//2
-        y_pad_masks=(self.cfg.masks_size[2]-self.cfg.orig_grid_shape[1])//2
-        self.x_pad=x_pad_masks
-        self.y_pad=y_pad_masks
-
+        # print(f"initial_masks \n {disp_to_pandas_curr_shape(initial_masks)}")
+        self.initializer = jax.nn.initializers.glorot_normal()
+        cfg=self.cfg
+        self.convSpecs_dict_list=(
+       ('conv1',{'in_channels':cfg.convolution_channels+3,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv2',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv3',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv4',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv5',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv6',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv7',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv8',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) })
+        )
+        self.convSpecs_names = list(map(lambda tupl: tupl[0] ,self.convSpecs_dict_list))
+        self.dns= list(map(lambda tupl :get_dn(self.cfg.img_size_pmapped,tupl),self.convSpecs_dict_list ))
+        self.dns_dict=dict(list(zip(self.convSpecs_names,self.dns)))
+        
         self.initial_masks= einops.repeat(initial_masks,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
-        self.masks_0= jnp.pad(self.initial_masks,((0,0),(x_pad_masks,x_pad_masks),(y_pad_masks,y_pad_masks),(0,0)))
-        self.scanned_De_conv_batched_multimasks=  nn.scan(De_conv_batched_multimasks,
-                                        variable_broadcast="params", #parametters are shared
-                                        split_rngs={'params': False},
-                                        length=self.cfg.masks_num,
-                                        in_axes=(0)
-                                        ,out_axes=(0))  #losses
-        # preparing the 
-        aa=list(product(range(1,cfg.r_x_total+1),range(0,cfg.r_y_total+1)))
-        aa= list(filter(lambda tupl: tupl[0]>=tupl[1] and (tupl[1]+1)>=(tupl[0]) ,aa))
-        dir_strides= einops.repeat(np.arange(cfg.true_num_dim),'a->(b a) 1',b=np.array(aa).shape[0]//cfg.true_num_dim)
-        r_x_r_y_dim_stride=np.concatenate([np.array(aa),dir_strides],axis=1) 
-        to_iter_dat = list(map(self.add_data_to_iter,r_x_r_y_dim_stride))
-        r_x,r_y , dim_stride, deconved_shape_not_batched,x_pad_new,y_pad_new,loss_weight,shape_reshape_cfgs,not_deconved_shape_not_batched=toolz.sandbox.core.unzip(to_iter_dat)
-        self.main_loop_indicies= np.arange(len(aa))
-        self.r_x= np.array(list(r_x))
-        self.r_y= np.array(list(r_y))
-        self.dim_stride= np.array(list(dim_stride))
-        self.deconved_shape_not_batched= np.array(list(deconved_shape_not_batched))
-        self.x_pad_new= np.array([x_pad_masks]+list(x_pad_new))
-        self.y_pad_new= np.array([y_pad_masks]+list(y_pad_new))
-        self.loss_weight= np.array(list(loss_weight))
-        self.not_deconved_shape_not_batched= np.array(list(not_deconved_shape_not_batched))
-        shape_reshape_cfgs= list(shape_reshape_cfgs)
-        self.shape_reshape_cfgs_all= list(map(list, shape_reshape_cfgs ))
-        self.shape_reshape_cfgs_all= list(itertools.chain(*list(shape_reshape_cfgs)))
 
-
+    def initialize_convs(self,prng,shape):
+        conv_prngs= jax.random.split(prng, len(self.convSpecs_dict_list))
+        conv_sizes= list(map(get_weight_size ,self.convSpecs_dict_list))
+        params= list(starmap(self.initializer,zip(conv_prngs,conv_sizes) ))
+        return dict(list(zip(self.convSpecs_names,params )))
     @nn.compact
     def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
@@ -102,29 +87,55 @@ class SpixelNet(nn.Module):
             ,Conv_trio(self.cfg,channels=32,strides=(2,2))
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
         ])(image)
+        conv_params = self.param('conv_params', self.initialize_convs, (1, 1))
+        # print(f"conv_params {conv_params[0].shape}")#(32, 1, 5, 5)
 
-        deconv_multi_zero=jnp.pad(out4, ((0,0),(self.x_pad,self.x_pad),(self.y_pad,self.y_pad),(0,0)))
-        # print(f"deconv_multi_zero {deconv_multi_zero.shape}")
-        losses_0=jnp.array([0.0])
-        curried=image,self.masks_0,deconv_multi_zero,self.initial_masks,losses_0
-        # print(f"00000 image {image.shape} deconv_multi_zero {deconv_multi_zero.shape} ")
+        # out1=Conv_trio(self.cfg,channels=16)(image)
+        # out2=Conv_trio(self.cfg,channels=16,strides=(2,2))(out1)
+        # out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
+        # out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-        curried_out,_ =self.scanned_De_conv_batched_multimasks(self.cfg
-                                                               ,dynamic_cfg
-                                                               ,self.deconved_shape_not_batched
-                                                               ,self.shape_reshape_cfgs_all
-                                                               ,self.r_x
-                                                               ,self.r_y
-                                                               ,self.dim_stride
-                                                               ,self.x_pad_new
-                                                               ,self.y_pad_new
-                                                               ,self.loss_weight
-                                                               ,self.not_deconved_shape_not_batched)(curried,self.main_loop_indicies)
-        image,masks,deconv_multi_zero,initial_masks,losses =curried_out
-
-        return (losses,masks)
-
-
+        deconv_multi,masks,losses_1,out_image=De_conv_3_dim(self.cfg
+                        ,dynamic_cfg
+                       ,self.cfg.convolution_channels
+                      ,1#r_x
+                      ,1#r_y
+                      ,translation_val=1
+                    ,dns=self.dns
+                    ,convSpecs_dict_list=self.convSpecs_dict_list
+                    ,dns_dict=self.dns_dict
+                      )(image,self.initial_masks,out4 ,self.initial_masks,conv_params)
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
+        deconv_multi,masks,losses_2,out_image=De_conv_3_dim(self.cfg
+                        ,dynamic_cfg
+                      ,self.cfg.convolution_channels
+                      ,2#r_x
+                      ,2#r_y
+                      ,translation_val=2
+                        ,dns=self.dns
+                        ,convSpecs_dict_list=self.convSpecs_dict_list
+                        ,dns_dict=self.dns_dict
+                      )(image,masks,deconv_multi,self.initial_masks,conv_params )
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
+        deconv_multi,masks,losses_3,out_image=De_conv_3_dim(self.cfg
+                      ,dynamic_cfg
+                      ,self.cfg.convolution_channels
+                      ,3#r_x
+                      ,3#r_y
+                      ,translation_val=4
+                    ,dns=self.dns
+                    ,convSpecs_dict_list=self.convSpecs_dict_list
+                    ,dns_dict=self.dns_dict
+                      )(image,masks,deconv_multi,self.initial_masks,conv_params)
+                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
+        
+        #we recreate the image using a supervoxels
+        #adding corrections as local loses are not equally important
+        losses= jnp.mean(jnp.stack([losses_1*self.cfg.deconves_importances[0]
+                                    ,losses_2*self.cfg.deconves_importances[1]
+                                    ,losses_3*self.cfg.deconves_importances[2]
+                                    ],axis=0),axis=0)
+        return (losses,masks,out_image)
 
 
         #TODO in original learning rate for biases in convolutions is 0 - good to try omitting biases

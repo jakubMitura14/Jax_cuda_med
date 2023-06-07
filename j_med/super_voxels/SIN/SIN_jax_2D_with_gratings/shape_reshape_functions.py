@@ -193,22 +193,7 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
     """
     diameter_x=get_diameter(r_x)
     diameter_y=get_diameter(r_y)
-
-    diameter_x_max=get_diameter(cfg.r_x_total)
-    diameter_y_max=get_diameter(cfg.r_y_total)
-
-    to_pad_single_sv_x=(diameter_x_max-diameter_x)//2
-    to_pad_single_sv_y=(diameter_y_max-diameter_y)//2
-
     curr_image_shape= (cfg.img_size[1]//2**(cfg.r_x_total-r_x),cfg.img_size[2]//2**(cfg.r_y_total-r_y))
-
-    deconved_shape_not_batched = [cfg.img_size[1]//2**(cfg.r_x_total -r_x),cfg.img_size[2]//2**(cfg.r_y_total-r_y),1]
-
-    x_pad_new=(cfg.masks_size[1]-deconved_shape_not_batched[0])//2
-    y_pad_new=(cfg.masks_size[2]-deconved_shape_not_batched[1])//2 
-
-
-
     # shift_x=int(shift_x)
     # shift_y=int(shift_y)
     to_pad_beg_x,to_remove_from_end_x,axis_len_prim_x,axis_len_x,to_pad_end_x  =for_pad_divide_grid(curr_image_shape,0,r_x,shift_x,cfg.orig_grid_shape,diameter_x)
@@ -232,15 +217,6 @@ def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.Conf
     res_cfg.diameter_y=diameter_y
     res_cfg.img_size=cfg.img_size
     res_cfg.curr_image_shape=curr_image_shape
-
-    res_cfg.to_reshape_back_x=np.floor_divide(res_cfg.axis_len_x,res_cfg.diameter_x)
-    res_cfg.to_reshape_back_y=np.floor_divide(res_cfg.axis_len_y,res_cfg.diameter_y)    
-    res_cfg.x_pad_new=x_pad_new
-    res_cfg.y_pad_new=y_pad_new
-    
-    res_cfg.to_pad_single_sv_x=to_pad_single_sv_x
-    res_cfg.to_pad_single_sv_y=to_pad_single_sv_y
-
     res_cfg = ml_collections.config_dict.FrozenConfigDict(res_cfg)
 
     return res_cfg

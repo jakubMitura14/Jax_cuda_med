@@ -273,17 +273,17 @@ def main_train(cfg):
   # opt_repl = flax.jax_utils.replicate(opt_cpu)
 
 
-  for epoch in range(1, cfg.total_steps):
-      prng, rng_loop = jax.random.split(prng, 2)
-      for index in range(batch_images.shape[0]) :
-        print(f"epoch {epoch} index {index}")
-        state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
-                                         #,tx, sched_fns,params_cpu
-                                         ,model,cfg,dynamic_cfgs,checkPoint_folder
-                                         #,opt_cpu,sched_fns_cpu
-                                         ,rng_loop,slicee,
-                                        #  ,params_repl, opt_repl
-                                         state)
+  # for epoch in range(1, cfg.total_steps):
+  #     prng, rng_loop = jax.random.split(prng, 2)
+  #     for index in range(batch_images.shape[0]) :
+  #       print(f"epoch {epoch} index {index}")
+  #       state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
+  #                                        #,tx, sched_fns,params_cpu
+  #                                        ,model,cfg,dynamic_cfgs,checkPoint_folder
+  #                                        #,opt_cpu,sched_fns_cpu
+  #                                        ,rng_loop,slicee,
+  #                                       #  ,params_repl, opt_repl
+  #                                        state)
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
 # tensorboard --logdir=/workspaces/Jax_cuda_med/tensor_board
 
