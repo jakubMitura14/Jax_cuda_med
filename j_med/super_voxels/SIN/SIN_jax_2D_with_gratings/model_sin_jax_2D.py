@@ -35,7 +35,6 @@ def get_dn(prim_image_shape,tupl):
     dn = lax.conv_dimension_numbers(tuple(prim_image_shape),     # only ndim matters, not shape
                                 (k_s[0],k_s[1],props['in_channels'],props['in_channels']  ),  # only ndim matters, not shape 
                                 ('NHWC', 'HWIO', 'NHWC'))  # the important bit
-    print(f"dn {dn}")
     return dn
 
 
@@ -57,7 +56,7 @@ class SpixelNet(nn.Module):
         # print(f"initial_masks \n {disp_to_pandas_curr_shape(initial_masks)}")
         self.initializer = jax.nn.initializers.glorot_normal()
         cfg=self.cfg
-        self.convSpecs_dict_list=(
+        self.convSpecs_dict_list=[
        ('conv1',{'in_channels':cfg.convolution_channels+3,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
        ('conv2',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
        ('conv3',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
@@ -66,10 +65,16 @@ class SpixelNet(nn.Module):
        ('conv6',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
        ('conv7',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
        ('conv8',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) })
-        )
+        ]
+        self.convSpecs_dict_list_additional=[('for_bi_channel',{'in_channels':cfg.convolution_channels,'out_channels':2, 'kernel_size':(5,5),'stride':(1,1) })
+                                             ,('for_de_conves_mono',{'in_channels':cfg.masks_num,'out_channels':1, 'kernel_size':(5,5),'stride':(1,1) })
+                                             ,('for_de_conves_multi',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }) ]
+
         self.convSpecs_names = list(map(lambda tupl: tupl[0] ,self.convSpecs_dict_list))
-        self.dns= list(map(lambda tupl :get_dn(self.cfg.img_size_pmapped,tupl),self.convSpecs_dict_list ))
-        self.dns_dict=dict(list(zip(self.convSpecs_names,self.dns)))
+        self.convSpecs_dict_list_additional_names = list(map(lambda tupl: tupl[0] ,self.convSpecs_dict_list_additional))
+        self.dns= list(map(lambda tupl :get_dn(self.cfg.img_size_pmapped,tupl),self.convSpecs_dict_list+self.convSpecs_dict_list_additional ))
+        all_names= self.convSpecs_names+self.convSpecs_dict_list_additional_names
+        self.dns_dict=dict(list(zip(all_names,self.dns)))
         
         self.initial_masks= einops.repeat(initial_masks,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
 
@@ -78,6 +83,13 @@ class SpixelNet(nn.Module):
         conv_sizes= list(map(get_weight_size ,self.convSpecs_dict_list))
         params= list(starmap(self.initializer,zip(conv_prngs,conv_sizes) ))
         return dict(list(zip(self.convSpecs_names,params )))
+    
+    def initialize_add_convs(self,prng,shape):
+        conv_prngs= jax.random.split(prng, len(self.convSpecs_dict_list_additional))
+        conv_sizes= list(map(get_weight_size ,self.convSpecs_dict_list_additional))
+        params= list(starmap(self.initializer,zip(conv_prngs,conv_sizes) ))
+        return dict(list(zip(self.convSpecs_dict_list_additional_names,params )))
+
     @nn.compact
     def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:
         #first we do a convolution - mostly strided convolution to get the reduced representation
@@ -88,6 +100,7 @@ class SpixelNet(nn.Module):
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
         ])(image)
         conv_params = self.param('conv_params', self.initialize_convs, (1, 1))
+        conv_add_params = self.param('conv_added', self.initialize_add_convs, (1, 1))
         # print(f"conv_params {conv_params[0].shape}")#(32, 1, 5, 5)
 
         # out1=Conv_trio(self.cfg,channels=16)(image)
@@ -95,7 +108,7 @@ class SpixelNet(nn.Module):
         # out3=Conv_trio(self.cfg,channels=32,strides=(2,2))(out2)
         # out4=Conv_trio(self.cfg,channels=64,strides=(2,2))(out3)
 
-        deconv_multi,masks,losses_1,out_image=De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_1=De_conv_3_dim(self.cfg
                         ,dynamic_cfg
                        ,self.cfg.convolution_channels
                       ,1#r_x
@@ -104,9 +117,10 @@ class SpixelNet(nn.Module):
                     ,dns=self.dns
                     ,convSpecs_dict_list=self.convSpecs_dict_list
                     ,dns_dict=self.dns_dict
-                      )(image,self.initial_masks,out4 ,self.initial_masks,conv_params)
+                    ,convSpecs_dict_list_additional=self.convSpecs_dict_list_additional
+                      )(image,self.initial_masks,out4 ,self.initial_masks,conv_params,conv_add_params)
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,self.initial_masks,out4 )
-        deconv_multi,masks,losses_2,out_image=De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_2=De_conv_3_dim(self.cfg
                         ,dynamic_cfg
                       ,self.cfg.convolution_channels
                       ,2#r_x
@@ -115,9 +129,10 @@ class SpixelNet(nn.Module):
                         ,dns=self.dns
                         ,convSpecs_dict_list=self.convSpecs_dict_list
                         ,dns_dict=self.dns_dict
-                      )(image,masks,deconv_multi,self.initial_masks,conv_params )
+                        ,convSpecs_dict_list_additional=self.convSpecs_dict_list_additional
+                      )(image,masks,deconv_multi,self.initial_masks,conv_params,conv_add_params )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
-        deconv_multi,masks,losses_3,out_image=De_conv_3_dim(self.cfg
+        deconv_multi,masks,losses_3=De_conv_3_dim(self.cfg
                       ,dynamic_cfg
                       ,self.cfg.convolution_channels
                       ,3#r_x
@@ -126,7 +141,8 @@ class SpixelNet(nn.Module):
                     ,dns=self.dns
                     ,convSpecs_dict_list=self.convSpecs_dict_list
                     ,dns_dict=self.dns_dict
-                      )(image,masks,deconv_multi,self.initial_masks,conv_params)
+                    ,convSpecs_dict_list_additional=self.convSpecs_dict_list_additional
+                      )(image,masks,deconv_multi,self.initial_masks,conv_params,conv_add_params)
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
         
         #we recreate the image using a supervoxels
@@ -135,7 +151,7 @@ class SpixelNet(nn.Module):
                                     ,losses_2*self.cfg.deconves_importances[1]
                                     ,losses_3*self.cfg.deconves_importances[2]
                                     ],axis=0),axis=0)
-        return (losses,masks,out_image)
+        return (losses,masks)
 
 
         #TODO in original learning rate for biases in convolutions is 0 - good to try omitting biases
