@@ -120,10 +120,14 @@ def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cf
   # cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   decay_scheduler=optax.linear_schedule(cfg.learning_rate, cfg.learning_rate/10, cfg.total_steps, transition_begin=0)
   
+  joined_scheduler=optax.join_schedules([optax.constant_schedule(cfg.learning_rate*10),optax.constant_schedule(cfg.learning_rate)], [80])
+
+
   tx = optax.chain(
         optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
+        optax.lion(learning_rate=joined_scheduler)
         # optax.lion(learning_rate=cfg.learning_rate)
-        optax.lion(learning_rate=decay_scheduler)
+        #optax.lion(learning_rate=decay_scheduler)
         # optax.adafactor()
         
         )
