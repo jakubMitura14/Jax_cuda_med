@@ -60,9 +60,9 @@ def get_cfg():
     )
 
     #setting how frequent the checkpoints should be performed
-    cfg.divisor_checkpoint=10
+    cfg.divisor_checkpoint=15
     cfg.divisor_logging=8
-    cfg.to_save_check_point=False
+    cfg.to_save_check_point=True
 
     cfg.is_gsam=False
     config_dict.ConfigDict()

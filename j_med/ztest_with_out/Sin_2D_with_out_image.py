@@ -209,23 +209,10 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
   # print(f"state {state[1]}")
   state,loss=update_fn(state, batch_images, dynamic_cfg,cfg,model)
   epoch_loss.append(jnp.mean(jax_utils.unreplicate(loss).flatten())) 
-  # params_repl, opt_repl, rngs_loop, loss_value, measurements = update_fn(
-  #   params_repl, opt_repl, rngs_loop,
-  #   batch_images,
-  #   dynamic_cfg,
-  #   cfg,
-  #   sched_fns[0],
-  #   tx,
-  #   index,
-  #   model)
-    # flax.jax_utils.replicate(cfg),
-    # flax.jax_utils.replicate(sched_fns[0]),
-    # flax.jax_utils.replicate(tx),
-    # flax.jax_utils.replicate(index)
-    # ,flax.jax_utils.replicate(model))
-  #if indicated in configuration will save the parameters
 
-  # save_checkpoint(index,epoch,cfg,checkPoint_folder,params_repl)
+  #if indicated in configuration will save the parameters
+  if(index==0):
+    save_checkpoint(index,epoch,cfg,checkPoint_folder,state,np.mean(epoch_loss))
   
 
   if(index==0 and epoch%cfg.divisor_logging==0):

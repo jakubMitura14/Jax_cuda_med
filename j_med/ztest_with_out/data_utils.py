@@ -58,13 +58,13 @@ def get_check_point_folder():
   return checkPoint_folder  
    
 
-def save_checkpoint(index,epoch,cfg,checkPoint_folder,state):
+def save_checkpoint(index,epoch,cfg,checkPoint_folder,state,loss):
     if(index==0 and epoch%cfg.divisor_checkpoint==0 and cfg.to_save_check_point):
         chechpoint_epoch_folder=f"{checkPoint_folder}/{epoch}"
         # os.makedirs(chechpoint_epoch_folder)
 
         orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-        ckpt = {'model': state, 'config': cfg}
+        ckpt = {'model': state, 'config': cfg,'loss':loss}
         save_args = orbax_utils.save_args_from_target(ckpt)
         orbax_checkpointer.save(chechpoint_epoch_folder, ckpt, save_args=save_args)
 
