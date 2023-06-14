@@ -246,7 +246,7 @@ def create_train_state(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,mod
         optax.clip_by_global_norm(6.0),  # Clip gradients at norm 
         optax.lion(learning_rate=cfg.learning_rate))
         # optax.lion(learning_rate=cosine_decay_scheduler)   )
-
+  
 
   # orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
   # raw_restored = orbax_checkpointer.restore('/workspaces/Jax_cuda_med/data/checkpoints/2023-04-22_14_01_10_321058/41')

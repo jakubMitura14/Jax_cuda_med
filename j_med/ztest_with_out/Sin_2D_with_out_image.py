@@ -135,6 +135,49 @@ def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cf
   return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
+
+
+
+@functools.partial(jax.pmap,static_broadcasted_argnums=(1,2,3,4), axis_name='ensemble')#,static_broadcasted_argnums=(2)
+def initt_from_orbax(params_new,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cfg,checkpoint_path):
+  """Creates initial `TrainState`."""
+  # img_size=list(cfg.img_size)
+  # lab_size=list(cfg.label_size)
+  # img_size[0]=img_size[0]//jax.local_device_count()
+  # lab_size[0]=lab_size[0]//jax.local_device_count()
+  # print(f"in initttt {tuple(img_size)}")
+  # input=jnp.ones(tuple(img_size))
+  # rng_main,rng_mean=jax.random.split(rng_2)
+
+  # jax.random.split(rng_2,num=1 )
+  # params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input,dynamic_cfg)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
+  # cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
+  decay_scheduler=optax.linear_schedule(cfg.learning_rate, cfg.learning_rate/10, cfg.total_steps, transition_begin=0)
+  
+  joined_scheduler=optax.join_schedules([optax.constant_schedule(cfg.learning_rate*10),optax.constant_schedule(cfg.learning_rate)], [20])
+
+
+
+  # params_new = flax.jax_utils.replicate(params_new)
+  # keyys=params.keys()
+  # params.unfreeze()
+  # for key in keyys:
+  #   params[key]=params_new[key]
+  # freeze(params)
+  tx = optax.chain(
+        optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
+        optax.lion(learning_rate=joined_scheduler)
+        # optax.lion(learning_rate=cfg.learning_rate)
+        #optax.lion(learning_rate=decay_scheduler)
+        # optax.adafactor()
+        
+        )
+  # tx=flax.jax_utils.replicate(tx)
+  # print(f"ppppppppparams  {params}")
+  state=  train_state.TrainState.create(apply_fn=model.apply, params=params_new, tx=tx)
+  # return flax.jax_utils.replicate(state)
+  return state
+
 # @jax.pmap
 # def update_model(state, grads):
 #   print(f"uuuuupdate_model")
@@ -235,15 +278,23 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
 
 def main_train(cfg):
   slicee=57#57 was nice
-
+  checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-12_06_21_11_143817/1755'
   prng = jax.random.PRNGKey(42)
   model = SpixelNet(cfg)
   rng_2=jax.random.split(prng,num=jax.local_device_count() )
   dynamic_cfgs=get_dynamic_cfgs()
   cached_subj =get_spleen_data()
   batch_images,batch_labels= add_batches(cached_subj,cfg)
-  # tx, sched_fns,params_cpu = create_train_state(rng_2,cfg,model,dynamic_cfgs[1])
-  state= initt(rng_2,cfg,model,dynamic_cfgs[1])  
+  # state= initt(rng_2,cfg,model,dynamic_cfgs[1])  
+
+
+  orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
+  raw_restored = orbax_checkpointer.restore(checkpoint_path)
+  params_new=freeze(raw_restored['model']['params'])
+
+  state= initt_from_orbax(params_new,cfg,model,dynamic_cfgs[1],checkpoint_path)  
+
+
   # state=flax.jax_utils.replicate(state)
   # tx, sched_fns = bv_optax.make(cfg, params_cpu, sched_kw=dict(
   #     global_batch_size=cfg.batch_size,
@@ -324,6 +375,6 @@ print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 # raw_restored = orbax_checkpointer.restore('/workspaces/Jax_cuda_med/data/checkpoints/2023-04-22_14_01_10_321058/41')
 # raw_restored['model']['params']
 
-# tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board
+# tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board   
 
 # python3 -m j_med.ztest_with_out.Sin_2D_with_out_image
