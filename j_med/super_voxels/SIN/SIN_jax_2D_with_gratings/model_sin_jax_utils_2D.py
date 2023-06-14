@@ -61,6 +61,29 @@ class De_conv_not_sym(nn.Module):
         x=self.convv(x)
         return jax.nn.gelu(x)
     
+class Apply_conv(nn.Module):
+    """
+    Deconvolution plus activation function
+    strides may benon symmetric - and is controlled by dim_stride
+    dim_stride indicates which dimension should have stride =2
+    if dim_stride is -1 all dimension should be 2
+    """
+    convSpecs_dict_list:dict
+    dns_dict:dict
+    index:int
+
+    def setup(self):
+        name,dictt=self.convSpecs_dict_list[self.index]
+        self.stride=dictt['stride']
+        self.curr_dns=self.dns_dict[name]
+        self.namee=name
+    @nn.compact
+    def __call__(self,img,conv_params) -> jnp.ndarray:
+        # print(f"args {type(args)}")
+        # img,conv_params=args
+        res= jax.nn.gelu(nn.LayerNorm(use_bias=False,use_scale=False )(jax.lax.conv_general_dilated(img, conv_params[self.namee],self.stride, 'SAME', (1,1), (1,1),self.curr_dns)))
+        return (res,conv_params)
+
 def harder_diff_round(x):
     return diff_round(diff_round(x))
     # return diff_round(x)
@@ -195,6 +218,7 @@ def apply_conv(img,index, conv_params,convSpecs_dict_list,dns_dict):
   return jax.nn.gelu(nn.LayerNorm(use_bias=False,use_scale=False )(jax.lax.conv_general_dilated(img, conv_params[name],dictt['stride'], 'SAME', (1,1), (1,1),dns_dict[name])))
 
 
+
 def apply_de_conv(img,index, conv_params,convSpecs_dict_list,dns_dict,dim_stride):
   """
   executes convolutions using given specifications and parameters taken from prepared lists
@@ -267,6 +291,9 @@ class Apply_on_single_area(nn.Module):
         masked_image= jnp.multiply(mask_combined_curr,resized_image)
         loss=jnp.sum(masked_edges.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
         
+        mask_edge_for_size=jnp.sum(jnp.stack(jnp.gradient(v_v_harder_diff_round(mask_combined_curr[:,:,0])),axis=0),axis=0)
+        # mask_combined_curr_for_edge=einops.rearrange(mask_combined_curr,'w h c->1 w h c')
+        mask_edge_size=jnp.sum(v_v_harder_diff_round(mask_edge_for_size)).flatten()/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
 
         meann= jnp.sum(masked_image.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
         varr= jnp.power( jnp.multiply((masked_image-meann),mask_combined_curr),2)
@@ -281,7 +308,8 @@ class Apply_on_single_area(nn.Module):
 
         # return out_image,varr
         masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
-        return (varr*loss*1000)
+        res=(varr*loss*1000)
+        return res+res*mask_edge_size
 
 
 v_Apply_on_single_area=nn.vmap(Apply_on_single_area
@@ -584,23 +612,29 @@ class De_conv_batched_multimasks(nn.Module):
     @partial(jax.profiler.annotate_function, name="before_mask_scan_scanning_convs")
     def before_mask_scan_scanning_convs(self,deconv_multi,conv_params):
         #TODO krowa implement as scan
-        deconv_multi=apply_conv(deconv_multi,0, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        deconv_multi=apply_conv(deconv_multi,1, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        deconv_multi=apply_conv(deconv_multi,2, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        deconv_multi=apply_conv(deconv_multi,3, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        deconv_multi=apply_conv(deconv_multi,4, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        deconv_multi=apply_conv(deconv_multi,5, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        deconv_multi=apply_conv(deconv_multi,6, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        deconv_multi=apply_conv(deconv_multi,7, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # return remat(nn.Sequential)([
-        # Conv_trio(self.cfg,self.features)
+
+        # deconv_multi=apply_conv(deconv_multi,0, conv_params,self.convSpecs_dict_list,self.dns_dict)
+        # deconv_multi=apply_conv(deconv_multi,1, conv_params,self.convSpecs_dict_list,self.dns_dict)
+        # deconv_multi=apply_conv(deconv_multi,2, conv_params,self.convSpecs_dict_list,self.dns_dict)
+        # deconv_multi=apply_conv(deconv_multi,3, conv_params,self.convSpecs_dict_list,self.dns_dict)
+        # deconv_multi=apply_conv(deconv_multi,4, conv_params,self.convSpecs_dict_list,self.dns_dict)
+        # deconv_multi=apply_conv(deconv_multi,5, conv_params,self.convSpecs_dict_list,self.dns_dict)
+        # deconv_multi=apply_conv(deconv_multi,6, conv_params,self.convSpecs_dict_list,self.dns_dict)
+        # deconv_multi=apply_conv(deconv_multi,7, conv_params,self.convSpecs_dict_list,self.dns_dict)
+                # return deconv_multi
+        return nn.Sequential([
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,0),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,1),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,2),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,3),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,4),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,5),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,6),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,7)
+
         # ,Conv_trio(self.cfg,self.features)
         # ,Conv_trio(self.cfg,self.features)
-        # ,Conv_trio(self.cfg,self.features)
-        # # ,Conv_trio(self.cfg,self.features)
-        # # ,Conv_trio(self.cfg,self.features)
-        # ])(deconv_multi)
-        return deconv_multi
+        ])(deconv_multi,conv_params)[0]
 
     @partial(jax.profiler.annotate_function, name="scan_over_masks")
     def scan_over_masks(self,resized_image:jnp.ndarray

@@ -166,8 +166,8 @@ def initt_from_orbax(params_new,cfg:ml_collections.config_dict.FrozenConfigDict,
   # freeze(params)
   tx = optax.chain(
         optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
-        optax.lion(learning_rate=joined_scheduler)
-        # optax.lion(learning_rate=cfg.learning_rate)
+        # optax.lion(learning_rate=joined_scheduler)
+        optax.lion(learning_rate=cfg.learning_rate)
         #optax.lion(learning_rate=decay_scheduler)
         # optax.adafactor()
         
