@@ -123,8 +123,10 @@ def work_on_areas(cfg,batch_images_prim,masks):
     masks=einops.rearrange(masks,'x y p ->1 x y p')
     initial_masks=einops.rearrange(initial_masks,'x y p ->1 x y p')
     
-    shape_reshape_cfgs=get_all_shape_reshape_constants(cfg,r_x=3,r_y=3)
-    shape_reshape_cfgs_old=get_all_shape_reshape_constants(cfg,r_x=3,r_y=2)
+
+
+    shape_reshape_cfgs=get_all_shape_reshape_constants(cfg,r_x=cfg.r_x_total,r_y=cfg.r_y_total)
+    shape_reshape_cfgs_old=get_all_shape_reshape_constants(cfg,r_x=cfg.r_x_total,r_y=cfg.r_y_total)
 
     curr_image_out_meaned= np.zeros_like(curr_image)
     for i in range(4):        
@@ -142,7 +144,7 @@ def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks)
     # out_imageee=out_imageee[0,slicee,:,:,0]
     masks = jnp.round(masks)
         
-    scale=2
+    scale=4
     mask_0,to_dispp_svs_0=masks_with_boundaries(0,0,masks,image_to_disp,scale)
     mask_1,to_dispp_svs_1=masks_with_boundaries(1,0,masks,image_to_disp,scale)
     mask_2,to_dispp_svs_2=masks_with_boundaries(0,1,masks,image_to_disp,scale)

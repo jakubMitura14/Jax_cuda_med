@@ -290,8 +290,10 @@ class Apply_on_single_area(nn.Module):
         mask_combined_curr= einops.rearrange(mask_combined_curr,'w h -> w h 1')
         masked_image= jnp.multiply(mask_combined_curr,resized_image)
         loss=jnp.sum(masked_edges.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
-        
-        mask_edge_for_size=jnp.sum(jnp.stack(jnp.gradient(v_v_harder_diff_round(mask_combined_curr[:,:,0])),axis=0),axis=0)
+
+        mask_edge_for_size=jnp.gradient(v_v_harder_diff_round(mask_combined_curr[:,:,0]))
+        mask_edge_for_size=[jnp.power(mask_edge_for_size[0],2),jnp.power(mask_edge_for_size[1],2)]
+        mask_edge_for_size=jnp.sum(jnp.stack(mask_edge_for_size,axis=0),axis=0)
         # mask_combined_curr_for_edge=einops.rearrange(mask_combined_curr,'w h c->1 w h c')
         mask_edge_size=jnp.sum(v_v_harder_diff_round(mask_edge_for_size)).flatten()/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
 
@@ -624,13 +626,13 @@ class De_conv_batched_multimasks(nn.Module):
                 # return deconv_multi
         return nn.Sequential([
             remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,0),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,1),
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,1),
             remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,2),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,3),
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,3),
             remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,4),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,5),
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,5),
             remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,6),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,7)
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,7)
 
         # ,Conv_trio(self.cfg,self.features)
         # ,Conv_trio(self.cfg,self.features)

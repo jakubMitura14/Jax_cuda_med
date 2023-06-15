@@ -17,7 +17,7 @@ def get_cfg():
     #true_num_dim - number of the dimensions num_dim is number of the masks needed to describe it
     cfg.true_num_dim=2
     cfg.num_dim=4
-    cfg.batch_size=120
+    cfg.batch_size=160
 
     cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
     cfg.img_size = (cfg.batch_size,256,256,1)
@@ -26,8 +26,8 @@ def get_cfg():
     cfg.bi_channel_size = (cfg.batch_size_pmapped,256,256,2)
     cfg.label_size = (cfg.batch_size_pmapped,256,256,1)
     cfg.deconv_multi_zero_shape = (cfg.batch_size_pmapped,256,256,cfg.convolution_channels)
-    cfg.r_x_total= 3
-    cfg.r_y_total= 3
+    cfg.r_x_total= 2
+    cfg.r_y_total= 2
     cfg.orig_grid_shape= (cfg.img_size[1]//2**cfg.r_x_total,cfg.img_size[2]//2**cfg.r_y_total,cfg.num_dim)
     cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
     cfg.volume_corr= 10000# for standardizing the volume - we want to penalize the very big and very small supervoxels 
@@ -66,6 +66,7 @@ def get_cfg():
 
     cfg.is_gsam=False
     config_dict.ConfigDict()
+
     # convSpecs=(
     #    {'in_channels':1,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) },
     #    {'in_channels':1,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) },
@@ -76,6 +77,7 @@ def get_cfg():
     #    {'in_channels':1,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) },
     #    {'in_channels':1,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }
     #     )
+    
     # cfg.convSpecs= list(map(FrozenDict,convSpecs ))
     # self.convSpecs=[{'in_channels':3,'out_channels':4, 'kernel_size':(3,3,3),'stride':(2,2,2) }
     # ,{'in_channels':4,'out_channels':4, 'kernel_size':(3,3,3),'stride':(2,2,2) }

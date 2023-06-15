@@ -154,7 +154,7 @@ def initt_from_orbax(params_new,cfg:ml_collections.config_dict.FrozenConfigDict,
   # cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   decay_scheduler=optax.linear_schedule(cfg.learning_rate, cfg.learning_rate/10, cfg.total_steps, transition_begin=0)
   
-  joined_scheduler=optax.join_schedules([optax.constant_schedule(cfg.learning_rate*10),optax.constant_schedule(cfg.learning_rate)], [20])
+  joined_scheduler=optax.join_schedules([optax.constant_schedule(cfg.learning_rate*100),optax.constant_schedule(cfg.learning_rate)], [100])
 
 
 
@@ -167,7 +167,7 @@ def initt_from_orbax(params_new,cfg:ml_collections.config_dict.FrozenConfigDict,
   tx = optax.chain(
         optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
         # optax.lion(learning_rate=joined_scheduler)
-        optax.lion(learning_rate=cfg.learning_rate)
+        optax.lion(learning_rate=cfg.learning_rate*200)
         #optax.lion(learning_rate=decay_scheduler)
         # optax.adafactor()
         
@@ -278,7 +278,9 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
 
 def main_train(cfg):
   slicee=57#57 was nice
-  checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-12_06_21_11_143817/1755'
+  # checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-12_06_21_11_143817/1755'
+  # checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-14_15_53_12_704500/375'
+  checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-15_04_05_47_410213/75'
   prng = jax.random.PRNGKey(42)
   model = SpixelNet(cfg)
   rng_2=jax.random.split(prng,num=jax.local_device_count() )

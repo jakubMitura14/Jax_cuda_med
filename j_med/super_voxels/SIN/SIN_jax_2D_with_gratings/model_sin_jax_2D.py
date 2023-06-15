@@ -96,7 +96,7 @@ class SpixelNet(nn.Module):
         out4=remat(nn.Sequential)([
             Conv_trio(self.cfg,channels=16)
             ,Conv_trio(self.cfg,channels=16,strides=(2,2))
-            ,Conv_trio(self.cfg,channels=32,strides=(2,2))
+            # ,Conv_trio(self.cfg,channels=32,strides=(2,2))
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
         ])(image)
         conv_params = self.param('conv_params', self.initialize_convs, (1, 1))
@@ -132,24 +132,24 @@ class SpixelNet(nn.Module):
                         ,convSpecs_dict_list_additional=self.convSpecs_dict_list_additional
                       )(image,masks,deconv_multi,self.initial_masks,conv_params,conv_add_params )
                       # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi )
-        deconv_multi,masks,losses_3=De_conv_3_dim(self.cfg
-                      ,dynamic_cfg
-                      ,self.cfg.convolution_channels
-                      ,3#r_x
-                      ,3#r_y
-                      ,translation_val=4
-                    ,dns=self.dns
-                    ,convSpecs_dict_list=self.convSpecs_dict_list
-                    ,dns_dict=self.dns_dict
-                    ,convSpecs_dict_list_additional=self.convSpecs_dict_list_additional
-                      )(image,masks,deconv_multi,self.initial_masks,conv_params,conv_add_params)
-                      # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
+        # deconv_multi,masks,losses_3=De_conv_3_dim(self.cfg
+        #               ,dynamic_cfg
+        #               ,self.cfg.convolution_channels
+        #               ,3#r_x
+        #               ,3#r_y
+        #               ,translation_val=4
+        #             ,dns=self.dns
+        #             ,convSpecs_dict_list=self.convSpecs_dict_list
+        #             ,dns_dict=self.dns_dict
+        #             ,convSpecs_dict_list_additional=self.convSpecs_dict_list_additional
+        #               )(image,masks,deconv_multi,self.initial_masks,conv_params,conv_add_params)
+        #               # ,module_to_use_non_batched=De_conv_non_batched_first)(image,masks,deconv_multi)
         
         #we recreate the image using a supervoxels
         #adding corrections as local loses are not equally important
         losses= jnp.mean(jnp.stack([losses_1*self.cfg.deconves_importances[0]
                                     ,losses_2*self.cfg.deconves_importances[1]
-                                    ,losses_3*self.cfg.deconves_importances[2]
+                                    # ,losses_3*self.cfg.deconves_importances[2]
                                     ],axis=0),axis=0)
         return (losses,masks)
 
