@@ -98,7 +98,10 @@ def for_pad_divide_grid(current_grid_shape:Tuple[int],axis:int,r:int,shift:int,o
     """
     #calculating the length of the axis after all of the cuts and paddings
     #for example if we have no shift we need to add r at the begining of the axis
-    r_to_pad=(get_diameter_no_pad(r)-1)//2
+    # r_to_pad=(get_diameter_no_pad(r)-1)//2
+    r_to_pad=(get_diameter_no_pad(r)+1)//2
+    # r_to_pad=(get_diameter_no_pad(r))//2
+    # print(f"get_diameter_no_pad(r) {get_diameter_no_pad(r)}")
 
     for_pad_beg=r_to_pad*(1-shift)
     #wheather we want to remove sth from end or not depend wheater we have odd or even amountof supervoxel ids in this axis

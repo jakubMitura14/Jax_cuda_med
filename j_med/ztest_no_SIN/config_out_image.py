@@ -26,8 +26,8 @@ def get_cfg():
     cfg.bi_channel_size = (cfg.batch_size_pmapped,256,256,2)
     cfg.label_size = (cfg.batch_size_pmapped,256,256,1)
     cfg.deconv_multi_zero_shape = (cfg.batch_size_pmapped,256,256,cfg.convolution_channels)
-    cfg.r_x_total= 3
-    cfg.r_y_total= 3
+    cfg.r_x_total= 2
+    cfg.r_y_total= 2
     cfg.orig_grid_shape= (cfg.img_size[1]//2**cfg.r_x_total,cfg.img_size[2]//2**cfg.r_y_total,cfg.num_dim)
     cfg.masks_num= 4# number of mask (4 in 2D and 8 in 3D)
     cfg.volume_corr= 10000# for standardizing the volume - we want to penalize the very big and very small supervoxels 

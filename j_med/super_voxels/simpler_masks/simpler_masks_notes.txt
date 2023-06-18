@@ -1,0 +1,15 @@
+gumbel softmax can be taken from 
+https://github.com/google/jaxopt
+
+
+so we get each mask in separate floats so for 2D 4 channels 
+we initialize them with ones in the centers of the supervoxels - then we also put those into the results probably
+    this would be both input as well as would be added to result before softmax
+    before softmax we can also consider average kernel (https://homepages.inf.ed.ac.uk/rbf/HIPR2/mean.htm)
+sth like relaxation labelling
+    simplest idea - is to use a combination of differentiable and plus deifferentiable or ...
+    and use it as additional loss function - so such voxels should not be present
+    alternatively each sv area should be graph with strong penalization if label with 1 has no adjacent ones
+then gumbel softmax
+then differentiable diff_round
+
