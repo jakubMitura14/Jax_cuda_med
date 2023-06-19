@@ -54,9 +54,9 @@ from ..testUtils.tensorboard_utils import *
 # import torchvision.transforms.functional as F
 # import torchvision
 
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_2D import SpixelNet
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_utils_2D import *
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.shape_reshape_functions import *
+from ..super_voxels.simpler_masks.model_sin_jax_2D import SpixelNet
+from ..super_voxels.simpler_masks.model_sin_jax_utils_2D import *
+from ..super_voxels.simpler_masks.shape_reshape_functions import *
 
 
 
@@ -379,4 +379,4 @@ print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 
 # tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board   
 
-# python3 -m j_med.ztest_with_out.Sin_2D_with_out_image
+# python3 -m j_med.ztest_no_SIN.Sin_2D_with_out_image

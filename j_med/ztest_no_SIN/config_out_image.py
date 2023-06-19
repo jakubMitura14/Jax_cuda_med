@@ -17,7 +17,7 @@ def get_cfg():
     #true_num_dim - number of the dimensions num_dim is number of the masks needed to describe it
     cfg.true_num_dim=2
     cfg.num_dim=4
-    cfg.batch_size=160
+    cfg.batch_size=120
 
     cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
     cfg.img_size = (cfg.batch_size,256,256,1)
@@ -61,7 +61,7 @@ def get_cfg():
 
     #setting how frequent the checkpoints should be performed
     cfg.divisor_checkpoint=15
-    cfg.divisor_logging=8
+    cfg.divisor_logging=1
     cfg.to_save_check_point=True
 
     cfg.is_gsam=False
