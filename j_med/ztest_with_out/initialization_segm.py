@@ -52,11 +52,11 @@ We want to get some rough initializations- so
 
 
 def get_zero_state(r_x_total,r_y_total,num_dim,img_size,orig_grid_shape):
-    indicies,indicies_a,indicies_b,indicies_c,indicies_d=get_initial_indicies(orig_grid_shape)
-    points_grid=jnp.mgrid[0:orig_grid_shape[0], 0:orig_grid_shape[1]]+1
-    points_grid=einops.rearrange(points_grid,'p x y-> (x y) p')
+    # indicies,indicies_a,indicies_b,indicies_c,indicies_d=get_initial_indicies(orig_grid_shape)
+    # points_grid=jnp.mgrid[0:orig_grid_shape[0], 0:orig_grid_shape[1]]+1
+    # points_grid=einops.rearrange(points_grid,'p x y-> (x y) p')
 
-    edges=get_all_neighbours(v_get_neighbours_a,points_grid,indicies_a,indicies_b,indicies_c,indicies_d)
+    # edges=get_all_neighbours(v_get_neighbours_a,points_grid,indicies_a,indicies_b,indicies_c,indicies_d)
 
     initial_masks= jnp.stack([
                 get_initial_supervoxel_masks(orig_grid_shape,0,0),
@@ -143,5 +143,5 @@ print(resss[0].shape)
 
 
 
-# python3 -m j_med.super_voxels.SIN.SIN_jax_2D_with_gratings.initialization_segm
 #python3 -m j_med.ztest_with_out.initialization_segm
+# tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board   

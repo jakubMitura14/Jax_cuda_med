@@ -25,9 +25,8 @@ import tensorflow as tf
 
 from jax_smi import initialise_tracking
 from skimage.segmentation import mark_boundaries
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_2D import SpixelNet
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_utils_2D import *
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.shape_reshape_functions import *
+from ..super_voxels.simpler_masks.model_sin_jax_utils_2D import *
+from ..super_voxels.simpler_masks.shape_reshape_functions import *
 from ..testUtils.tensorboard_utils import *
 
 def setup_tensorboard():
@@ -69,8 +68,9 @@ def masks_with_boundaries(shift_x,shift_y,masks,image_to_disp,scale):
         
 
 def work_on_single_area(mask_curr,image):
-    filtered_mask=einops.rearrange(mask_curr,'w h-> w h 1')
-    masked_image= jnp.multiply(image,filtered_mask)
+    # filtered_mask=einops.rearrange(mask_curr,'w h-> w h 1')
+    filtered_mask=mask_curr
+    masked_image= jnp.multiply(image,mask_curr)
     # print(f"edge_map_loc mean {jnp.mean(edge_map_loc.flatten())} edge_map_loc max {jnp.max(edge_map_loc.flatten())} ")
     meann= jnp.sum(masked_image.flatten())/(jnp.sum(filtered_mask.flatten())+0.00000000001)
     image_meaned= jnp.multiply(filtered_mask,meann)
@@ -89,15 +89,15 @@ def iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old
     shapee_edge_diff=curr_image.shape
     mask_new_bi_channel= jnp.ones((shapee_edge_diff[0],shapee_edge_diff[1],shapee_edge_diff[2],2))
     mask_new_bi_channel=mask_new_bi_channel.at[:,:,:,1].set(0)
-    mask_new_bi_channel_in=divide_sv_grid(mask_new_bi_channel,shape_reshape_cfg)
-    masked_image, image_meaned= v_v_work_on_single_area(mask_curr,curr_image_in[:,:,:,i])
+    # mask_new_bi_channel_in=divide_sv_grid(mask_new_bi_channel,shape_reshape_cfg)
+    masked_image, image_meaned= v_v_work_on_single_area(mask_curr,curr_image_in)
 
 
     to_reshape_back_x=np.floor_divide(shape_reshape_cfg.axis_len_x,shape_reshape_cfg.diameter_x)
     to_reshape_back_y=np.floor_divide(shape_reshape_cfg.axis_len_y,shape_reshape_cfg.diameter_y) 
 
-    to_reshape_back_x_old=np.floor_divide(shape_reshape_cfg_old.axis_len_x,shape_reshape_cfg_old.diameter_x)
-    to_reshape_back_y_old=np.floor_divide(shape_reshape_cfg_old.axis_len_y,shape_reshape_cfg_old.diameter_y) 
+    # to_reshape_back_x_old=np.floor_divide(shape_reshape_cfg_old.axis_len_x,shape_reshape_cfg_old.diameter_x)
+    # to_reshape_back_y_old=np.floor_divide(shape_reshape_cfg_old.axis_len_y,shape_reshape_cfg_old.diameter_y) 
 
     masked_image=recreate_orig_shape(masked_image,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
     image_meaned=recreate_orig_shape(image_meaned,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
@@ -126,7 +126,7 @@ def work_on_areas(cfg,batch_images_prim,masks):
 
     curr_image_out_meaned= np.zeros_like(curr_image)
     for i in range(4):        
-        masked_image, image_meaned= iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old)
+        masked_image, image_meaned= iter_over_masks(shape_reshape_cfgs,i,jnp.expand_dims(masks[:,:,:,i],axis=-1),curr_image,shape_reshape_cfgs_old)
         curr_image_out_meaned=curr_image_out_meaned+image_meaned
 
     curr_image_out_meaned=np.rot90(curr_image_out_meaned[0,:,:,0])
@@ -139,7 +139,9 @@ def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks)
     masks =masks[0,slicee,:,:,:]
     # out_imageee=out_imageee[0,slicee,:,:,0]
     masks= nn.softmax(masks,axis=-1)
-    
+    masks= argmax_one_hot(masks,axis=-1)
+    # masks=pert_one_hot(masks,random.PRNGKey(2) )
+
     masks = jnp.round(masks)
         
     scale=4

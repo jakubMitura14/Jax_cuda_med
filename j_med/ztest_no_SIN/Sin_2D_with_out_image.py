@@ -54,7 +54,7 @@ from ..testUtils.tensorboard_utils import *
 # import torchvision.transforms.functional as F
 # import torchvision
 
-from ..super_voxels.simpler_masks.model_sin_jax_2D import SpixelNet
+from ..super_voxels.simpler_masks.model_sin_jax_2D import SpixelNet_a
 from ..super_voxels.simpler_masks.model_sin_jax_utils_2D import *
 from ..super_voxels.simpler_masks.shape_reshape_functions import *
 
@@ -116,7 +116,7 @@ def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cf
   rng_main,rng_mean=jax.random.split(rng_2)
 
   #jax.random.split(rng_2,num=1 )
-  params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input,dynamic_cfg)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
+  params = model.init({'params': rng_main,'pert':rng_mean  }, input,dynamic_cfg)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
   # cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
   decay_scheduler=optax.linear_schedule(cfg.learning_rate, cfg.learning_rate/10, cfg.total_steps, transition_begin=0)
   
@@ -190,7 +190,7 @@ def update_fn(state, image, dynamic_cfg,cfg,model):
   """Train for a single step."""
   measurements = {}
   def loss_fn(params,image,dynamic_cfg):
-    losses,masks=model.apply({'params': params}, image,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
+    losses,masks=model.apply({'params': params}, image,dynamic_cfg, rngs={'pert': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
     return jnp.mean(losses) 
 
   # learning_rate = sched_fn(step) * cfg.lr
@@ -229,7 +229,7 @@ def update_fn(state, image, dynamic_cfg,cfg,model):
 
 @partial(jax.pmap, axis_name="batch",static_broadcasted_argnums=(2,3,4,5))
 def simple_apply(state, image, dynamic_cfg,cfg,step,model):
-  losses,masks=model.apply({'params': state.params}, image,dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
+  losses,masks=model.apply({'params': state.params}, image,dynamic_cfg, rngs={'pert': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
 
 
   return losses,masks
@@ -282,19 +282,18 @@ def main_train(cfg):
   # checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-14_15_53_12_704500/375'
   checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-15_04_05_47_410213/75'
   prng = jax.random.PRNGKey(42)
-  model = SpixelNet(cfg)
+  model = SpixelNet_a(cfg)
   rng_2=jax.random.split(prng,num=jax.local_device_count() )
   dynamic_cfgs=get_dynamic_cfgs()
   cached_subj =get_spleen_data()
   batch_images,batch_labels= add_batches(cached_subj,cfg)
-  # state= initt(rng_2,cfg,model,dynamic_cfgs[1])  
+  state= initt(rng_2,cfg,model,dynamic_cfgs[1])  
 
 
-  orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
-  raw_restored = orbax_checkpointer.restore(checkpoint_path)
-  params_new=freeze(raw_restored['model']['params'])
-
-  state= initt_from_orbax(params_new,cfg,model,dynamic_cfgs[1],checkpoint_path)  
+  # orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
+  # raw_restored = orbax_checkpointer.restore(checkpoint_path)
+  # params_new=freeze(raw_restored['model']['params'])
+  # state= initt_from_orbax(params_new,cfg,model,dynamic_cfgs[1],checkpoint_path)  
 
 
   # state=flax.jax_utils.replicate(state)

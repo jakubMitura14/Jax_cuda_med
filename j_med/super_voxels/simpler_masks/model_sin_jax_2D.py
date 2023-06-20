@@ -29,12 +29,11 @@ import pandas as pd
 
 
 
-class SpixelNet(nn.Module):
+class SpixelNet_a(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     
     def setup(self):
-        print(f"setuuuup model")
-        self.init_masks=get_init_masks(cfg)
+        self.init_masks=get_init_masks(self.cfg)
 
     @nn.compact
     def __call__(self, image: jnp.ndarray,dynamic_cfg) -> jnp.ndarray:
@@ -53,8 +52,8 @@ class SpixelNet(nn.Module):
         ])(image)
         
 
-        loss=remat(De_conv_batched_multimasks)(self.cfg
-                                   ,self.dynamic_cfg
+        loss=remat(Batched_multimasks)(self.cfg
+                                   ,dynamic_cfg
                                    )(image,edge_map,masks)        
 
         

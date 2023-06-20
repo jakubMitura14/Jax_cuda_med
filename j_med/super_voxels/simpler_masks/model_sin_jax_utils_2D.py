@@ -62,12 +62,12 @@ v_v_harder_diff_round=jax.vmap(v_harder_diff_round)
 v_v_v_harder_diff_round=jax.vmap(v_v_harder_diff_round)
 
 def get_init_masks(cfg):
-    masks=jnp.zeros((cfg.img_size[0],cfg.img_size[1],cfg.img_size[2],cfg.masks_num))
+    masks=jnp.zeros((cfg.batch_size_pmapped,cfg.img_size[1],cfg.img_size[2],cfg.masks_num))
     shape_reshape_cfgs=get_all_shape_reshape_constants(cfg,r_x=cfg.r_x_total,r_y=cfg.r_y_total)
     init_masks=list(map(lambda i: add_single_points(masks,i,cfg,shape_reshape_cfgs) ,range(cfg.masks_num) ))
-    init_masks= jnp.stack(init_masks[0,:,:,:])
-    return einops.repeat(init_masks,'w h c-> b w h c',b=cfg.batch_size_pmapped)
-
+    init_masks= jnp.stack(init_masks)[0,:,:,:]
+    # return einops.repeat(init_masks,'w h c-> b w h c',b=cfg.batch_size_pmapped)
+    return init_masks
 
 
 def differentiable_eq(a:float,b:float):
@@ -151,8 +151,9 @@ def argmax_one_hot(x, axis=-1):
   """
   return jax.nn.one_hot(jnp.argmax(x, axis=axis), x.shape[axis])
 
-N_SAMPLES = 100_000
-SIGMA = 0.5
+N_SAMPLES = 200
+# N_SAMPLES = 100_000
+SIGMA = 0.01
 GUMBEL = perturbations.Gumbel()
 
 rng = jax.random.PRNGKey(1)
@@ -171,7 +172,7 @@ def check_adjacency_lack(arr,diameter_x,diameter_y):
     loss function that should be high when find pixel with value 1
     with no pixels with value 1 in the vicinity
     """
-    print(f" checkkk adjacency  ")
+    arr=arr[:,:,0]
     arr=v_v_differentiable_or_simple(check_is_neighbour_also_one(arr,axis=0,is_forward=0,diameter_x=diameter_x,diameter_y=diameter_y)
             ,check_is_neighbour_also_one(arr,axis=0,is_forward=1,diameter_x=diameter_x,diameter_y=diameter_y))
     arr=v_v_differentiable_or_simple(arr
@@ -179,7 +180,7 @@ def check_adjacency_lack(arr,diameter_x,diameter_y):
     arr=v_v_differentiable_or_simple(arr
             ,check_is_neighbour_also_one(arr,axis=1,is_forward=1,diameter_x=diameter_x,diameter_y=diameter_y))
     return jnp.sum(arr.flatten())
-
+    # return jnp.mean(arr.flatten())
 class Apply_on_single_area(nn.Module):
     """
     module will be vmapped or scanned over all supervoxel areas
@@ -189,22 +190,12 @@ class Apply_on_single_area(nn.Module):
     dynamic_cfg: ml_collections.config_dict.config_dict.ConfigDict
     curr_shape:Tuple[int]
     deconved_shape:Tuple[int]
-    translation_val:int
     diameter_x:int
     diameter_y:int
     diameter_x_curr:int
     diameter_y_curr:int
     p_x:int
     p_y:int
-    to_reshape_back_x:int
-    to_reshape_back_y:int   
-
-
-    def setup(self):
-        self.mask_shape=(self.diameter_x_curr,self.diameter_y_curr,self.cfg.num_dim)        
-        mask_shape_list=list(self.mask_shape)
-        mask_shape_list[self.dim_stride]=1
-        self.mask_shape_end=tuple(mask_shape_list)
 
 
 
@@ -219,8 +210,9 @@ class Apply_on_single_area(nn.Module):
         mask_combined=mask_combined.at[:,-1].set(0)        
         mask_combined=mask_combined.at[-1,:].set(0)        
         adjacency_loss=check_adjacency_lack(mask_combined,self.diameter_x,self.diameter_y)
-
         return adjacency_loss 
+        # return jnp.array([0.0])
+
 
         # mask_combined_curr=filter_mask_of_intrest(mask_combined,initial_mask_id)
 
@@ -294,7 +286,6 @@ class De_conv_batched_for_scan(nn.Module):
 
         #we will calculate 
         rss=[self.r_x,self.r_y]
-        rss[self.dim_stride]=rss[self.dim_stride]-1
         self.rss=rss
         #we get image size 2 and 3 becouse 0 and 1 is batch and channel
         self.deconved_shape = (self.cfg.batch_size_pmapped,cfg.img_size[1]//2**(cfg.r_x_total -self.r_x),cfg.img_size[2]//2**(cfg.r_y_total-self.r_y),1)
@@ -325,8 +316,7 @@ class De_conv_batched_for_scan(nn.Module):
         self.to_reshape_back_x=np.floor_divide(self.axis_len_x,self.diameter_x)
         self.to_reshape_back_y=np.floor_divide(self.axis_len_y,self.diameter_y)      
 
-    @partial(jax.profiler.annotate_function, name="select_shape_reshape_operation")
-    def select_shape_reshape_operation(self,arr,index,shape_reshape_cfgs,fun):
+    def select_shape_reshape_operation_for_mask(self,arr,index,shape_reshape_cfgs,fun):
         """
         in order are for shift_x,shift_y
         0) 0 0
@@ -345,6 +335,29 @@ class De_conv_batched_for_scan(nn.Module):
 
         def fun_tt():
             return fun(jnp.expand_dims(arr[:,:,:,3],axis=-1),shape_reshape_cfgs[3])
+
+        functions_list=[fun_ff,fun_tf,fun_ft,fun_tt]
+        return jax.lax.switch(index,functions_list)
+
+    def select_shape_reshape_operation(self,arr,index,shape_reshape_cfgs,fun):
+        """
+        in order are for shift_x,shift_y
+        0) 0 0
+        1) 1 0
+        2) 0 1
+        3) 1 1
+        """
+        def fun_ff():
+            return fun(arr,shape_reshape_cfgs[0])
+            
+        def fun_tf():
+            return fun(arr,shape_reshape_cfgs[1])
+            
+        def fun_ft():
+            return fun(arr,shape_reshape_cfgs[2])
+
+        def fun_tt():
+            return fun(arr,shape_reshape_cfgs[3])
 
         functions_list=[fun_ff,fun_tf,fun_ft,fun_tt]
         return jax.lax.switch(index,functions_list)
@@ -380,7 +393,7 @@ class De_conv_batched_for_scan(nn.Module):
     def shape_apply_reshape(self,resized_image,edge_map,masks,mask_index):
         
         resized_image=self.select_shape_reshape_operation(resized_image,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
-        mask_combined=self.select_shape_reshape_operation(masks,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
+        mask_combined=self.select_shape_reshape_operation_for_mask(masks,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
 
         edge_map=self.select_shape_reshape_operation(edge_map,mask_index,self.shape_reshape_cfgs,divide_sv_grid)
 
@@ -389,19 +402,16 @@ class De_conv_batched_for_scan(nn.Module):
                                                 ,self.dynamic_cfg
                                                 ,self.current_shape
                                                 ,self.deconved_shape
-                                                ,self.translation_val
                                                 ,self.diameter_x
                                                 ,self.diameter_y
                                                 ,self.diameter_x_curr
                                                 ,self.diameter_y_curr
                                                 ,self.p_x_y[0]
                                                 ,self.p_x_y[1]
-                                                ,self.to_reshape_back_x
-                                                ,self.to_reshape_back_y
-                                                )(resized_image,edge_map,masks,mask_index )
+                                                )(resized_image,edge_map,mask_combined,mask_index )
         
         
-        
+       
         
         # losses=jnp.ones(2)
         # mask_combined_prints=einops.rearrange(mask_combined_prints,'b pp x y ->b pp x y 1')
@@ -474,11 +484,9 @@ class Batched_multimasks(nn.Module):
         #here we need to perform argmax and add initial masks
         masks= nn.softmax(masks,axis=-1)
         masks=masks+self.init_masks
-        masks=pert_one_hot(masks)# perturbed (differentiable) one hot argmax
+        masks=pert_one_hot(masks,self.make_rng('pert'))# perturbed (differentiable) one hot argmax
         masks=diff_round(masks)
         #we scan over using diffrent shift configurations  
-
-
         loss=self.scan_over_masks(image
                                   ,edge_map
                                   ,masks
