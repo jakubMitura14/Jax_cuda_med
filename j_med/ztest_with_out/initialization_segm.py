@@ -149,15 +149,40 @@ def get_axis_and_dir_from_dir_num(dir_num):
 
 # shape_re_cfg.diameter_x,shape_re_cfg.diameter_y
 
+
+def get_point_switch(axis,point,is_forward,diameter_x,diameter_y):
+    
+    index=axis*2+is_forward
+    def fun_0():
+        new_point= [point[0],point[1]]
+        new_point[0]=point[0]+diameter_x*((is_forward*2)-1 )
+        return jnp.array(new_point)
+        
+    def fun_1():
+        new_point= [point[0],point[1]]
+        new_point[1]=point[1]+diameter_y*((is_forward*2)-1 )
+        return jnp.array(new_point)
+
+    functions_list=[fun_0,fun_1]
+    return jax.lax.switch(axis,functions_list)
+
+
 def transform_point_to_other_sv(point,axis,is_forward,diameter_x,diameter_y):
     """
     as we are working on sv its neighbour has diffrent coordinate system and 
     this function translates current supervoxel coordinates to the coordinate system of neighbouring sv 
     """
-    if(is_forward==-1):
-        return jnp.array([-1,-1])
-    diams=[diameter_x,diameter_y]
-    return point.at[axis].set(point[axis]+diams[axis]*((is_forward*2)-1 ))
+    # print(f"aaaa {point.shape} is_forward {is_forward} axis {axis}")
+    
+    
+
+    return jax.lax.select(is_forward==-1, jnp.array([-1,-1]), get_point_switch(axis,point,is_forward,diameter_x,diameter_y))
+    # return jnp.array(new_point)
+    # jax.lax.cond(is_forward==-1, lambda : jnp.array([-1,-1]), lambda : point.at[axis].set(point[axis]+[diameter_x,diameter_y][axis]*((is_forward*2)-1 ) ))
+    # if(is_forward==-1):
+        
+    # diams=
+    # return point.at[axis].set(point[axis]+[diameter_x,diameter_y][axis]*((is_forward*2)-1 ))
 
 # def get_indicies_orthogonal_axis(all_group_edges_dict,neigh_index,axis):
 #     """ 
@@ -191,26 +216,25 @@ def get_sv_variance_diff_after_change(sv_id,all_flattened_image,all_flattened_ma
     depending wheather modification is in current or neighbour sv we set it to 0 or 1 (new_value)
     we return diffrence between old and new variance - so the bigger the better 
     """
-    if(sv_id==-1):
-        return 0.0
+    
+
     image_area=all_flattened_image[sv_id,:,:]
     mask_area=all_flattened_masks[sv_id,:,:]
-    #if we do not have anything to change no point in calculations
-    if(mask_area[point[0],point[1]]==new_value ):
-        print("point not found")
-        return 0.0
-    print("point found")
+
 
     varr_old=get_variance(image_area,mask_area)
     varr_new=get_variance(image_area,mask_area.at[point[0],point[1]].set(new_value))
 
-    return varr_old-varr_new
+    varr_diff=varr_old-varr_new
+    #if we do not have anything to change no point in calculations
+
+    return jax.lax.select(sv_id==-1,0.0, jax.lax.select(mask_area[point[0],point[1]]==new_value,0.0,varr_diff  ))
 
 def mark_points_to_accept(curried,curr_point):
     """ 
     analyze wheather the modification will reduce the mean variance or not
     """
-    is_forward,diameter_x,diameter_y,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index=curried
+    is_forward,axis,diameter_x,diameter_y,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index=curried
     na_id,n_a_dir,n_b_id,n_b_dir=orto_neigh
 
     point_neighbour = transform_point_to_other_sv(curr_point,axis,is_forward,diameter_x,diameter_y)
@@ -269,13 +293,15 @@ def act_on_edge(all_flattened_image,all_flattened_masks,shape_re_cfg,edge,all_gr
     #so we have voxels that can become the current supervoxels voxels when growing in set direction and axis
     edge_points=translated-all_flattened_masks[curr_index,:,:]
     edge_points=(edge_points>0)
-    edge_points_indicies= jnp.nonzero(edge_points,size=shape_re_cfg.diameter_x+shape_re_cfg.diameter_y ,fill_value=-1)
+    edge_points_indicies= jnp.argwhere(edge_points,size=shape_re_cfg.diameter_x+shape_re_cfg.diameter_y ,fill_value=-1)
     #we need to loop also neighbours of the neihbour in the axis perpendicular to currently analyzed
 
     # orthogonal_axis,orto_neigh=get_indicies_orthogonal_axis(all_group_edges_dict,neigh_index,axis)
     orto_neigh= (na_id,n_a_dir,n_b_id,n_b_dir)
+    print(f" edge_points_indicies ")
+    jax.debug.print(" edge_points_indicies {x} ", x=edge_points_indicies)
 
-    curried=is_forward,shape_re_cfg.diameter_x,shape_re_cfg.diameter_y,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index
+    curried=is_forward,axis,shape_re_cfg.diameter_x,shape_re_cfg.diameter_y,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index
     curried,points_to_modif=jax.lax.scan(mark_points_to_accept,curried,edge_points_indicies)
     #we return only accepted points
     points_to_modif_bool = points_to_modif[:,2]
@@ -396,19 +422,9 @@ def get_indicies_orthogonal_axis_in_init(edge,grouped_edges_dict_true):
     orto_res  = list(map( lambda tupl: check_is_axis_ok(tupl,orthogonal_axis) ,axes_dirs ))
     orto_res=jnp.array(orto_res)
     orto_res= jnp.sort(orto_res,axis=0)[2:4,:]
-    # print(f"aaa orto_res {orto_res}")
 
     orto_res=orto_res.flatten()
-    # print(f"bbb orto_res {orto_res}")
-    
-    # if(len(orto_res)==0):
-    #     orto_res= jnp.zeros((2,2))
-    # elif(len(orto_res)==1):
-    #     orto_res= jnp.pad(jnp.array(orto_res),((0,2)),'constant', constant_values=(-1, -1))
-    # else:
-    #     # print(f"orto_res in else {orto_res}") 
-    #     orto_res= jnp.array(list(orto_res))
-    # print(f"orto_res {orto_res.shape}")    
+
     return jnp.concatenate([edge,jnp.array([orthogonal_axis,axis,is_forward]),orto_res ])
 
 v_get_indicies_orthogonal_axis_in_init=jax.vmap(get_indicies_orthogonal_axis_in_init, in_axes=(0,None))
