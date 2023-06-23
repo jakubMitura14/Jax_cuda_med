@@ -613,7 +613,6 @@ class De_conv_batched_multimasks(nn.Module):
 
     @partial(jax.profiler.annotate_function, name="before_mask_scan_scanning_convs")
     def before_mask_scan_scanning_convs(self,deconv_multi,conv_params):
-        #TODO krowa implement as scan
 
         # deconv_multi=apply_conv(deconv_multi,0, conv_params,self.convSpecs_dict_list,self.dns_dict)
         # deconv_multi=apply_conv(deconv_multi,1, conv_params,self.convSpecs_dict_list,self.dns_dict)

@@ -50,19 +50,66 @@ def get_diameter(r):
 
 
 
-def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y):
-    """
-    on the basis of the present shifts we will initialize the masks
-    ids of the supervoxels here are implicit based on which mask and what location we are talking about
-    """
-    initt=np.zeros(orig_grid_shape)
-    initt[shift_x::2,shift_y::2,0]=shift_x
-    initt[shift_x::2,shift_y::2,1]=shift_y
 
-    initt[shift_x::2,shift_y::4,2]=1
-    initt[shift_x::4,shift_y::2,3]=1
 
-    return initt
+def work_on_single_area_for_init(curr_id,shape_reshape_cfg,mask_curr):
+    
+    filtered_mask=mask_curr[:,:,curr_id]
+    dima_x=(shape_reshape_cfg.diameter_x)//2
+    dima_y=(shape_reshape_cfg.diameter_y)//2
+
+    dima_x_half=dima_x//2
+    dima_y_half=dima_y//2
+
+
+    filtered_mask=filtered_mask.at[dima_x-dima_x_half:dima_x+dima_x_half
+                                    ,dima_y-dima_y_half:dima_y+dima_y_half].set(1)
+    filtered_mask=einops.rearrange(filtered_mask,'w h-> w h 1')
+    return filtered_mask
+
+v_work_on_single_area_for_init=jax.vmap(work_on_single_area_for_init,in_axes=(None,None,0))
+v_v_work_on_single_area_for_init=jax.vmap(v_work_on_single_area_for_init,in_axes=(None,None,0))
+
+def iter_over_masks_for_init(shape_reshape_cfgs,i,masks,shape_reshape_cfgs_old):
+    shape_reshape_cfg=shape_reshape_cfgs[i]
+    shape_reshape_cfg_old=shape_reshape_cfgs_old[i]
+    # curr_ids=initial_masks[:,shape_reshape_cfg.shift_x: shape_reshape_cfg.orig_grid_shape[0]:2,shape_reshape_cfg.shift_y: shape_reshape_cfg.orig_grid_shape[1]:2,: ]
+    # curr_ids=einops.rearrange(curr_ids,'b x y p ->b (x y) p')
+    mask_curr=divide_sv_grid(masks,shape_reshape_cfg)
+    # shapee_edge_diff=curr_image.shape
+    masked_image= v_v_work_on_single_area_for_init(i,shape_reshape_cfg,mask_curr)
+
+    to_reshape_back_x=np.floor_divide(shape_reshape_cfg.axis_len_x,shape_reshape_cfg.diameter_x)
+    to_reshape_back_y=np.floor_divide(shape_reshape_cfg.axis_len_y,shape_reshape_cfg.diameter_y) 
+
+    to_reshape_back_x_old=np.floor_divide(shape_reshape_cfg_old.axis_len_x,shape_reshape_cfg_old.diameter_x)
+    to_reshape_back_y_old=np.floor_divide(shape_reshape_cfg_old.axis_len_y,shape_reshape_cfg_old.diameter_y) 
+
+    masked_image=recreate_orig_shape(masked_image,shape_reshape_cfg,to_reshape_back_x,to_reshape_back_y )
+
+    return masked_image
+
+def get_init_masks(cfg):  
+    r_x_total=cfg.r_x_total
+    r_y_total=cfg.r_y_total
+    masks= jnp.zeros((1,cfg.img_size[1],cfg.img_size[2],cfg.num_dim))
+    shape_reshape_cfgs=get_all_shape_reshape_constants(cfg,r_x=r_x_total,r_y=r_y_total)
+    shape_reshape_cfgs_old=get_all_shape_reshape_constants(cfg,r_x=r_x_total,r_y=r_y_total)
+    res= list(map(lambda i :iter_over_masks_for_init(shape_reshape_cfgs,i,masks,shape_reshape_cfgs_old)[0,:,:,0], range(4)))
+    return jnp.stack(res,axis=-1)
+
+
+# def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y,mask_num):
+#     """
+#     on the basis of the present shifts we will initialize the masks
+#     ids of the supervoxels here are implicit based on which mask and what location we are talking about
+#     """
+#     initt=np.zeros(orig_grid_shape)
+#     initt[shift_x::2,shift_y::2,mask_num]=1
+#     return initt
+
+
+
 
 @partial(jax.jit, static_argnames=['diameter_x','diameter_y','p_x','p_y'])
 def set_non_overlapping_regions(diameter_x:int
@@ -159,6 +206,18 @@ def divide_sv_grid(res_grid: jnp.ndarray,shape_reshape_cfg):
     cutted=einops.rearrange( cutted,'bb (a x) (b y) cc->bb (a b) x y cc', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
     return cutted
 
+
+def divide_sv_grid_p_mapped(res_grid: jnp.ndarray,shape_reshape_cfg):
+
+    cutted=res_grid[:,:,0: shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
+                    ,0: shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y,:]
+    cutted= jnp.pad(cutted,((0,0),(0,0),
+                        (shape_reshape_cfg.to_pad_beg_x,shape_reshape_cfg.to_pad_end_x)
+                        ,(shape_reshape_cfg.to_pad_beg_y,shape_reshape_cfg.to_pad_end_y )
+                        ,(0,0)))
+    cutted=einops.rearrange( cutted,'pp bb (a x) (b y) cc->pp bb (a b) x y cc', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
+    return cutted
+
 def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg
                         ,to_reshape_back_x:int
                         ,to_reshape_back_y:int):
@@ -187,6 +246,34 @@ def recreate_orig_shape(texture_information: jnp.ndarray,shape_reshape_cfg
                         ,(0,shape_reshape_cfg.to_remove_from_end_y )
                         ,(0,0)))
     return texture_information
+
+def recreate_orig_shape_simple(texture_information: jnp.ndarray,shape_reshape_cfg):
+    """
+    as in divide_sv_grid we are changing the shape for supervoxel based texture infrence
+    we need then to recreate undo padding axis reshuffling ... to get back the original image shape
+    """
+    # undo axis reshuffling
+    # texture_information= einops.rearrange(texture_information,'bb (a b) x y cc->bb (a x) (b y) cc'
+    #     ,a=to_reshape_back_x
+    #     ,b=to_reshape_back_y
+    #     ,x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
+    texture_information= einops.rearrange(texture_information,'bb (a b) x y->bb (a x) (b y)'
+        ,a=shape_reshape_cfg.axis_len_x//shape_reshape_cfg.diameter_x
+        ,b=shape_reshape_cfg.axis_len_y//shape_reshape_cfg.diameter_y
+        ,x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
+    # texture_information= einops.rearrange( texture_information,'a x y->(a x y)')
+    #undo padding
+    texture_information= texture_information[:,
+            shape_reshape_cfg.to_pad_beg_x: shape_reshape_cfg.axis_len_x- shape_reshape_cfg.to_pad_end_x
+            ,shape_reshape_cfg.to_pad_beg_y:shape_reshape_cfg.axis_len_y- shape_reshape_cfg.to_pad_end_y,:]
+   
+    #undo cutting
+    texture_information= jnp.pad(texture_information,((0,0),
+                        (0,shape_reshape_cfg.to_remove_from_end_x)
+                        ,(0,shape_reshape_cfg.to_remove_from_end_y )
+                        ,(0,0)))
+    return texture_information
+
 
 def get_shape_reshape_constants(cfg: ml_collections.config_dict.config_dict.ConfigDict,shift_x:bool,shift_y:bool, r_x:int, r_y:int ):
     """

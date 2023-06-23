@@ -65,8 +65,7 @@ def get_cfg():
     cfg.to_save_check_point=True
 
     cfg.is_gsam=False
-    config_dict.ConfigDict()
-
+    cfg.num_iter_initialization=2
     # convSpecs=(
     #    {'in_channels':1,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) },
     #    {'in_channels':1,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) },

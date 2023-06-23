@@ -19,15 +19,17 @@ def get_arange_the_same_shape(arr):
     to_add=sh[0]*sh[1]
     return np.arange(to_add).reshape(sh),to_add
 
-def get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add):
+def get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add,is_dir_to_save):
     left=y_op[curr_x,curr_y-y_subtr]
     right=y_op[curr_x,curr_y+y_add]
     bottom=x_op[curr_x+x_add,curr_y]
     top=x_op[curr_x-x_subtr,curr_y]
     curr=curr_analyzed[curr_x,curr_y]
+    if(is_dir_to_save):
+        return jnp.array([[curr,left,1],[curr,right,2],[curr,bottom,3],[curr,top,4]])
     return jnp.array([[curr,left],[curr,right],[curr,bottom],[curr,top]])
 
-def get_neighbours_a(point,indicies_a,indicies_b,indicies_c,indicies_d):
+def get_neighbours_a(point,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save):
     curr_x,curr_y=point
     x_subtr=1
     y_subtr=1
@@ -36,10 +38,10 @@ def get_neighbours_a(point,indicies_a,indicies_b,indicies_c,indicies_d):
     curr_analyzed=indicies_a
     x_op=indicies_b
     y_op=indicies_c
-    return get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add)
+    return get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add,is_dir_to_save)
 
 
-def get_neighbours_b(point,indicies_a,indicies_b,indicies_c,indicies_d):
+def get_neighbours_b(point,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save):
     curr_x,curr_y=point
     x_subtr=0
     y_subtr=1
@@ -48,9 +50,9 @@ def get_neighbours_b(point,indicies_a,indicies_b,indicies_c,indicies_d):
     curr_analyzed=indicies_b
     x_op=indicies_a
     y_op=indicies_d
-    return get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add)
+    return get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add,is_dir_to_save)
 
-def get_neighbours_c(point,indicies_a,indicies_b,indicies_c,indicies_d):
+def get_neighbours_c(point,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save):
     curr_x,curr_y=point
     x_subtr=1
     y_subtr=0
@@ -59,9 +61,9 @@ def get_neighbours_c(point,indicies_a,indicies_b,indicies_c,indicies_d):
     curr_analyzed=indicies_c
     x_op=indicies_d
     y_op=indicies_a
-    return get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add)
+    return get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add,is_dir_to_save)
 
-def get_neighbours_d(point,indicies_a,indicies_b,indicies_c,indicies_d):
+def get_neighbours_d(point,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save):
     curr_x,curr_y=point
     x_subtr=0
     y_subtr=0
@@ -70,11 +72,11 @@ def get_neighbours_d(point,indicies_a,indicies_b,indicies_c,indicies_d):
     curr_analyzed=indicies_d
     x_op=indicies_c
     y_op=indicies_b
-    return get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add)
+    return get_neighbour_indicies(curr_x,curr_y,curr_analyzed,x_op,y_op,x_subtr,y_subtr,x_add,y_add,is_dir_to_save)
 
 
-def get_all_neighbours(v_get_neighbours,points_grid,indicies_a,indicies_b,indicies_c,indicies_d):
-    neighbours=v_get_neighbours(points_grid,indicies_a,indicies_b,indicies_c,indicies_d)
+def get_all_neighbours(v_get_neighbours,points_grid,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save):
+    neighbours=v_get_neighbours(points_grid,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save)
     neighbours= einops.rearrange(neighbours,'a b p->(a b) p')
     correct_neighbours=(neighbours==-1)
     correct_neighbours=jnp.logical_not(jnp.any(correct_neighbours,axis=1))
@@ -95,9 +97,12 @@ def get_initial_indicies(original_grid_shape):
     indicies_c,to_add_c=get_arange_the_same_shape(indicies_c)
     indicies_d,to_add_d=get_arange_the_same_shape(indicies_d)
 
-    indicies_b=indicies_b+to_add_a
-    indicies_c=indicies_c+to_add_a+to_add_b
-    indicies_d=indicies_d+to_add_a+to_add_b+to_add_c
+    a_to_b_tresh=to_add_a
+    b_to_c_tresh=to_add_a+to_add_b
+    c_to_d_tresh=to_add_a+to_add_b+to_add_c
+    indicies_b=indicies_b+a_to_b_tresh
+    indicies_c=indicies_c+b_to_c_tresh
+    indicies_d=indicies_d+c_to_d_tresh
 
     indicies[0::2,0::2]=indicies_a
     indicies[1::2,0::2]=indicies_b
@@ -109,24 +114,24 @@ def get_initial_indicies(original_grid_shape):
     indicies_b=jnp.pad(indicies_b,((1,1),(1,1)), 'constant', constant_values=((-1,-1),(-1,-1)))
     indicies_c=jnp.pad(indicies_c,((1,1),(1,1)), 'constant', constant_values=((-1,-1),(-1,-1)))
     indicies_d=jnp.pad(indicies_d,((1,1),(1,1)), 'constant', constant_values=((-1,-1),(-1,-1)))
-    return indicies,indicies_a,indicies_b,indicies_c,indicies_d
+    return indicies,indicies_a,indicies_b,indicies_c,indicies_d,a_to_b_tresh,b_to_c_tresh,c_to_d_tresh
 
 
-v_get_neighbours_a=jax.vmap(get_neighbours_a, in_axes=(0,None,None,None,None))
-v_get_neighbours_b=jax.vmap(get_neighbours_b, in_axes=(0,None,None,None,None))
-v_get_neighbours_c=jax.vmap(get_neighbours_c, in_axes=(0,None,None,None,None))
-v_get_neighbours_d=jax.vmap(get_neighbours_d, in_axes=(0,None,None,None,None))
+v_get_neighbours_a=jax.vmap(get_neighbours_a, in_axes=(0,None,None,None,None,None))
+v_get_neighbours_b=jax.vmap(get_neighbours_b, in_axes=(0,None,None,None,None,None))
+v_get_neighbours_c=jax.vmap(get_neighbours_c, in_axes=(0,None,None,None,None,None))
+v_get_neighbours_d=jax.vmap(get_neighbours_d, in_axes=(0,None,None,None,None,None))
 
 
-def get_sorce_targets(original_grid_shape):
+def get_sorce_targets(original_grid_shape,is_dir_to_save=False):
     #we add one becouse we want to ignore padding
     points_grid=jnp.mgrid[0:original_grid_shape[0], 0:original_grid_shape[1]]+1
     points_grid=einops.rearrange(points_grid,'p x y-> (x y) p')
 
-    indicies,indicies_a,indicies_b,indicies_c,indicies_d=get_initial_indicies(original_grid_shape)
-    all_a=get_all_neighbours(v_get_neighbours_a,points_grid,indicies_a,indicies_b,indicies_c,indicies_d)
-    all_b=get_all_neighbours(v_get_neighbours_b,points_grid,indicies_a,indicies_b,indicies_c,indicies_d)
-    all_c=get_all_neighbours(v_get_neighbours_c,points_grid,indicies_a,indicies_b,indicies_c,indicies_d)
-    all_d=get_all_neighbours(v_get_neighbours_d,points_grid,indicies_a,indicies_b,indicies_c,indicies_d)
+    indicies,indicies_a,indicies_b,indicies_c,indicies_d,a_to_b_tresh,b_to_c_tresh,c_to_d_tresh=get_initial_indicies(original_grid_shape)
+    all_a=get_all_neighbours(v_get_neighbours_a,points_grid,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save)
+    all_b=get_all_neighbours(v_get_neighbours_b,points_grid,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save)
+    all_c=get_all_neighbours(v_get_neighbours_c,points_grid,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save)
+    all_d=get_all_neighbours(v_get_neighbours_d,points_grid,indicies_a,indicies_b,indicies_c,indicies_d,is_dir_to_save)
     all_neighbours=jnp.concatenate([all_a,all_b,all_c,all_d])
-    return all_neighbours    
+    return [all_a,all_b,all_c,all_d],a_to_b_tresh,b_to_c_tresh,c_to_d_tresh  

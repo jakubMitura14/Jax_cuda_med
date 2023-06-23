@@ -26,7 +26,13 @@ def apply_on_single(dat):
     return batch_images,batch_labels
 
 
-def add_batches(cached_subj,cfg):
+def add_batches(cached_subj,cfg,batch_size=None):
+  
+  if(batch_size==None):
+     batch_size=cfg.batch_size
+  batch_size_pmapped=np.max([batch_size//jax.local_device_count(),1])
+
+
   cached_subj=list(map(apply_on_single,cached_subj ))
   batch_images,batch_labels=list(toolz.sandbox.core.unzip(cached_subj))
   batch_images= list(batch_images)
@@ -34,13 +40,13 @@ def add_batches(cached_subj,cfg):
   batch_images= jnp.concatenate(batch_images,axis=0 )
   batch_labels= jnp.concatenate(batch_labels,axis=0 ) #b y z
   #padding to be able to use batch size efficiently
-  target_size= int(np.ceil(batch_images.shape[0]/cfg.batch_size))*cfg.batch_size
+  target_size= int(np.ceil(batch_images.shape[0]/batch_size))*batch_size
   to_pad=target_size- batch_images.shape[0]
   if(to_pad>0):
      batch_images= jnp.pad(batch_images,((0,to_pad),(0,0),(0,0)))
      batch_labels= jnp.pad(batch_labels,((0,to_pad),(0,0),(0,0)))
-  batch_images= einops.rearrange(batch_images,'(d pm b) x y->d pm b x y 1',b=cfg.batch_size_pmapped,pm=jax.local_device_count())  
-  batch_labels= einops.rearrange(batch_labels,'(d pm b) x y->d pm b x y 1',b=cfg.batch_size_pmapped,pm=jax.local_device_count())  
+  batch_images= einops.rearrange(batch_images,'(d pm b) x y->d pm b x y 1',b=batch_size_pmapped,pm=jax.local_device_count())  
+  batch_labels= einops.rearrange(batch_labels,'(d pm b) x y->d pm b x y 1',b=batch_size_pmapped,pm=jax.local_device_count())  
   print(f"add_batches batch_images {batch_images.shape} batch_labels {batch_labels.shape}")
   batch_images=batch_images[:-1,:,:,:,:,:]
   batch_labels=batch_labels[:-1,:,:,:,:,:]
