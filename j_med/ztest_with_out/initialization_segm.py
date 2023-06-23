@@ -25,6 +25,7 @@ import ml_collections
 from ml_collections import config_dict
 from functools import partial
 import toolz
+import multiprocessing as mp
 import chex
 from ..super_voxels.SIN.SIN_jax_2D_with_gratings.render2D import diff_round,Conv_trio,apply_farid_both
 import jax.scipy as jsp
@@ -148,14 +149,14 @@ def get_axis_and_dir_from_dir_num(dir_num):
 
 # shape_re_cfg.diameter_x,shape_re_cfg.diameter_y
 
-def transform_point_to_other_sv(point,axis,is_forward,shape_re_cfg):
+def transform_point_to_other_sv(point,axis,is_forward,diameter_x,diameter_y):
     """
     as we are working on sv its neighbour has diffrent coordinate system and 
     this function translates current supervoxel coordinates to the coordinate system of neighbouring sv 
     """
     if(is_forward==-1):
         return jnp.array([-1,-1])
-    diams=[shape_re_cfg.diameter_x,shape_re_cfg.diameter_y]
+    diams=[diameter_x,diameter_y]
     return point.at[axis].set(point[axis]+diams[axis]*((is_forward*2)-1 ))
 
 # def get_indicies_orthogonal_axis(all_group_edges_dict,neigh_index,axis):
@@ -209,12 +210,12 @@ def mark_points_to_accept(curried,curr_point):
     """ 
     analyze wheather the modification will reduce the mean variance or not
     """
-    is_forward,shape_re_cfg,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index=curried
+    is_forward,diameter_x,diameter_y,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index=curried
     na_id,n_a_dir,n_b_id,n_b_dir=orto_neigh
 
-    point_neighbour = transform_point_to_other_sv(curr_point,axis,is_forward,shape_re_cfg)
-    point_ortho_a = transform_point_to_other_sv(point_neighbour,orthogonal_axis,n_a_dir,shape_re_cfg)
-    point_ortho_b = transform_point_to_other_sv(point_neighbour,orthogonal_axis,n_b_dir,shape_re_cfg)
+    point_neighbour = transform_point_to_other_sv(curr_point,axis,is_forward,diameter_x,diameter_y)
+    point_ortho_a = transform_point_to_other_sv(point_neighbour,orthogonal_axis,n_a_dir,diameter_x,diameter_y)
+    point_ortho_b = transform_point_to_other_sv(point_neighbour,orthogonal_axis,n_b_dir,diameter_x,diameter_y)
     
     main_vars=get_sv_variance_diff_after_change(curr_index,all_flattened_image,all_flattened_masks,curr_point,1)
 
@@ -224,7 +225,7 @@ def mark_points_to_accept(curried,curr_point):
     
     sum_variance=main_vars+vars_neighbours
     is_variance_better= (sum_variance>0)
-    return ((is_forward,shape_re_cfg,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index), jnp.array([curr_point[0],curr_point[1], int(is_variance_better) ]))
+    return ((is_forward,diameter_x,diameter_y,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index), jnp.array([curr_point[0],curr_point[1], int(is_variance_better) ]))
 
 
 def translate_in_axis_switch(all_flattened_masks,curr_index,shape_re_cfg,axis,is_forward):
@@ -274,7 +275,7 @@ def act_on_edge(all_flattened_image,all_flattened_masks,shape_re_cfg,edge,all_gr
     # orthogonal_axis,orto_neigh=get_indicies_orthogonal_axis(all_group_edges_dict,neigh_index,axis)
     orto_neigh= (na_id,n_a_dir,n_b_id,n_b_dir)
 
-    curried=is_forward,shape_re_cfg,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index
+    curried=is_forward,shape_re_cfg.diameter_x,shape_re_cfg.diameter_y,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index
     curried,points_to_modif=jax.lax.scan(mark_points_to_accept,curried,edge_points_indicies)
     #we return only accepted points
     points_to_modif_bool = points_to_modif[:,2]
@@ -356,6 +357,23 @@ def get_uniform_shape_edges(grouped_edges_dict,key):
     return jnp.pad(stacked,((0,4-shapee[0]),(0,0)))
 
 
+
+def check_is_axis_ok(tupl,orthogonal_axis):
+    index=tupl[1][0]*2+orthogonal_axis
+    def fun_zero():
+        return (tupl[0][1],tupl[1][1])
+
+    def fun_ff():
+        return (-1,-1)
+        
+    def fun_tf():
+        return (-1,-1)
+        
+    def fun_ft():
+        return (tupl[0][1],tupl[1][1])
+    functions_list=[fun_zero,fun_ff,fun_tf,fun_ft]
+    return jax.lax.switch(index,functions_list)
+
 def get_indicies_orthogonal_axis_in_init(edge,grouped_edges_dict_true):
     """ 
     edge - current data that we want to augment
@@ -364,22 +382,33 @@ def get_indicies_orthogonal_axis_in_init(edge,grouped_edges_dict_true):
     @return tuple with first entry as orthogonal to the dilatation direction axis
         and as secong entry list with 4 entries 2 neighbours first column is id of the sv area and second is the is_forward for orthogonal axis
     """
-    print(f"edge {edge.shape}")
+    print("*")
     curr_index,neigh_index,dir_num=edge
     axis,is_forward=get_axis_and_dir_from_dir_num(dir_num)
 
-    neigh_neigh = grouped_edges_dict_true[neigh_index]  # neighbour neighbours  
+    neigh_neigh = grouped_edges_dict_true[neigh_index,:,:]  # neighbour neighbours  
+    # print(f"edge {edge} \n neigh_index {neigh_index} neigh_neigh {neigh_neigh}")
     orthogonal_axis=1-axis
     # now we get the data about the ids and axes
     axes_dirs = list(map(lambda arr: (arr,get_axis_and_dir_from_dir_num(arr[2]) ) ,neigh_neigh))
-    axes_dirs = list(filter(lambda tupl: tupl[1][0]==orthogonal_axis,axes_dirs))
-    orto_res  = list(map( lambda tupl: (tupl[0][1],tupl[1][1]) ,axes_dirs ))
-    if(len(orto_res)==0):
-        orto_res= jnp.zeros((2,2))
-    elif(len(orto_res)==1):
-        orto_res= jnp.pad(jnp.array(orto_res[0]),((0,2)),'constant', constant_values=(-1, -1))
-    else:
-        orto_res= jnp.array(orto_res[0]+orto_res[1])
+    # print(f"\n axes_dirs {np.array(axes_dirs)} \n ")
+    # axes_dirs = list(filter(lambda tupl:check_is_axis_ok(tupl[1][0],orthogonal_axis),axes_dirs))
+    orto_res  = list(map( lambda tupl: check_is_axis_ok(tupl,orthogonal_axis) ,axes_dirs ))
+    orto_res=jnp.array(orto_res)
+    orto_res= jnp.sort(orto_res,axis=0)[2:4,:]
+    # print(f"aaa orto_res {orto_res}")
+
+    orto_res=orto_res.flatten()
+    # print(f"bbb orto_res {orto_res}")
+    
+    # if(len(orto_res)==0):
+    #     orto_res= jnp.zeros((2,2))
+    # elif(len(orto_res)==1):
+    #     orto_res= jnp.pad(jnp.array(orto_res),((0,2)),'constant', constant_values=(-1, -1))
+    # else:
+    #     # print(f"orto_res in else {orto_res}") 
+    #     orto_res= jnp.array(list(orto_res))
+    # print(f"orto_res {orto_res.shape}")    
     return jnp.concatenate([edge,jnp.array([orthogonal_axis,axis,is_forward]),orto_res ])
 
 v_get_indicies_orthogonal_axis_in_init=jax.vmap(get_indicies_orthogonal_axis_in_init, in_axes=(0,None))
@@ -406,18 +435,30 @@ def get_initial_segm():
     # grouped_edges_dict = {k: list(v) for k, v in itertools.groupby(np.array(all_a), key=lambda x: x[0])}
  
 
-    all_e=np.array(all_a+all_b+all_c+all_d)
+    all_e=np.concatenate([np.array(all_a),np.array(all_b),np.array(all_c),np.array(all_d)])
     grouped_edges_dict_true = {k: list(v) for k, v in itertools.groupby(all_e, key=lambda x: x[0])}
     sorted_keys=sorted(grouped_edges_dict_true.keys())
+    # print(f"sorted_keys len {len(sorted_keys)}")
+    # print(f"sorted_keys {np.array(sorted_keys)}")
     grouped_edges_dict=list(map(lambda key :get_uniform_shape_edges(grouped_edges_dict_true,key),sorted_keys ))
     grouped_edges_dict= jnp.stack(grouped_edges_dict)
 
     
 
     #adding info to all_a,all_b,all_c,all_d about its neighbours and neighbour neighbours from orthogonal axis
+    edges_with_dir=jnp.stack(edges_with_dir)
     print(f"edges_with_dir {edges_with_dir.shape}")
-    edges_with_dir=v_get_indicies_orthogonal_axis_in_init(jnp.stack(edges_with_dir),grouped_edges_dict_true)
-    
+    edges_with_dir=np.array(edges_with_dir)
+
+    # with mp.Pool(processes = mp.cpu_count()) as pool:
+    edges_with_dir=v_v_get_indicies_orthogonal_axis_in_init(edges_with_dir,grouped_edges_dict)
+    # edges_with_dir=list(map(lambda edges_with_dir_a:  list(map( lambda edge: get_indicies_orthogonal_axis_in_init(edge,grouped_edges_dict),edges_with_dir_a)),edges_with_dir))
+    # edges_with_dir=v_v_get_indicies_orthogonal_axis_in_init(edges_with_dir,grouped_edges_dict)
+    print(f"after mp Pool")
+    edges_with_dir= list(map(jnp.stack,edges_with_dir))
+    edges_with_dir= jnp.stack(edges_with_dir)
+    print(f"bbbb edges_with_dir {edges_with_dir.shape}")
+
     # print(f"grouped_edges_dict {grouped_edges_dict.shape}")
 
     # all_e= list(map(tuple,all_e ))
