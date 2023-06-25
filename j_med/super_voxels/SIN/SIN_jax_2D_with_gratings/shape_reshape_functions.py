@@ -257,7 +257,7 @@ def recreate_orig_shape_simple(texture_information: jnp.ndarray,shape_reshape_cf
     #     ,a=to_reshape_back_x
     #     ,b=to_reshape_back_y
     #     ,x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
-    texture_information= einops.rearrange(texture_information,'bb (a b) x y->bb (a x) (b y)'
+    texture_information= einops.rearrange(texture_information,'bb (a b) x y c->bb (a x) (b y) c'
         ,a=shape_reshape_cfg.axis_len_x//shape_reshape_cfg.diameter_x
         ,b=shape_reshape_cfg.axis_len_y//shape_reshape_cfg.diameter_y
         ,x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
