@@ -66,6 +66,22 @@ def masks_with_boundaries(shift_x,shift_y,masks,image_to_disp,scale):
     with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
     to_dispp_svs=with_boundaries
     return mask_0,to_dispp_svs
+
+
+def masks_with_boundaries_simple(mask_num,masks,image_to_disp,scale):
+
+    mask_0= masks[:,:,mask_num]    
+
+    shapp=image_to_disp.shape
+    image_to_disp_big=jax.image.resize(image_to_disp,(shapp[0]*scale,shapp[1]*scale), "linear")     
+    shapp=mask_0.shape
+    mask_0_big=jax.image.resize(mask_0,(shapp[0]*scale,shapp[1]*scale), "nearest")  
+    with_boundaries=mark_boundaries(image_to_disp_big, np.round(mask_0_big).astype(int) )
+    with_boundaries= np.array(with_boundaries)
+    # with_boundaries=np.rot90(with_boundaries)
+    with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
+    to_dispp_svs=with_boundaries
+    return mask_0,to_dispp_svs
         
 
 def work_on_single_area(curr_id,mask_curr,image):
