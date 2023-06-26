@@ -58,6 +58,8 @@ batch_images,batch_labels= add_batches(cached_subj,cfg,local_batch_size)
 example_image=batch_images[0,0,:,:,:,:]
 example_mask=masks_init
 example_mask= einops.rearrange(example_mask,'w h c -> 1 w h c')
+all_flattened_image=list(map(lambda i: divide_sv_grid_p_mapped(batch_images[0,:,:,:,:,:], shape_reshape_cfgs[i]),range(cfg.masks_num)))
+all_flattened_image, ps_all_flattened_image = einops.pack(all_flattened_image, 'p b * w h c')
 
 
 all_flattened_masks=list(map(lambda i: divide_sv_grid(example_mask, shape_reshape_cfgs[i])[:,:,:,:,i],range(cfg.masks_num)))
@@ -113,6 +115,11 @@ def set_point_b(all_flattened_masks,point,sv_index,to_add):
     
     if(point[0]==-1):
         return all_flattened_masks
+    if(point.shape[0]==3):
+        if(point[2]==0):
+            print(f" {point} rejected")
+            return all_flattened_masks
+    print(f" {point} accepted")
     all_flattened_masks=all_flattened_masks.at[sv_index,point[0],point[1]].set(to_add+all_flattened_masks[sv_index,point[0],point[1]])
     return all_flattened_masks
 
@@ -259,18 +266,78 @@ def check_edges(all_flattened_masks):
         # tf.summary.image(f"mask_2",plot_heatmap_to_image(masks[0,:,:,2]) , step=0,max_outputs=2000)
         # tf.summary.image(f"mask_3",plot_heatmap_to_image(masks[0,:,:,3]) , step=0,max_outputs=2000)
 
-check_edges(all_flattened_masks)
-
-
-
-
+# check_edges(all_flattened_masks)
 
 
 ############## check weaher we are selecting edge points that really reduce variance
+def check_act_on_edge(all_flattened_masks):
+    #get arbitrary edge
+    # print(edges_with_dir[0,100,:])
+
+    edge = edges_with_dir[0,100,1,:]
+    edgeb = edges_with_dir[0,100,0,:]
+    shape_re_cfg=shape_reshape_cfgs[0]
+    index=0
+    curr_index=100
+    im = all_flattened_image[0,0,:,:,:,:]
+    ma= all_flattened_masks[0,:,:,:]
+    print(f"im {im.shape} ma {ma.shape} ")
+    edge_points_dir_a=act_on_edge(im,ma,shape_re_cfg,edge,index)
+    edge_points_dir_b=act_on_edge(im,ma,shape_re_cfg,edgeb,index)
+    print(edge_points_dir_a)
+    curr_mini_mask_b=all_flattened_masks[0,:,:,:]
+    for i in range(edge_points_dir_a.shape[0]):
+        all_flattened_masks=set_point_b(curr_mini_mask_b,edge_points_dir_a[i,:],curr_index,3)
+        curr_mini_mask_b=all_flattened_masks
+    ma= all_flattened_masks
+    edge_points_dir_a=act_on_edge(im,ma,shape_re_cfg,edge,index)
+    edge_points_dir_b=act_on_edge(im,ma,shape_re_cfg,edge,index)
+
+    for i in range(edge_points_dir_a.shape[0]):
+        all_flattened_masks=set_point_b(curr_mini_mask_b,edge_points_dir_a[i,:],curr_index,3)
+        curr_mini_mask_b=all_flattened_masks
+    ma= all_flattened_masks
+    edge_points_dir_a=act_on_edge(im,ma,shape_re_cfg,edge,index)
+    edge_points_dir_b=act_on_edge(im,ma,shape_re_cfg,edge,index)
+
+    # for i in range(edge_points_dir_a.shape[0]):
+    #     all_flattened_masks=set_point_b(curr_mini_mask_b,edge_points_dir_a[i,:],curr_index,3)
+    #     curr_mini_mask_b=all_flattened_masks
+    # ma= all_flattened_masks
+    # edge_points_dir_a=act_on_edge(im,ma,shape_re_cfg,edge,index)
+    # edge_points_dir_b=act_on_edge(im,ma,shape_re_cfg,edge,index)
+
+    # for i in range(edge_points_dir_a.shape[0]):
+    #     all_flattened_masks=set_point_b(curr_mini_mask_b,edge_points_dir_a[i,:],curr_index,3)
+    #     curr_mini_mask_b=all_flattened_masks
+    # ma= all_flattened_masks
+    # edge_points_dir_a=act_on_edge(im,ma,shape_re_cfg,edge,index)
+    # edge_points_dir_b=act_on_edge(im,ma,shape_re_cfg,edge,index)
+
+    for i in range(edge_points_dir_b.shape[0]):
+        all_flattened_masks=set_point_b(curr_mini_mask_b,edge_points_dir_b[i,:],curr_index,3)
+        curr_mini_mask_b=all_flattened_masks
+
+
+    # for i in range(edge_points_dir_b.shape[0]):
+    #     all_flattened_masks=set_point_b(curr_mini_mask_b,edge_points_dir_b[i,:],curr_index,3)
+    #     curr_mini_mask_b=all_flattened_masks   
+
+    # curr_mini_mask_with_edge_a=all_flattened_masks[curr_index,:,:]
+
+    print(f"curr_mini_mask_b {curr_mini_mask_b.shape}")
+    with file_writer.as_default():
+        tf.summary.image(f"curr_mini_mask_with_edge_a",plot_heatmap_to_image(curr_mini_mask_b[curr_index,:,:]) , step=0,max_outputs=2000)
+        tf.summary.image(f"image",einops.rearrange(im[curr_index,:,:,0],'x y -> 1 x y 1') , step=0,max_outputs=2000)
+        # tf.summary.image(f"mask_0",plot_heatmap_to_image(masks[0,:,:,0]) , step=0,max_outputs=2000)
+        # tf.summary.image(f"mask_1",plot_heatmap_to_image(masks[0,:,:,1]) , step=0,max_outputs=2000)
+        # tf.summary.image(f"mask_2",plot_heatmap_to_image(masks[0,:,:,2]) , step=0,max_outputs=2000)
+        # tf.summary.image(f"mask_3",plot_heatmap_to_image(masks[0,:,:,3]) , step=0,max_outputs=2000)
+
+check_act_on_edge(all_flattened_masks)
 
 
 
-# check_example_points(all_flattened_masks)
 
 
 

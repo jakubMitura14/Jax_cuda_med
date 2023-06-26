@@ -163,7 +163,7 @@ def mark_points_to_accept(curried,curr_point):
     sum_variance=main_vars+vars_neighbours
     # is_variance_better= jax.lax.select(sum_variance>0,1,0)
     is_variance_better= sum_variance>0
-    return ((is_forward,axis,diameter_x,diameter_y,orthogonal_axis,orto_neigh,curr_index,all_flattened_image,all_flattened_masks,neigh_index), jnp.array([curr_point[0],curr_point[1], is_variance_better]))
+    return ((is_forward,axis,diameter_x,diameter_y,orthogonal_axis,orto_neigh,orto_it,curr_index,all_flattened_image,all_flattened_masks,neigh_index), jnp.array([curr_point[0],curr_point[1], is_variance_better]))
 
 
 def translate_in_axis_switch(all_flattened_masks,curr_index,shape_re_cfg,axis,is_forward):
@@ -222,7 +222,7 @@ def act_on_edge(all_flattened_image,all_flattened_masks,shape_re_cfg,edge,index)
     the masks cutoffs will be used to tell in which channel is the source and the neighbouring supervoxel
     """
     # #now we need to define on which axis we work and weather it is up or down this axis
-    curr_index,neigh_index,dir_num,orthogonal_axis,axis,is_forward,a_id,a_dir,b_id,b_dir,na_id,n_a_dir,n_b_id,n_b_dir   = edge
+    curr_index,neigh_index,dir_num,orthogonal_axis,axis,is_forward,a_id,a_dir,b_id,b_dir,na_id,n_a_dir,n_b_id,n_b_dir  = edge
     edge_points_indicies=get_edge_points(all_flattened_masks,curr_index,shape_re_cfg,axis,is_forward)
     #we need to loop also neighbours of the neihbour in the axis perpendicular to currently analyzed
 
@@ -237,7 +237,7 @@ def act_on_edge(all_flattened_image,all_flattened_masks,shape_re_cfg,edge,index)
     # print(f"pppppppp points_to_modif_bool {points_to_modif_bool.shape}  points_to_modif {points_to_modif.shape}")
     # return jnp.where(points_to_modif_bool,all_flattened_masks[curr_index,:,:])
 
-    return jax.lax.select(edge[0]==-1,jnp.zeros_like(points_to_modif ),points_to_modif)
+    return jax.lax.select(edge[0]==-1,jnp.zeros_like(points_to_modif),points_to_modif)
 
 
 
