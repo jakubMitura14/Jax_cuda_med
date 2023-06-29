@@ -292,7 +292,7 @@ class Apply_on_single_area(nn.Module):
         eroded_mask=get_eroded_mask(mask_combined_curr,(self.diameter_x,self.diameter_y))
         mask_edge= (1-eroded_mask)*mask_combined_curr
         edges_on_edges=jnp.multiply(mask_edge,edge_map)
-        losss= jnp.sum(edges_on_edges.flatten())/jnp.sum(mask_edge.flatten())+self.cfg.epsilon
+        losss= (jnp.sum(edges_on_edges.flatten())*4000)/jnp.sum(mask_edge.flatten())+self.cfg.epsilon
 
         # masked_edges= jnp.multiply(eroded_mask,edge_map)
         # mask_combined_curr= einops.rearrange(mask_combined_curr,'w h -> w h 1')
@@ -319,7 +319,7 @@ class Apply_on_single_area(nn.Module):
         # return out_image,varr
         # masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
         # res=(varr*loss*1000)
-        res=(losss*1000)*(-1)
+        res=(losss)*(-1)
         return res
 
 
@@ -605,24 +605,16 @@ class De_conv_batched_multimasks(nn.Module):
     @partial(jax.profiler.annotate_function, name="before_mask_scan_scanning_convs")
     def before_mask_scan_scanning_convs(self,deconv_multi,conv_params):
 
-        # deconv_multi=apply_conv(deconv_multi,0, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,1, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,2, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,3, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,4, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,5, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,6, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,7, conv_params,self.convSpecs_dict_list,self.dns_dict)
-                # return deconv_multi
+
         return nn.Sequential([
             remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,0),
             Apply_conv(self.convSpecs_dict_list,self.dns_dict,1),
             remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,2),
             Apply_conv(self.convSpecs_dict_list,self.dns_dict,3),
-            # remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,4),
-            # Apply_conv(self.convSpecs_dict_list,self.dns_dict,5),
-            # remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,6),
-            # Apply_conv(self.convSpecs_dict_list,self.dns_dict,7)
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,4),
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,5),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,6),
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,7)
 
         # ,Conv_trio(self.cfg,self.features)
         # ,Conv_trio(self.cfg,self.features)
@@ -631,24 +623,12 @@ class De_conv_batched_multimasks(nn.Module):
 
     def convs_b(self,deconv_multi,conv_params):
 
-        # deconv_multi=apply_conv(deconv_multi,0, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,1, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,2, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,3, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,4, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,5, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,6, conv_params,self.convSpecs_dict_list,self.dns_dict)
-        # deconv_multi=apply_conv(deconv_multi,7, conv_params,self.convSpecs_dict_list,self.dns_dict)
-                # return deconv_multi
         return nn.Sequential([
-            # remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,0),
-            # Apply_conv(self.convSpecs_dict_list,self.dns_dict,1),
-            # remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,2),
-            # Apply_conv(self.convSpecs_dict_list,self.dns_dict,3),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,4),
-            Apply_conv(self.convSpecs_dict_list,self.dns_dict,5),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,6),
-            Apply_conv(self.convSpecs_dict_list,self.dns_dict,7)
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,8),
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,9),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,10),
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,11),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,12)
 
         # ,Conv_trio(self.cfg,self.features)
         # ,Conv_trio(self.cfg,self.features)
