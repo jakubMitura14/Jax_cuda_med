@@ -84,8 +84,8 @@ def masks_with_boundaries_simple(mask_num,masks,image_to_disp,scale):
     return mask_0,to_dispp_svs
         
 
-def work_on_single_area(curr_id,mask_curr,image):
-    filtered_mask=filter_mask_of_intrest(mask_curr,curr_id)
+def work_on_single_area(mask_curr,image,i):
+    filtered_mask=mask_curr[:,:,i]
     filtered_mask=einops.rearrange(filtered_mask,'w h-> w h 1')
     masked_image= jnp.multiply(image,filtered_mask)
     # print(f"edge_map_loc mean {jnp.mean(edge_map_loc.flatten())} edge_map_loc max {jnp.max(edge_map_loc.flatten())} ")
@@ -94,22 +94,22 @@ def work_on_single_area(curr_id,mask_curr,image):
     # print(f"inn work_on_single_area masked_image {masked_image.shape} image_meaned {image_meaned.shape} image {image.shape} edge_map_loc {edge_map_loc.shape} filtered_mask {filtered_mask.shape}")
     return masked_image, image_meaned
 
-v_work_on_single_area=jax.vmap(work_on_single_area)
-v_v_work_on_single_area=jax.vmap(v_work_on_single_area)
+v_work_on_single_area=jax.vmap(work_on_single_area,in_axes=(0,0,None))
+v_v_work_on_single_area=jax.vmap(v_work_on_single_area,in_axes=(0,0,None))
 
 
-def iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old,initial_masks):
+def iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old):
     shape_reshape_cfg=shape_reshape_cfgs[i]
     shape_reshape_cfg_old=shape_reshape_cfgs_old[i]
-    curr_ids=initial_masks[:,shape_reshape_cfg.shift_x: shape_reshape_cfg.orig_grid_shape[0]:2,shape_reshape_cfg.shift_y: shape_reshape_cfg.orig_grid_shape[1]:2,: ]
-    curr_ids=einops.rearrange(curr_ids,'b x y p ->b (x y) p')
+    # curr_ids=initial_masks[:,shape_reshape_cfg.shift_x: shape_reshape_cfg.orig_grid_shape[0]:2,shape_reshape_cfg.shift_y: shape_reshape_cfg.orig_grid_shape[1]:2,: ]
+    # curr_ids=einops.rearrange(curr_ids,'b x y p ->b (x y) p')
     mask_curr=divide_sv_grid(masks,shape_reshape_cfg)
     curr_image_in=divide_sv_grid(curr_image,shape_reshape_cfg)
     shapee_edge_diff=curr_image.shape
     mask_new_bi_channel= jnp.ones((shapee_edge_diff[0],shapee_edge_diff[1],shapee_edge_diff[2],2))
     mask_new_bi_channel=mask_new_bi_channel.at[:,:,:,1].set(0)
     mask_new_bi_channel_in=divide_sv_grid(mask_new_bi_channel,shape_reshape_cfg)
-    masked_image, image_meaned= v_v_work_on_single_area(curr_ids,mask_curr,curr_image_in)
+    masked_image, image_meaned= v_v_work_on_single_area(mask_curr,curr_image_in,i)
 
 
     to_reshape_back_x=np.floor_divide(shape_reshape_cfg.axis_len_x,shape_reshape_cfg.diameter_x)
@@ -128,16 +128,16 @@ def iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old
 def work_on_areas(cfg,batch_images_prim,masks):
 
     curr_image= einops.rearrange(batch_images_prim[0,:,:,0],'w h->1 w h 1')        
-    initial_masks= jnp.stack([
-        get_initial_supervoxel_masks(cfg.orig_grid_shape,0,0),
-        get_initial_supervoxel_masks(cfg.orig_grid_shape,1,0),
-        get_initial_supervoxel_masks(cfg.orig_grid_shape,0,1),
-        get_initial_supervoxel_masks(cfg.orig_grid_shape,1,1)
-            ],axis=0)
-    initial_masks=jnp.sum(initial_masks,axis=0)    
+    # initial_masks= jnp.stack([
+    #     get_initial_supervoxel_masks(cfg.orig_grid_shape,0,0),
+    #     get_initial_supervoxel_masks(cfg.orig_grid_shape,1,0),
+    #     get_initial_supervoxel_masks(cfg.orig_grid_shape,0,1),
+    #     get_initial_supervoxel_masks(cfg.orig_grid_shape,1,1)
+    #         ],axis=0)
+    # initial_masks=jnp.sum(initial_masks,axis=0)    
     
     masks=einops.rearrange(masks,'x y p ->1 x y p')
-    initial_masks=einops.rearrange(initial_masks,'x y p ->1 x y p')
+    # initial_masks=einops.rearrange(initial_masks,'x y p ->1 x y p')
     
 
 
@@ -146,7 +146,7 @@ def work_on_areas(cfg,batch_images_prim,masks):
 
     curr_image_out_meaned= np.zeros_like(curr_image)
     for i in range(4):        
-        masked_image, image_meaned= iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old,initial_masks)
+        masked_image, image_meaned= iter_over_masks(shape_reshape_cfgs,i,masks,curr_image,shape_reshape_cfgs_old)
         curr_image_out_meaned=curr_image_out_meaned+image_meaned
 
     curr_image_out_meaned=np.rot90(curr_image_out_meaned[0,:,:,0])
@@ -161,10 +161,10 @@ def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks)
     masks = jnp.round(masks)
         
     scale=4
-    mask_0,to_dispp_svs_0=masks_with_boundaries(0,0,masks,image_to_disp,scale)
-    mask_1,to_dispp_svs_1=masks_with_boundaries(1,0,masks,image_to_disp,scale)
-    mask_2,to_dispp_svs_2=masks_with_boundaries(0,1,masks,image_to_disp,scale)
-    mask_3,to_dispp_svs_3=masks_with_boundaries(1,1,masks,image_to_disp,scale)
+    mask_0,to_dispp_svs_0=masks_with_boundaries_simple(0,masks,image_to_disp,scale)
+    mask_1,to_dispp_svs_1=masks_with_boundaries_simple(1,masks,image_to_disp,scale)
+    mask_2,to_dispp_svs_2=masks_with_boundaries_simple(2,masks,image_to_disp,scale)
+    mask_3,to_dispp_svs_3=masks_with_boundaries_simple(3,masks,image_to_disp,scale)
     image_to_disp=np.rot90(np.array(image_to_disp))
 
 

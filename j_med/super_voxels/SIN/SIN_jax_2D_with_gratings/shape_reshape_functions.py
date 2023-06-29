@@ -99,14 +99,14 @@ def get_init_masks(cfg):
     return jnp.stack(res,axis=-1)
 
 
-# def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y,mask_num):
-#     """
-#     on the basis of the present shifts we will initialize the masks
-#     ids of the supervoxels here are implicit based on which mask and what location we are talking about
-#     """
-#     initt=np.zeros(orig_grid_shape)
-#     initt[shift_x::2,shift_y::2,mask_num]=1
-#     return initt
+def get_initial_supervoxel_masks(orig_grid_shape,shift_x,shift_y,mask_num):
+    """
+    on the basis of the present shifts we will initialize the masks
+    ids of the supervoxels here are implicit based on which mask and what location we are talking about
+    """
+    initt=np.zeros(orig_grid_shape)
+    initt[shift_x::2,shift_y::2,mask_num]=1
+    return initt
 
 
 

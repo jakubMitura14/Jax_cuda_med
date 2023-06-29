@@ -125,8 +125,8 @@ def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cf
 
   tx = optax.chain(
         optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
-        optax.lion(learning_rate=joined_scheduler)
-        # optax.lion(learning_rate=cfg.learning_rate)
+        # optax.lion(learning_rate=joined_scheduler)
+        optax.lion(learning_rate=cfg.learning_rate)
         #optax.lion(learning_rate=decay_scheduler)
         # optax.adafactor()
         
@@ -280,7 +280,7 @@ def main_train(cfg):
   slicee=57#57 was nice
   # checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-12_06_21_11_143817/1755'
   # checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-14_15_53_12_704500/375'
-  checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-15_04_05_47_410213/75'
+  checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-28_16_12_22_977804/15'
   prng = jax.random.PRNGKey(42)
   model = SpixelNet(cfg)
   rng_2=jax.random.split(prng,num=jax.local_device_count() )

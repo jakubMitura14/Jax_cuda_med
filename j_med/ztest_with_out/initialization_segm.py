@@ -111,8 +111,36 @@ def get_variance(image_area,mask_area):
     return varr
 
 
+def simple_erode(prev,curr,next):
+    return jnp.logical_or(jnp.logical_and(prev,curr),jnp.logical_and(curr,next))
 
-def get_sv_variance_diff_after_change(sv_id,all_flattened_image,all_flattened_masks,point,new_value):
+v_soft_erode_around_simple=jax.vmap(simple_erode, in_axes=(0,0,0), out_axes=0)
+v_v_soft_erode_around_simple=jax.vmap(simple_erode, in_axes=(0,0,0), out_axes=0)
+
+
+def translate_in_axis_x_up(arr:jnp.ndarray):
+    return jnp.roll(arr, 1, axis=0).at[0,:].set(0)
+def translate_in_axis_x_down(arr:jnp.ndarray):
+    return jnp.roll(arr, -1, axis=0).at[-1,:].set(0)
+def translate_in_axis_y_up(arr:jnp.ndarray):
+    return jnp.roll(arr, 1, axis=1).at[:,0].set(0)
+def translate_in_axis_y_down(arr:jnp.ndarray):
+    return jnp.roll(arr, 1, axis=1).at[:,-1].set(0)
+
+
+def get_eroded_mask(a):
+    """
+    get mask eroded in such a way that single voxels are mostly preserved (to prevent vanishing supervoxels by dilatation)
+    """
+    a_b=translate_in_axis_x_down(a)
+    a_f=translate_in_axis_x_up(a)
+    eroded= v_v_soft_erode_around_simple(a_b,a,a_f)
+    a_u=translate_in_axis_y_down(a)
+    a_d=translate_in_axis_y_up(a)
+    return  v_v_soft_erode_around_simple(a_u,a,a_d)*eroded
+
+
+def get_sv_variance_diff_after_change(sv_id,all_flattened_image,all_flattened_edge_map,all_flattened_masks,point,new_value,diameter_x,diameter_y):
     """
     given sv list, sv id - we get sv area ; similarly with image
     additionally we get the image - for this sv area
@@ -121,14 +149,21 @@ def get_sv_variance_diff_after_change(sv_id,all_flattened_image,all_flattened_ma
     """   
     image_area=all_flattened_image[sv_id,:,:]
     mask_area=all_flattened_masks[sv_id,:,:]
+    edge_area=all_flattened_edge_map[sv_id,:,:]
+    edges_in_center=get_eroded_mask(edge_area)
+    only_edge= jnp.logical_and(mask_area,jnp.logical_not( edges_in_center)  )
+    loss_old=jnp.sum(jnp.multiply(edges_in_center,edge_area).flatten()).astype(float)
+    loss_new=jnp.sum(jnp.multiply(edges_in_center,edge_area.at[point[0],point[1]].set(new_value)).flatten()).astype(float)
 
-    varr_old=get_variance(image_area,mask_area)
-    varr_new=get_variance(image_area,mask_area.at[point[0],point[1]].set(new_value))
+    # varr_old=get_variance(image_area,mask_area)
+    # varr_new=get_variance(image_area,mask_area.at[point[0],point[1]].set(new_value))
 
-    varr_diff=varr_old-varr_new
+    # varr_diff=varr_old-varr_new
+    varr_diff=loss_old-loss_new
+    # varr_diff=loss_new-loss_old
     #if we do not have anything to change no point in calculations
 
-    return jax.lax.select(sv_id==-1,0.0, jax.lax.select(mask_area[point[0],point[1]]==new_value,0.0,varr_diff  ))
+    return jax.lax.select(sv_id==-1,0.0, jax.lax.select(mask_area[point[0],point[1]]==new_value,0.0,jax.lax.select(point[0]==-1 , 0.0,varr_diff)  ))
 
 def transform_points(curr_point,axis,is_forward,diameter_x,diameter_y,orthogonal_axis,n_a_dir,n_b_dir,a_dir,b_dir):
     point_neighbour = transform_point_to_other_sv(curr_point,axis,is_forward,diameter_x,diameter_y)
@@ -144,26 +179,26 @@ def mark_points_to_accept(curried,curr_point):
     """ 
     analyze wheather the modification will reduce the mean variance or not
     """
-    is_forward,axis,diameter_x,diameter_y,orthogonal_axis,orto_neigh,orto_it,curr_index,all_flattened_image,all_flattened_masks,neigh_index=curried
+    is_forward,axis,diameter_x,diameter_y,orthogonal_axis,orto_neigh,orto_it,curr_index,all_flattened_image,all_flattened_edge_map,all_flattened_masks,neigh_index=curried
     na_id,n_a_dir,n_b_id,n_b_dir=orto_neigh
     a_id,a_dir,b_id,b_dir=orto_it
 
     point_neighbour,point_ortho_a,point_ortho_b,point_ortho_a_neigh,point_ortho_b_neigh=transform_points(curr_point,axis,is_forward,diameter_x,diameter_y,orthogonal_axis,n_a_dir,n_b_dir,a_dir,b_dir)
 
-    main_vars=get_sv_variance_diff_after_change(curr_index,all_flattened_image,all_flattened_masks,curr_point,True)
+    main_vars=get_sv_variance_diff_after_change(curr_index,all_flattened_image,all_flattened_edge_map,all_flattened_masks,curr_point,True,diameter_x,diameter_y)
 
-    vars_neighbours=jnp.sum(jnp.array([get_sv_variance_diff_after_change(neigh_index,all_flattened_image,all_flattened_masks,point_neighbour,False)
-    ,get_sv_variance_diff_after_change(a_id,all_flattened_image,all_flattened_masks,point_ortho_a,False)
-    ,get_sv_variance_diff_after_change(b_id,all_flattened_image,all_flattened_masks,point_ortho_b,False)    
-    ,get_sv_variance_diff_after_change(na_id,all_flattened_image,all_flattened_masks,point_ortho_a_neigh,False)
-    ,get_sv_variance_diff_after_change(n_b_id,all_flattened_image,all_flattened_masks,point_ortho_b_neigh,False)
+    vars_neighbours=jnp.sum(jnp.array([get_sv_variance_diff_after_change(neigh_index,all_flattened_image,all_flattened_edge_map,all_flattened_masks,point_neighbour,False,diameter_x,diameter_y)
+    ,get_sv_variance_diff_after_change(a_id,all_flattened_image,all_flattened_edge_map,all_flattened_masks,point_ortho_a,False,diameter_x,diameter_y)
+    ,get_sv_variance_diff_after_change(b_id,all_flattened_image,all_flattened_edge_map,all_flattened_masks,point_ortho_b,False,diameter_x,diameter_y)    
+    ,get_sv_variance_diff_after_change(na_id,all_flattened_image,all_flattened_edge_map,all_flattened_masks,point_ortho_a_neigh,False,diameter_x,diameter_y)
+    ,get_sv_variance_diff_after_change(n_b_id,all_flattened_image,all_flattened_edge_map,all_flattened_masks,point_ortho_b_neigh,False,diameter_x,diameter_y)
     
     ]))  
     
     sum_variance=main_vars+vars_neighbours
     # is_variance_better= jax.lax.select(sum_variance>0,1,0)
     is_variance_better= sum_variance>0
-    return ((is_forward,axis,diameter_x,diameter_y,orthogonal_axis,orto_neigh,orto_it,curr_index,all_flattened_image,all_flattened_masks,neigh_index), jnp.array([curr_point[0],curr_point[1], is_variance_better]))
+    return ((is_forward,axis,diameter_x,diameter_y,orthogonal_axis,orto_neigh,orto_it,curr_index,all_flattened_image,all_flattened_edge_map,all_flattened_masks,neigh_index), jnp.array([curr_point[0],curr_point[1], is_variance_better]))
 
 
 def translate_in_axis_switch(all_flattened_masks,curr_index,shape_re_cfg,axis,is_forward):
@@ -213,7 +248,7 @@ def get_edge_points(all_flattened_masks,curr_index,shape_re_cfg,axis,is_forward)
     return edge_points_indicies
 
 
-def act_on_edge(all_flattened_image,all_flattened_masks,shape_re_cfg,edge,index):
+def act_on_edge(all_flattened_image,all_flattened_edge_map,all_flattened_masks,shape_re_cfg,edge,index):
     """ 
     we have a single edge represented in array
     where first entry is the index of it in flattenned mask
@@ -229,7 +264,7 @@ def act_on_edge(all_flattened_image,all_flattened_masks,shape_re_cfg,edge,index)
     orto_neigh= (na_id,n_a_dir,n_b_id,n_b_dir)
     orto_it= (a_id,a_dir,b_id,b_dir)
 
-    curried=is_forward,axis,shape_re_cfg.diameter_x,shape_re_cfg.diameter_y,orthogonal_axis,orto_neigh,orto_it,curr_index,all_flattened_image,all_flattened_masks,neigh_index
+    curried=is_forward,axis,shape_re_cfg.diameter_x,shape_re_cfg.diameter_y,orthogonal_axis,orto_neigh,orto_it,curr_index,all_flattened_image,all_flattened_edge_map,all_flattened_masks,neigh_index
     curried,points_to_modif=jax.lax.scan(mark_points_to_accept,curried,edge_points_indicies)
     #we return only accepted points
     # points_to_modif = points_to_modif[:,2]
@@ -242,15 +277,15 @@ def act_on_edge(all_flattened_image,all_flattened_masks,shape_re_cfg,edge,index)
 
 
 # v_act_on_edge=jax.vmap(act_on_edge,in_axes=(0,0,None,0,None,None))#vmap over edge
-v_act_on_edge=jax.vmap(act_on_edge,in_axes=(None,None,None,0,None))#vmap over edge
+v_act_on_edge=jax.vmap(act_on_edge,in_axes=(None,None,None,None,0,None))#vmap over edge
 
 
-def work_on_sv(all_flattened_image,all_flattened_masks,shape_re_cfg,grouped_edges_curr,index):
+def work_on_sv(all_flattened_image,all_flattened_edge_map,all_flattened_masks,shape_re_cfg,grouped_edges_curr,index):
     """ 
     working on single supervoxel with multiple associated edges and points
     """
     curr_index= grouped_edges_curr[0,0]# any edge should have the same curr_id by construction
-    points_to_modif_all_edges= v_act_on_edge(all_flattened_image,all_flattened_masks,shape_re_cfg,grouped_edges_curr,index)
+    points_to_modif_all_edges= v_act_on_edge(all_flattened_image,all_flattened_edge_map,all_flattened_masks,shape_re_cfg,grouped_edges_curr,index)
     points_to_modif_all_edges= einops.rearrange(points_to_modif_all_edges,'e p c->(e p) c')#flattening from multiple edges
     # points_to_modif_all_edges=points_to_modif_all_edges[:,:,0:2]
     curr_mask=all_flattened_masks[curr_index,:,:]
@@ -260,13 +295,13 @@ def work_on_sv(all_flattened_image,all_flattened_masks,shape_re_cfg,grouped_edge
     return mask
 
 
-v_work_on_sv=jax.vmap(work_on_sv,in_axes=(None,None,None,0,None))
+v_work_on_sv=jax.vmap(work_on_sv,in_axes=(None,None,None,None,0,None))
 # v_v_work_on_sv=jax.vmap(v_work_on_sv,in_axes=(None,None,None,None,None,None))
 
-def work_on_mask(all_flattened_image,all_flattened_masks,shape_re_cfg,grouped_edges_curr,index):
-    return v_work_on_sv(all_flattened_image,all_flattened_masks,shape_re_cfg,grouped_edges_curr,index)
+def work_on_mask(all_flattened_image,all_flattened_edge_map,all_flattened_masks,shape_re_cfg,grouped_edges_curr,index):
+    return v_work_on_sv(all_flattened_image,all_flattened_edge_map,all_flattened_masks,shape_re_cfg,grouped_edges_curr,index)
 
-v_work_on_mask=jax.vmap(work_on_mask,in_axes=(0,0,None,None,None))
+v_work_on_mask=jax.vmap(work_on_mask,in_axes=(0,0,0,None,None,None))
 
 def get_mask_corrected(curr_index,modif_mask_index,all_flattened_masks):
     """
@@ -282,8 +317,8 @@ def get_mask_corrected(curr_index,modif_mask_index,all_flattened_masks):
     neg= jnp.logical_not(modified_mask)
     return jnp.logical_and(all_flattened_masks[curr_index],neg)
 
-@partial(jax.pmap, axis_name="batch",static_broadcasted_argnums=(2,3))
-def single_iter(all_flattened_image,masks,cfg,shape_reshape_cfgs,grouped_edges):
+@partial(jax.pmap, axis_name="batch",static_broadcasted_argnums=(3,4))
+def single_iter(all_flattened_image,all_flattened_edge_map,masks,cfg,shape_reshape_cfgs,grouped_edges):
     # print(f"sssstart all_flattened_masks {all_flattened_masks.shape} all_flattened_image {all_flattened_image.shape} ")
 
     all_flattened_masks=list(map(lambda i: divide_sv_grid(masks, shape_reshape_cfgs[i])[:,:,:,:,i],range(cfg.masks_num)))
@@ -294,6 +329,7 @@ def single_iter(all_flattened_image,masks,cfg,shape_reshape_cfgs,grouped_edges):
     def get_mask(index,all_flattened_masks_inner):
         all_indicies=np.arange(cfg.masks_num)
         modified_mask= v_work_on_mask( all_flattened_image
+                                      ,all_flattened_edge_map
                                 ,all_flattened_masks_inner
                                 ,shape_reshape_cfgs[index]
                                 ,grouped_edges[index,:,:,:]
@@ -407,6 +443,7 @@ def get_edges_with_dir(cfg):
 #     f.create_dataset(f"label",data= curr_label)
 #     f.close()   
 
+v_apply_farid_both= jax.vmap(apply_farid_both)
 def get_initial_segm():
     """
     getting initial segmentation (iterative method)
@@ -422,23 +459,45 @@ def get_initial_segm():
     cached_subj =get_spleen_data()[0:4]
     local_batch_size=2
     batch_images,batch_labels= add_batches(cached_subj,cfg,local_batch_size)
-    for index in range(batch_images.shape[0]) :
-        masks= masks_init
-        masks= einops.repeat(masks,'w h c->pp b w h c',pp=jax.local_device_count(),b=local_batch_size//jax.local_device_count() )
-        image=batch_images[index,:,:,:,:,:]
-        
-        all_flattened_image=list(map(lambda i: divide_sv_grid_p_mapped(image, shape_reshape_cfgs[i]),range(cfg.masks_num)))
-        all_flattened_image, ps_all_flattened_image = einops.pack(all_flattened_image, 'p b * w h c')
+    # for index in range(batch_images.shape[0]) :
+    index=0
+    masks= masks_init
+    masks= einops.repeat(masks,'w h c->pp b w h c',pp=jax.local_device_count(),b=local_batch_size//jax.local_device_count() )
+    image=batch_images[index,:,:,:,:,:]
+    slicee=25
+    example_image=image[0,0,:,:,0]
+    edge_map=v_apply_farid_both(image)
+
+    all_flattened_image=list(map(lambda i: divide_sv_grid_p_mapped(image, shape_reshape_cfgs[i]),range(cfg.masks_num)))
+    all_flattened_image, ps_all_flattened_image = einops.pack(all_flattened_image, 'p b * w h c')
+
+    all_flattened_edge_map=list(map(lambda i: divide_sv_grid_p_mapped(edge_map, shape_reshape_cfgs[i]),range(cfg.masks_num)))
+    all_flattened_edge_map, ps_all_flattened_image = einops.pack(all_flattened_edge_map, 'p b * w h c')
+
+    example_mask=masks[0,0,:,:,:]
+    # i=0
+    # with file_writer.as_default():
+    #     tf.summary.image(f"mask_0_0", masks_with_boundaries_simple(0,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
+    #     tf.summary.image(f"mask_1_0", masks_with_boundaries_simple(1,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
+    #     tf.summary.image(f"mask_2_0", masks_with_boundaries_simple(2,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
+    #     tf.summary.image(f"mask_3_0", masks_with_boundaries_simple(3,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
 
 
-        for i in range(cfg.num_iter_initialization):
-            masks = single_iter(all_flattened_image,masks,cfg,tuple(shape_reshape_cfgs)
-            ,flax.jax_utils.replicate(edges_with_dir) )
+    for i in range(cfg.num_iter_initialization):
+        masks = single_iter(all_flattened_image,all_flattened_edge_map,masks,cfg,tuple(shape_reshape_cfgs)
+        ,flax.jax_utils.replicate(edges_with_dir) )
+        example_mask=masks[0,0,:,:,:]
 
-        
-        # print(f" mmmmmasks {masks.shape}")
+        # print(f" mmmmmasks {example_mask.shape} example_image {example_image.shape}")
+        if(i%2==0):
+            with file_writer.as_default():
+                tf.summary.image(f"mask_0", masks_with_boundaries_simple(0,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
+                tf.summary.image(f"mask_1", masks_with_boundaries_simple(1,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
+                tf.summary.image(f"mask_2", masks_with_boundaries_simple(2,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
+                tf.summary.image(f"mask_3", masks_with_boundaries_simple(3,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
+    # print(f" mmmmmasks {masks.shape}")
 
-# get_initial_segm()
+get_initial_segm()
 
 #python3 -m j_med.ztest_with_out.initialization_segm
 # tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board   

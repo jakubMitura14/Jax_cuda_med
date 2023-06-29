@@ -11,13 +11,14 @@ def get_cfg():
     # cfg.learning_rate=0.0000001
     # cfg.learning_rate=0.00000001
     # cfg.learning_rate=0.00000000001
-    cfg.learning_rate=0.00000009
+    cfg.learning_rate=0.000000001
+    # cfg.learning_rate=0.0000009
     cfg.convolution_channels=32
 
     #true_num_dim - number of the dimensions num_dim is number of the masks needed to describe it
     cfg.true_num_dim=2
     cfg.num_dim=4
-    cfg.batch_size=160
+    cfg.batch_size=210
 
     cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
     cfg.img_size = (cfg.batch_size,256,256,1)
@@ -65,7 +66,7 @@ def get_cfg():
     cfg.to_save_check_point=True
 
     cfg.is_gsam=False
-    cfg.num_iter_initialization=2
+    cfg.num_iter_initialization=5
     # convSpecs=(
     #    {'in_channels':1,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) },
     #    {'in_channels':1,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) },
