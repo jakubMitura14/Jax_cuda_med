@@ -198,13 +198,13 @@ def update_fn(state, image, dynamic_cfg,cfg,model):
   # grads=None
   # if(cfg.is_gsam):
 
-  # l, grads = gsam_gradient(loss_fn=loss_fn, params=state.params, inputs=image,
-  #     targets=dynamic_cfg, lr=cfg.lr, **cfg.gsam)
-  # l, grads = jax.lax.pmean((l, grads), axis_name="batch")    
+  l, grads = gsam_gradient(loss_fn=loss_fn, params=state.params, inputs=image,
+      targets=dynamic_cfg, lr=cfg.lr, **cfg.gsam)
+  l, grads = jax.lax.pmean((l, grads), axis_name="batch")    
 
   # else:
-  grad_fn = jax.value_and_grad(loss_fn)
-  l, grads = grad_fn(state.params,image,dynamic_cfg)
+  # grad_fn = jax.value_and_grad(loss_fn)
+  # l, grads = grad_fn(state.params,image,dynamic_cfg)
   state=state.apply_gradients(grads=grads)
 
   # state = update_model(state, grads)
@@ -280,21 +280,21 @@ def main_train(cfg):
   slicee=57#57 was nice
   # checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-12_06_21_11_143817/1755'
   # checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-14_15_53_12_704500/375'
-  checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-29_09_27_18_754531/30'
+  checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-29_19_23_15_314632/180'
   prng = jax.random.PRNGKey(42)
   model = SpixelNet(cfg)
   rng_2=jax.random.split(prng,num=jax.local_device_count() )
   dynamic_cfgs=get_dynamic_cfgs()
   cached_subj =get_spleen_data()
   batch_images,batch_labels= add_batches(cached_subj,cfg)
-  state= initt(rng_2,cfg,model,dynamic_cfgs[1])  
+  # state= initt(rng_2,cfg,model,dynamic_cfgs[1])  
 
 
-  # orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
-  # raw_restored = orbax_checkpointer.restore(checkpoint_path)
-  # params_new=freeze(raw_restored['model']['params'])
+  orbax_checkpointer=orbax.checkpoint.PyTreeCheckpointer()
+  raw_restored = orbax_checkpointer.restore(checkpoint_path)
+  params_new=freeze(raw_restored['model']['params'])
 
-  # state= initt_from_orbax(params_new,cfg,model,dynamic_cfgs[1],checkpoint_path)  
+  state= initt_from_orbax(params_new,cfg,model,dynamic_cfgs[1],checkpoint_path)  
 
 
   # state=flax.jax_utils.replicate(state)
@@ -309,9 +309,9 @@ def main_train(cfg):
   # sched_fns_cpu = [jax.jit(sched_fn, backend="cpu") for sched_fn in sched_fns]
   # sched_fns_cpu = [jax.jit(sched_fn) for sched_fn in sched_fns]
   
-  # batch_images_prim=batch_images[0,0,slicee,:,:,:]
-  # batch_images_prim=einops.rearrange(batch_images_prim,'w h c->1 w h c ')
-  # curr_label=batch_labels[0,0,slicee,:,:,0]
+  batch_images_prim=batch_images[0,0,slicee,:,:,:]
+  batch_images_prim=einops.rearrange(batch_images_prim,'w h c->1 w h c ')
+  curr_label=batch_labels[0,0,slicee,:,:,0]
 
   # params_repl = flax.jax_utils.replicate(params_cpu)
   # opt_repl = flax.jax_utils.replicate(opt_cpu)

@@ -11,7 +11,7 @@ def get_cfg():
     # cfg.learning_rate=0.0000001
     # cfg.learning_rate=0.00000001
     # cfg.learning_rate=0.00000000001
-    cfg.learning_rate=0.000000001
+    cfg.learning_rate=0.00000005
     # cfg.learning_rate=0.0000009
     cfg.convolution_channels=32
 

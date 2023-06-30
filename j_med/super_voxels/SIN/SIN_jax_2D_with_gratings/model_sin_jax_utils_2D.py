@@ -290,24 +290,24 @@ class Apply_on_single_area(nn.Module):
         mask_combined_curr=mask_combined_curr.at[-1,:].set(0)
         # mask_combined_curr=filter_mask_of_intrest(mask_combined,initial_mask_id)
         eroded_mask=get_eroded_mask(mask_combined_curr,(self.diameter_x,self.diameter_y))
-        mask_edge= (1-eroded_mask)*mask_combined_curr
-        edges_on_edges=jnp.multiply(mask_edge,edge_map)
-        losss= (jnp.sum(edges_on_edges.flatten())*4000)/jnp.sum(mask_edge.flatten())+self.cfg.epsilon
+        # mask_edge= (1-eroded_mask)*mask_combined_curr
+        # edges_on_edges=jnp.multiply(mask_edge,edge_map)
+        # losss= (jnp.sum(edges_on_edges.flatten())*4000)#/jnp.sum(mask_edge.flatten())+self.cfg.epsilon
 
-        # masked_edges= jnp.multiply(eroded_mask,edge_map)
-        # mask_combined_curr= einops.rearrange(mask_combined_curr,'w h -> w h 1')
-        # masked_image= jnp.multiply(mask_combined_curr,resized_image)
-        # loss=jnp.sum(masked_edges.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
+        masked_edges= jnp.multiply(eroded_mask,edge_map)
+        mask_combined_curr= einops.rearrange(mask_combined_curr,'w h -> w h 1')
+        masked_image= jnp.multiply(mask_combined_curr,resized_image)
+        loss=jnp.sum(masked_edges.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
 
-        # mask_edge_for_size=jnp.gradient(v_v_harder_diff_round(mask_combined_curr[:,:,0]))
-        # mask_edge_for_size=[jnp.power(mask_edge_for_size[0],2),jnp.power(mask_edge_for_size[1],2)]
-        # mask_edge_for_size=jnp.sum(jnp.stack(mask_edge_for_size,axis=0),axis=0)
-        # # mask_combined_curr_for_edge=einops.rearrange(mask_combined_curr,'w h c->1 w h c')
+        mask_edge_for_size=jnp.gradient(v_v_harder_diff_round(mask_combined_curr[:,:,0]))
+        mask_edge_for_size=[jnp.power(mask_edge_for_size[0],2),jnp.power(mask_edge_for_size[1],2)]
+        mask_edge_for_size=jnp.sum(jnp.stack(mask_edge_for_size,axis=0),axis=0)
+        # mask_combined_curr_for_edge=einops.rearrange(mask_combined_curr,'w h c->1 w h c')
         # mask_edge_size=jnp.sum(v_v_harder_diff_round(mask_edge_for_size)).flatten()/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
 
-        # meann= jnp.sum(masked_image.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
-        # varr= jnp.power( jnp.multiply((masked_image-meann),mask_combined_curr),2)
-        # varr=jnp.sum(varr.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
+        meann= jnp.sum(masked_image.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
+        varr= jnp.power( jnp.multiply((masked_image-meann),mask_combined_curr),2)
+        varr=jnp.sum(varr.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
 
 
         # adding penalty for cossing the edge - so we subtract gradients of the mask fro mask 
@@ -318,8 +318,8 @@ class Apply_on_single_area(nn.Module):
 
         # return out_image,varr
         # masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
-        # res=(varr*loss*1000)
-        res=(losss)*(-1)
+        res=(varr*loss*1000)
+        # res=(losss)*(-1)
         return res
 
 

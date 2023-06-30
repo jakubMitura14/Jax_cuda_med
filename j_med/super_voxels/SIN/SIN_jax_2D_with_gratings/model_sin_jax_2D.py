@@ -66,11 +66,11 @@ class SpixelNet(nn.Module):
        ('conv5',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
        ('conv6',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
        ('conv7',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
-       ('conv8',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) })
-       ('conv9',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) })
-       ('conv10',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) })
-       ('conv11',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) })
-       ('conv12',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) })
+       ('conv8',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv9',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv10',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv11',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
+       ('conv12',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) }),
        ('conv13',{'in_channels':cfg.convolution_channels,'out_channels':cfg.convolution_channels, 'kernel_size':(5,5),'stride':(1,1) })
         ]
         self.convSpecs_dict_list_additional=[
