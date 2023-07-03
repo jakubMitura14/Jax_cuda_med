@@ -297,11 +297,11 @@ class Apply_on_single_area(nn.Module):
         masked_edges= jnp.multiply(eroded_mask,edge_map)
         mask_combined_curr= einops.rearrange(mask_combined_curr,'w h -> w h 1')
         masked_image= jnp.multiply(mask_combined_curr,resized_image)
-        loss=jnp.sum(masked_edges.flatten())/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
+        loss=jnp.sum(masked_edges.flatten())#/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
 
-        mask_edge_for_size=jnp.gradient(v_v_harder_diff_round(mask_combined_curr[:,:,0]))
-        mask_edge_for_size=[jnp.power(mask_edge_for_size[0],2),jnp.power(mask_edge_for_size[1],2)]
-        mask_edge_for_size=jnp.sum(jnp.stack(mask_edge_for_size,axis=0),axis=0)
+        # mask_edge_for_size=jnp.gradient(v_v_harder_diff_round(mask_combined_curr[:,:,0]))
+        # mask_edge_for_size=[jnp.power(mask_edge_for_size[0],2),jnp.power(mask_edge_for_size[1],2)]
+        # mask_edge_for_size=jnp.sum(jnp.stack(mask_edge_for_size,axis=0),axis=0)
         # mask_combined_curr_for_edge=einops.rearrange(mask_combined_curr,'w h c->1 w h c')
         # mask_edge_size=jnp.sum(v_v_harder_diff_round(mask_edge_for_size)).flatten()/(jnp.sum(mask_combined_curr.flatten())+self.cfg.epsilon)
 
@@ -320,7 +320,7 @@ class Apply_on_single_area(nn.Module):
         # masked_edges= einops.rearrange(masked_edges,'w h -> w h 1')
         res=(varr*loss*1000)
         # res=(losss)*(-1)
-        return res
+        return loss
 
 
 v_Apply_on_single_area=nn.vmap(Apply_on_single_area
@@ -609,12 +609,12 @@ class De_conv_batched_multimasks(nn.Module):
         return nn.Sequential([
             remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,0),
             Apply_conv(self.convSpecs_dict_list,self.dns_dict,1),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,2),
-            Apply_conv(self.convSpecs_dict_list,self.dns_dict,3),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,4),
-            Apply_conv(self.convSpecs_dict_list,self.dns_dict,5),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,6),
-            Apply_conv(self.convSpecs_dict_list,self.dns_dict,7)
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,2)
+            # Apply_conv(self.convSpecs_dict_list,self.dns_dict,3),
+            # remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,4),
+            # Apply_conv(self.convSpecs_dict_list,self.dns_dict,5),
+            # remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,6),
+            # Apply_conv(self.convSpecs_dict_list,self.dns_dict,7)
 
         # ,Conv_trio(self.cfg,self.features)
         # ,Conv_trio(self.cfg,self.features)
@@ -624,11 +624,11 @@ class De_conv_batched_multimasks(nn.Module):
     def convs_b(self,deconv_multi,conv_params):
 
         return nn.Sequential([
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,8),
-            Apply_conv(self.convSpecs_dict_list,self.dns_dict,9),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,10),
-            Apply_conv(self.convSpecs_dict_list,self.dns_dict,11),
-            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,12)
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,3),
+            Apply_conv(self.convSpecs_dict_list,self.dns_dict,4),
+            remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,5)
+            # Apply_conv(self.convSpecs_dict_list,self.dns_dict,11),
+            # remat(Apply_conv)(self.convSpecs_dict_list,self.dns_dict,12)
 
         # ,Conv_trio(self.cfg,self.features)
         # ,Conv_trio(self.cfg,self.features)
