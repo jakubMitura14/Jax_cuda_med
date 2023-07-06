@@ -47,7 +47,7 @@ class SpixelNet_geom(nn.Module):
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels)
-            ,Conv_trio(self.cfg,channels=self.cfg.weights_channels)
+            ,Conv_duo_tanh(self.cfg,channels=self.cfg.weights_channels)#we do not normalize in the end and use tanh activation
         ])(jnp.concatenate([image,edge_map],axis=-1))
         # conved=conved[:,0:-1,0:-1,:]
         print(f"conved {conved.shape} self.grid_a_points {self.grid_a_points.shape}")

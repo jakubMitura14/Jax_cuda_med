@@ -48,6 +48,15 @@ class Conv_trio(nn.Module):
         x=nn.LayerNorm()(x)
         return jax.nn.gelu(x)
 
+class Conv_duo_tanh(nn.Module):
+    cfg: ml_collections.config_dict.config_dict.ConfigDict
+    channels: int
+    strides:Tuple[int]=(1,1)
+
+    @nn.compact
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        x=nn.Conv(self.channels, kernel_size=(5,5),strides=self.strides)(x)
+        return jax.nn.tanh(x)
 
 def diff_round(x):
     """
@@ -97,30 +106,41 @@ def get_contribution_in_axes(fixed_point,strength):
     return jnp.array([x,y])
 v_get_contribution_in_axes=jax.vmap(get_contribution_in_axes)
 
-def get_4_point_loc(points_const,point_weights):
+def get_4_point_loc(points_const,point_weights,half_r):
+    half_r_bigger=half_r#*1.2
     calced=v_get_contribution_in_axes(points_const,point_weights)
+
+    
     calced=jnp.sum(calced,axis=0)
-    return calced
+    # calced=calced/(jnp.max(calced.flatten())+0.00001)
+    return calced*half_r_bigger
 
 
+
+
+def divide_my(el):
+    # print(f"aaaaaaaaaaaaa {el}")
+    res=el[0]/jnp.sum(el)
+    return jnp.array([res,1-res])
+v_divide_my= jax.vmap( divide_my,in_axes=0)
+v_v_divide_my= jax.vmap( v_divide_my,in_axes=0)
 
 def get_b_x_weights(weights):
     weights_curr=weights[:,:,0:2] 
-    grid_b_points_x_weights_0=jnp.pad(weights_curr[:,:,0],((1,0),(0,0)),constant_values=((0.5,0.5),(0.5,0.5)))
-    grid_b_points_x_weights_1=jnp.pad(weights_curr[:,:,1],((0,1),(0,0)),constant_values=((0.5,0.5),(0.5,0.5)))
-    grid_b_points_x_weights= jnp.stack([grid_b_points_x_weights_0,grid_b_points_x_weights_1],axis=-1)
-
-    return nn.softmax(grid_b_points_x_weights,axis=-1)
+    grid_b_points_x_weights_0=np.pad(weights_curr[:,:,0],((1,0),(0,0)))
+    grid_b_points_x_weights_1=np.pad(weights_curr[:,:,1],((0,1),(0,0)))
+    grid_b_points_x_weights= np.stack([grid_b_points_x_weights_0,grid_b_points_x_weights_1],axis=-1)
+    grid_b_points_x_weights=nn.sigmoid(grid_b_points_x_weights)
+    return v_v_divide_my(grid_b_points_x_weights)
 
 
 def get_b_y_weights(weights):
     weights_curr=weights[:,:,2:4] 
-    grid_b_points_y_weights_0=jnp.pad(weights_curr[:,:,0],((0,0),(1,0)),constant_values=((0.5,0.5),(0.5,0.5)))
-    grid_b_points_y_weights_1=jnp.pad(weights_curr[:,:,1],((0,0),(0,1)),constant_values=((0.5,0.5),(0.5,0.5)))
-    grid_b_points_y_weights= jnp.stack([grid_b_points_y_weights_0,grid_b_points_y_weights_1],axis=-1)
-
-    return nn.softmax(grid_b_points_y_weights,axis=-1)
-
+    grid_b_points_y_weights_0=np.pad(weights_curr[:,:,0],((0,0),(1,0)))
+    grid_b_points_y_weights_1=np.pad(weights_curr[:,:,1],((0,0),(0,1)))
+    grid_b_points_y_weights= np.stack([grid_b_points_y_weights_0,grid_b_points_y_weights_1],axis=-1)
+    grid_b_points_y_weights=nn.sigmoid(grid_b_points_y_weights)
+    return v_v_divide_my(grid_b_points_y_weights)
 
 
 def get_for_four_weights(weights):
@@ -130,15 +150,14 @@ def get_for_four_weights(weights):
         6- down_x,up_y
         7- down_x,down_y
     """
-    up_x_up_y=jnp.pad(weights[:,:,4],((1,0),(1,0)),constant_values=((0.5,0.5),(0.5,0.5))
-    up_x_down_y=jnp.pad(weights[:,:,5],((1,0),(0,1)),constant_values=((0.5,0.5),(0.5,0.5)))
-    down_x_up_y=jnp.pad(weights[:,:,6],((0,1),(1,0)),constant_values=((0.5,0.5),(0.5,0.5)))
-    down_x_down_y=jnp.pad(weights[:,:,7],((0,1),(0,1)),constant_values=((0.5,0.5),(0.5,0.5)))
+    up_x_up_y=np.pad(weights[:,:,4],((1,0),(1,0)))
+    up_x_down_y=np.pad(weights[:,:,5],((1,0),(0,1)))
+    down_x_up_y=np.pad(weights[:,:,6],((0,1),(1,0)))
+    down_x_down_y=np.pad(weights[:,:,7],((0,1),(0,1)))
 
-    grid_c_points_weights=jnp.stack([up_x_up_y,up_x_down_y,down_x_up_y,down_x_down_y],axis=-1)
+    grid_c_points_weights=np.stack([up_x_up_y,up_x_down_y,down_x_up_y,down_x_down_y],axis=-1)
 
-    # print(f"grid_c_points {grid_c_points.shape} grid_c_points_weights {grid_c_points_weights.shape}")
-    return nn.softmax(grid_c_points_weights,axis=-1)
+    return nn.softmax(grid_c_points_weights*100,axis=-1) 
 
 def apply_for_four_weights(grid_c_points_weight,grid_c_point,half_r):
     points_const=jnp.stack([  jnp.array([-half_r,-half_r])
@@ -146,12 +165,10 @@ def apply_for_four_weights(grid_c_points_weight,grid_c_point,half_r):
                               ,jnp.array([half_r,-half_r])
                               ,jnp.array([half_r,half_r])
                               ],axis=0)
-    # points_const=jnp.stack([  grid_c_point+jnp.array([-half_r,-half_r])
-    #                           ,grid_c_point+jnp.array([-half_r,half_r])
-    #                           ,grid_c_point+jnp.array([half_r,-half_r])
-    #                           ,grid_c_point+jnp.array([half_r,half_r])
-    #                           ],axis=0)
-    return get_4_point_loc(points_const,grid_c_points_weight)+grid_c_point
+
+    calced=get_4_point_loc(points_const,grid_c_points_weight,half_r)
+
+    return calced+grid_c_point
 v_apply_for_four_weights=jax.vmap(apply_for_four_weights,in_axes=(0,0,None))
 v_v_apply_for_four_weights=jax.vmap(v_apply_for_four_weights,in_axes=(0,0,None))
 
