@@ -25,7 +25,6 @@ from ml_collections import config_dict
 from functools import partial
 import toolz
 import chex
-from .render2D import diff_round,Conv_trio
 import jax.scipy as jsp
 from flax.linen import partitioning as nn_partitioning
 import pandas as pd
@@ -206,18 +205,9 @@ def divide_sv_grid(res_grid: jnp.ndarray,shape_reshape_cfg):
     cutted=einops.rearrange( cutted,'bb (a x) (b y) cc->bb (a b) x y cc', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
     return cutted
 
+
 def divide_sv_grid_no_batch(res_grid: jnp.ndarray,shape_reshape_cfg):
-    """
-    as the supervoxel will overlap we need to have a way to divide the array with supervoxel ids
-    into the set of non overlapping areas - we want thos area to be maximum possible area where we could find
-    any voxels associated with this supervoxels- the "radius" of this cube hence can be calculated based on the amount of dilatations made
-    becouse of this overlapping we need to be able to have at least 8 diffrent divisions
-    we can work them out on the basis of the fact where we start at each axis at 0 or r - and do it for
-    all axis permutations 2**3 =8
-    we need also to take care about padding after removing r from each axis the grid need to be divisible by 2*r+1
-    as the first row and column do not grow back by construction if there is no shift we always need to add r padding rest of pad to the end
-    in case no shift is present all padding should go at the end
-    """
+
     cutted=res_grid[0: shape_reshape_cfg.curr_image_shape[0]- shape_reshape_cfg.to_remove_from_end_x
                     ,0: shape_reshape_cfg.curr_image_shape[1]- shape_reshape_cfg.to_remove_from_end_y,:]
     cutted= jnp.pad(cutted,(
@@ -226,6 +216,7 @@ def divide_sv_grid_no_batch(res_grid: jnp.ndarray,shape_reshape_cfg):
                         ,(0,0)))
     cutted=einops.rearrange( cutted,'(a x) (b y) cc->(a b) x y cc', x=shape_reshape_cfg.diameter_x,y=shape_reshape_cfg.diameter_y)
     return cutted
+
 
 
 def divide_sv_grid_p_mapped(res_grid: jnp.ndarray,shape_reshape_cfg):

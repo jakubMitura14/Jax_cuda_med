@@ -54,10 +54,14 @@ from ..testUtils.tensorboard_utils import *
 # import torchvision.transforms.functional as F
 # import torchvision
 
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_2D import SpixelNet
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_utils_2D import *
-from ..super_voxels.SIN.SIN_jax_2D_with_gratings.shape_reshape_functions import *
+# from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_2D import SpixelNet
+# from ..super_voxels.SIN.SIN_jax_2D_with_gratings.model_sin_jax_utils_2D import *
+# from ..super_voxels.SIN.SIN_jax_2D_with_gratings.shape_reshape_functions import *
 
+
+from ..super_voxels.geometric_my_sv.geometric_sv_model import SpixelNet_geom
+from ..super_voxels.geometric_my_sv.geometric_sv_utils import *
+from ..super_voxels.geometric_my_sv.shape_reshape_functions import *
 
 
 SCRIPT_DIR = '/root/externalRepos/big_vision'
@@ -68,7 +72,7 @@ from big_vision.pp import builder as pp_builder
 from big_vision.trainers.proj.gsam.gsam import gsam_gradient
 
 from .config_out_image import get_cfg,get_dynamic_cfgs
-from .tensorboard_for_out_image import *
+from .tensorboard_for_geometric_sv import *
 from .data_utils import *
 import os
 import sys
@@ -84,33 +88,12 @@ tf.config.experimental.set_visible_devices([], 'GPU')
 cfg= get_cfg()
 file_writer=setup_tensorboard()
 
-# @partial(jax.jit, backend="cpu",static_argnums=(1,2,3))
-# @functools.partial(jax.pmap,static_broadcasted_argnums=(1,2,3), axis_name='ensemble')#,static_broadcasted_argnums=(2)
-# def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cfg):
-#   img_size=list(cfg.img_size)
-#   img_size[0]=img_size[0]//jax.local_device_count()
-#   rng,rng_mean=jax.random.split(rng_2)
-#   dummy_input = jnp.zeros(img_size, jnp.float32)
-#   # params = flax.core.unfreeze(model.init(rng, dummy_input,dynamic_cfg))["params"]  
-#   params = model.init({'params': rng,'to_shuffle':rng_mean  }, dummy_input,dynamic_cfg)['params'] 
-
-#   cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
-#   tx = optax.chain(
-#         optax.clip_by_global_norm(6.0),  # Clip gradients at norm 
-#         optax.lion(learning_rate=cfg.learning_rate))
-
-#   return train_state.TrainState.create(
-#       apply_fn=model.apply, params=params, tx=tx)
-
-
 
 @functools.partial(jax.pmap,static_broadcasted_argnums=(1,2,3), axis_name='ensemble')#,static_broadcasted_argnums=(2)
 def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cfg):
   """Creates initial `TrainState`."""
   img_size=list(cfg.img_size)
-  lab_size=list(cfg.label_size)
   img_size[0]=img_size[0]//jax.local_device_count()
-  lab_size[0]=lab_size[0]//jax.local_device_count()
   print(f"in initttt {tuple(img_size)}")
   input=jnp.ones(tuple(img_size))
   rng_main,rng_mean=jax.random.split(rng_2)
@@ -260,11 +243,11 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
 
   if(index==0 and epoch%cfg.divisor_logging==0):
     # losses,masks,out_image=model.apply({'params': state.params}, batch_images[0,:,:,:,:],dynamic_cfg, rngs={'to_shuffle': random.PRNGKey(2)})#, rngs={'texture': random.PRNGKey(2)}
-    losses,masks=simple_apply(state, batch_images, dynamic_cfg,cfg,index,model)
+    losses,control_points=simple_apply(state, batch_images, dynamic_cfg,cfg,index,model)
     #overwriting masks each time and saving for some tests and debugging
-    save_examples_to_hdf5(masks,batch_images_prim,curr_label)
+    # save_examples_to_hdf5(masks,batch_images_prim,curr_label)
     #saving images for monitoring ...
-    mask_0=save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,masks)
+    mask_0=save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,control_points)
     with file_writer.as_default():
         tf.summary.scalar(f"mask_0 mean", np.mean(mask_0.flatten()), step=epoch)    
 
@@ -282,7 +265,7 @@ def main_train(cfg):
   # checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-14_15_53_12_704500/375'
   checkpoint_path='/workspaces/Jax_cuda_med/data/checkpoints/2023-06-29_19_23_15_314632/180'
   prng = jax.random.PRNGKey(42)
-  model = SpixelNet(cfg)
+  model = SpixelNet_geom(cfg)
   rng_2=jax.random.split(prng,num=jax.local_device_count() )
   dynamic_cfgs=get_dynamic_cfgs()
   cached_subj =get_spleen_data()
@@ -313,36 +296,31 @@ def main_train(cfg):
   batch_images_prim=einops.rearrange(batch_images_prim,'w h c->1 w h c ')
   curr_label=batch_labels[0,0,slicee,:,:,0]
 
-  # params_repl = flax.jax_utils.replicate(params_cpu)
-  # opt_repl = flax.jax_utils.replicate(opt_cpu)
+  epoch=0
+  index=0
+  prng, rng_loop = jax.random.split(prng, 2)
+  print(f"epoch {epoch} index {index}")
+  state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
+                                    #,tx, sched_fns,params_cpu
+                                    ,model,cfg,dynamic_cfgs,checkPoint_folder
+                                    #,opt_cpu,sched_fns_cpu
+                                    ,rng_loop,slicee,
+                                  #  ,params_repl, opt_repl
+                                    state)
 
 
 
-
-  # prng, rng_loop = jax.random.split(prng, 2)
-  # epoch=0
-  # index=1
-  # state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
-  #                                     #,tx, sched_fns,params_cpu
-  #                                     ,model,cfg,dynamic_cfgs,checkPoint_folder
-  #                                     #,opt_cpu,sched_fns_cpu
-  #                                     ,rng_loop,slicee,
-  #                                   #  ,params_repl, opt_repl
-  #                                     state)
-
-
-
-  for epoch in range(1, cfg.total_steps):
-      prng, rng_loop = jax.random.split(prng, 2)
-      for index in range(batch_images.shape[0]) :
-        print(f"epoch {epoch} index {index}")
-        state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
-                                         #,tx, sched_fns,params_cpu
-                                         ,model,cfg,dynamic_cfgs,checkPoint_folder
-                                         #,opt_cpu,sched_fns_cpu
-                                         ,rng_loop,slicee,
-                                        #  ,params_repl, opt_repl
-                                         state)
+  # for epoch in range(1, cfg.total_steps):
+  #     prng, rng_loop = jax.random.split(prng, 2)
+  #     for index in range(batch_images.shape[0]) :
+  #       print(f"epoch {epoch} index {index}")
+  #       state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
+  #                                        #,tx, sched_fns,params_cpu
+  #                                        ,model,cfg,dynamic_cfgs,checkPoint_folder
+  #                                        #,opt_cpu,sched_fns_cpu
+  #                                        ,rng_loop,slicee,
+  #                                       #  ,params_repl, opt_repl
+  #                                        state)
         
 
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")
@@ -379,4 +357,4 @@ print(f"loop {toc_loop - tic_loop:0.4f} seconds")
 
 # tensorboard --logdir=/workspaces/Jax_cuda_med/data/tensor_board   
 
-# python3 -m j_med.ztest_with_out.Sin_2D_with_out_image
+# python3 -m j_med.ztest_geometric.run_geometric_sv
