@@ -82,7 +82,6 @@ def grid_build(res_grid,probs,dim_stride,probs_shape, grid_shape,orig_grid_shape
     # rolled_probs = v_v_v_harder_diff_round(rolled_probs)
     rolled_probs = jnp.round(rolled_probs)#TODO remove
     summed=jnp.sum(rolled_probs,axis=-1)#TODO remove
-    # print(f"rrrrrolled_probs {jnp.min(summed)} {jnp.max(summed)} \n summed {summed}")
 
     rolled_probs=rolled_probs.at[:,:,0].set(0.0)#TODO remove
     rolled_probs=rolled_probs.at[:,:,1].set(1.0)#TODO remove

@@ -253,7 +253,6 @@ class RelativePositionBias3D(nn.Module):
         #     "relative_position_index", "relative_position_index", self.get_rel_pos_index
         # )
         # rr=rpbt[jnp.reshape(self.relative_position_index, (-1))]
-        # print(f"rrrrr {rr.shape}")
         # rel_pos_bias = jnp.reshape(
         #     rr,(
         #         self.window_size[0] * self.window_size[1] * self.window_size[2] + 1,

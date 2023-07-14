@@ -27,6 +27,7 @@ from jax_smi import initialise_tracking
 from skimage.segmentation import mark_boundaries
 from ..super_voxels.geometric_my_sv.geometric_sv_utils import *
 from ..super_voxels.geometric_my_sv.shape_reshape_functions import *
+from ..super_voxels.geometric_my_sv.points_to_areas import *
 
 from ..testUtils.tensorboard_utils import *
 
@@ -77,34 +78,72 @@ def analyze_single_sv(sv_area,sv_center_coord, back_x,front_x,back_y,front_y,up_
 def analyze_single_mask(image,grid_a_points, grid_b_points_y,grid_c_points,shape_reshape_cfgs,mask_num):
     shape_reshape_cfg=shape_reshape_cfgs[mask_num]
     image_curr=divide_sv_grid_no_batch(image,shape_reshape_cfg)
-    print(f"image_curr {image_curr.shape} grid_a_points {grid_a_points.shape} grid_b_points_y {grid_b_points_y.shape} grid_c_points {grid_c_points.shape}")
+    # print(f"image_curr {image_curr.shape} grid_a_points {grid_a_points.shape} grid_b_points_y {grid_b_points_y.shape} grid_c_points {grid_c_points.shape}")
+
+def masks_with_boundaries_simple(mask_num,masks,image_to_disp,scale):
+    mask_0= masks[:,:,mask_num]    
+    # print(f"iiiin masks_with_boundaries_simple image_to_disp {image_to_disp.shape} mask_0 {mask_0.shape}")
+    image_to_disp=image_to_disp[:,:,0]
+    shapp=image_to_disp.shape
+    image_to_disp_big=jax.image.resize(image_to_disp,(shapp[0]*scale,shapp[1]*scale), "linear")     
+    shapp=mask_0.shape
+    mask_0_big=jax.image.resize(mask_0,(shapp[0]*scale,shapp[1]*scale), "nearest")  
+    with_boundaries=mark_boundaries(image_to_disp_big, np.round(mask_0_big).astype(int) )
+    with_boundaries= np.array(with_boundaries)
+    # with_boundaries=np.rot90(with_boundaries)
+    with_boundaries= einops.rearrange(with_boundaries,'w h c->1 w h c')
+    to_dispp_svs=with_boundaries
+    return to_dispp_svs
+
 
 def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,control_points):
+    r= cfg.r
     image_to_disp=batch_images_prim[0,:,:,:]
-    print(f"aaaa control_points {control_points[0].shape}  orig grid shape {cfg.orig_grid_shape}")
     # out_imageee=out_imageee[0,slicee,:,:,0]
     control_points    
     scale=4
-    shape_reshape_cfgs=get_all_shape_reshape_constants(cfg,r_x=cfg.r_x_total,r_y=cfg.r_y_total)
     grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points=control_points
-    grid_a_points=grid_b_points_x[0,slicee,:,:,:]
+    grid_a_points=grid_a_points[0,slicee,:,:,:]
     grid_b_points_x=grid_b_points_x[0,slicee,:,:,:]
     grid_b_points_y=grid_b_points_y[0,slicee,:,:,:]
     grid_c_points=grid_c_points[0,slicee,:,:,:]
 
-    grid_a_points=einops.rearrange(grid_a_points,'x y c-> (x y) c')
-    grid_b_points_x=einops.rearrange(grid_b_points_x,'x y c-> (x y) c')
-    grid_b_points_y=einops.rearrange(grid_b_points_y,'x y c-> (x y) c')
-    grid_c_points=einops.rearrange(grid_c_points,'x y c-> (x y) c')
+    grid_a_points=einops.rearrange(grid_a_points,'x y c-> 1 x y c')
+    grid_b_points_x=einops.rearrange(grid_b_points_x,'x y c-> 1 x y c')
+    grid_b_points_y=einops.rearrange(grid_b_points_y,'x y c-> 1 x y c')
+    grid_c_points=einops.rearrange(grid_c_points,'x y c-> 1 x y c')
+
+    # print(f"aaaa grid_a_points {grid_a_points[0].shape}  orig grid shape {cfg.orig_grid_shape}")
+
+    diam_x=cfg.img_size[1]+r
+    diam_y=cfg.img_size[2]+r
+
+    masks_all=analyze_all_control_points(grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points
+                                ,1,r
+                                ,r,diam_x,diam_y,r//2)
+    # print(f"mmmmasks_all {masks_all.shape}")
 
 
 
+    # grid_a_points=einops.rearrange(grid_a_points,'x y c-> (x y) c')
+    # grid_b_points_x=einops.rearrange(grid_b_points_x,'x y c-> (x y) c')
+    # grid_b_points_y=einops.rearrange(grid_b_points_y,'x y c-> (x y) c')
+    # grid_c_points=einops.rearrange(grid_c_points,'x y c-> (x y) c')
+    mask_0=masks_all[0,:,:,0]
+    mask_1=masks_all[0,:,:,1]
+    mask_2=masks_all[0,:,:,2]
+    mask_3=masks_all[0,:,:,3]
+    to_dispp_svs_0=masks_with_boundaries_simple(0,masks_all[0,:,:,:],image_to_disp,scale)
+    to_dispp_svs_1=masks_with_boundaries_simple(1,masks_all[0,:,:,:],image_to_disp,scale)
+    to_dispp_svs_2=masks_with_boundaries_simple(2,masks_all[0,:,:,:],image_to_disp,scale)
+    to_dispp_svs_3=masks_with_boundaries_simple(3,masks_all[0,:,:,:],image_to_disp,scale)
 
-    analyze_single_mask(image_to_disp,grid_a_points,grid_b_points_y,grid_c_points,shape_reshape_cfgs,0)
+
+    # analyze_single_mask(image_to_disp,grid_a_points,grid_b_points_y,grid_c_points,0)
 
     mask_sum=mask_0+mask_1+mask_2+mask_3
     with file_writer.as_default():
-        tf.summary.image(f"image_to_disp",image_to_disp , step=epoch)
+        tf.summary.image(f"image_to_disp",jnp.expand_dims(image_to_disp, 0) , step=epoch)
 
     with file_writer.as_default():
         #   tf.summary.image(f"masks",plot_heatmap_to_image(masks_to_disp) , step=epoch,max_outputs=2000)
@@ -116,7 +155,7 @@ def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,contro
         tf.summary.image(f"to_dispp_svs_3",to_dispp_svs_3 , step=epoch,max_outputs=2000)
         # tf.summary.image(f"out_imageee",out_imageee , step=epoch,max_outputs=2000)
         # tf.summary.image(f"out_imageee_heat",plot_heatmap_to_image(out_imageee[0,:,:,0]) , step=epoch,max_outputs=2000)
-        tf.summary.image(f"curr_image_out_meaned",curr_image_out_meaned , step=epoch,max_outputs=2000)
+        # tf.summary.image(f"curr_image_out_meaned",curr_image_out_meaned , step=epoch,max_outputs=2000)
 
         tf.summary.image(f"curr_label",plot_heatmap_to_image(np.rot90(curr_label)) , step=epoch,max_outputs=2000)    
 

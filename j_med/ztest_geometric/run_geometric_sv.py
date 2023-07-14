@@ -108,8 +108,8 @@ def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cf
 
   tx = optax.chain(
         optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
-        optax.lion(learning_rate=joined_scheduler)
-        #optax.lion(learning_rate=cfg.learning_rate)
+        # optax.lion(learning_rate=joined_scheduler)
+        optax.lion(learning_rate=cfg.learning_rate)
         #optax.lion(learning_rate=decay_scheduler)
         # optax.adafactor()
         
@@ -296,31 +296,31 @@ def main_train(cfg):
   batch_images_prim=einops.rearrange(batch_images_prim,'w h c->1 w h c ')
   curr_label=batch_labels[0,0,slicee,:,:,0]
 
-  epoch=0
-  index=0
-  prng, rng_loop = jax.random.split(prng, 2)
-  print(f"epoch {epoch} index {index}")
-  state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
-                                    #,tx, sched_fns,params_cpu
-                                    ,model,cfg,dynamic_cfgs,checkPoint_folder
-                                    #,opt_cpu,sched_fns_cpu
-                                    ,rng_loop,slicee,
-                                  #  ,params_repl, opt_repl
-                                    state)
+  # epoch=0
+  # index=0
+  # prng, rng_loop = jax.random.split(prng, 2)
+  # print(f"epoch {epoch} index {index}")
+  # state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
+  #                                   #,tx, sched_fns,params_cpu
+  #                                   ,model,cfg,dynamic_cfgs,checkPoint_folder
+  #                                   #,opt_cpu,sched_fns_cpu
+  #                                   ,rng_loop,slicee,
+  #                                 #  ,params_repl, opt_repl
+  #                                   state)
 
 
 
-  # for epoch in range(1, cfg.total_steps):
-  #     prng, rng_loop = jax.random.split(prng, 2)
-  #     for index in range(batch_images.shape[0]) :
-  #       print(f"epoch {epoch} index {index}")
-  #       state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
-  #                                        #,tx, sched_fns,params_cpu
-  #                                        ,model,cfg,dynamic_cfgs,checkPoint_folder
-  #                                        #,opt_cpu,sched_fns_cpu
-  #                                        ,rng_loop,slicee,
-  #                                       #  ,params_repl, opt_repl
-  #                                        state)
+  for epoch in range(1, cfg.total_steps):
+      prng, rng_loop = jax.random.split(prng, 2)
+      for index in range(batch_images.shape[0]) :
+        print(f"epoch {epoch} index {index}")
+        state,loss=train_epoch(batch_images[index,:,:,:,:,:],batch_labels[index,:,:,:,:,:],batch_images_prim,curr_label,epoch,index
+                                         #,tx, sched_fns,params_cpu
+                                         ,model,cfg,dynamic_cfgs,checkPoint_folder
+                                         #,opt_cpu,sched_fns_cpu
+                                         ,rng_loop,slicee,
+                                        #  ,params_repl, opt_repl
+                                         state)
         
 
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")

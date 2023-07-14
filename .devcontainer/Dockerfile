@@ -1,4 +1,4 @@
-FROM nvcr.io/nvdlfwea/jax/jax:23.02-py3
+FROM nvcr.io/nvdlfwea/jax/jax:23.05-py3
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,8 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fontconfig \
         fonttools \
         # freetype \
-        libicu-dev \
-        libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio \
+        libicu-dev 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        # libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio \
         giflib-tools \
         libjpeg-dev \
         liblcms2-dev \
@@ -36,8 +37,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libedit-dev \
         libev-dev \
         libffi-dev \
-        libgcc-7-dev \
-        libgfortran4 \
+        # libgcc-7-dev \
+        # libgfortran4 \
         libnghttp2-dev \
         libpng-dev \
         zlib1g-dev \
@@ -45,7 +46,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libstdc++6 \
         libtiff-dev \
         uuid-dev \
-        libwebp-dev \
+        libwebp-dev 
+RUN apt-get update && apt-get install -y --no-install-recommends \        
         libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev libxcb-shape0-dev libxcb-xkb-dev \
         libxml2-dev \
         libzopfli-dev \
@@ -54,16 +56,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libncurses5-dev libncursesw5-dev \
         #openjpeg-tools \
         libssl-dev \ 
-        qt5-default \
+        # qt5-default \
         libreadline-dev \
-        sqlite3 \
-        python3-tk \
-        xorg \
-        openbox \
-        xz-utils \
-        python-yaml \
-        zlib1g-dev \
-        zstd
+        sqlite3 
+        # python3-tk \
+        # xorg \
+        # openbox \
+        # xz-utils 
+        # python-yaml \
+        # zlib1g-dev \
+        # zstd
 
 
 # RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
@@ -108,7 +110,7 @@ RUN python3 -m  pip install \
     # equinox \
     einops==0.6.0\
     torchio==0.18.87 \
-    jax-triton==0.1.2 \
+    jax-triton \
     opencv-python==4.7.0.68 \
     dm-pix==0.3.4 \
     visu3d==1.4.0 \
@@ -129,7 +131,7 @@ RUN python3 -m  pip install \
     # optax==git+https://github.com/deepmind/optax.git \
     more-itertools \
     seaborn \
-    orbax-checkpoint==0.2.1 \
+    orbax-checkpoint \
     monai-weekly \
     jraph
     # jax-cosmo==0.1.0 \
@@ -142,7 +144,7 @@ RUN python3 -m  pip install \
  
 # RUN python3 -m  pip install git+https://github.com/google/flax.git
 
-RUN python3 -m pip install --upgrade "jax[cuda11_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+# RUN python3 -m pip install --upgrade "jax[cuda11_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 
 RUN python3 -m pip install -U -qq "git+https://github.com/google/flax.git@main#egg=flax"
@@ -204,22 +206,22 @@ RUN apt -y install libtbb-dev
 RUN apt -y install libgtk-3-dev
 RUN apt update
 
-RUN apt-get -y install libidn11-dev  \
-                libglu1-mesa-dev  \
-                libpangox-1.0-dev  \
-                libpangoxft-1.0-0
+# RUN apt-get -y install libidn11-dev  \
+#                 libglu1-mesa-dev  \
+#                 libpangox-1.0-dev  \
+#                 libpangoxft-1.0-0
 
-RUN mkdir ${HOME}/elastixBase && \
-cd ${HOME}/elastixBase && \
-wget https://github.com/SuperElastix/elastix/releases/download/5.0.1/elastix-5.0.1-linux.tar.bz2&& \
-tar -xf elastix-5.0.1-linux.tar.bz2
+# RUN mkdir ${HOME}/elastixBase && \
+# cd ${HOME}/elastixBase && \
+# wget https://github.com/SuperElastix/elastix/releases/download/5.0.1/elastix-5.0.1-linux.tar.bz2&& \
+# tar -xf elastix-5.0.1-linux.tar.bz2
 
-RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so ${HOME}/elastixBase/elastix-5.0.1-linux/bin/libANNlib-5.0.so
-RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so.1 ${HOME}/elastixBase/elastix-5.0.1-linux/bin/libANNlib-5.0.so.1
-RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so ${HOME}/elastixBase/elastix-5.0.1-linux/libANNlib-5.0.so
-RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so.1 ${HOME}/elastixBase/elastix-5.0.1-linux/libANNlib-5.0.so.1
-RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so /usr/local/lib/libANNlib-5.0.so
-RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so.1 /usr/local/lib/libANNlib-5.0.so.1
+# RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so ${HOME}/elastixBase/elastix-5.0.1-linux/bin/libANNlib-5.0.so
+# RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so.1 ${HOME}/elastixBase/elastix-5.0.1-linux/bin/libANNlib-5.0.so.1
+# RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so ${HOME}/elastixBase/elastix-5.0.1-linux/libANNlib-5.0.so
+# RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so.1 ${HOME}/elastixBase/elastix-5.0.1-linux/libANNlib-5.0.so.1
+# RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so /usr/local/lib/libANNlib-5.0.so
+# RUN cp ${HOME}/elastixBase/elastix-5.0.1-linux/lib/libANNlib-5.0.so.1 /usr/local/lib/libANNlib-5.0.so.1
 
 RUN ldconfig
 # RUN apt-get install -q -y vim nano 
@@ -246,7 +248,7 @@ ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
 RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 
 
-RUN apt install graphviz
+RUN apt install -y graphviz
 RUN go install github.com/google/pprof@latest
 ENV XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 RUN apt install nautilus -y

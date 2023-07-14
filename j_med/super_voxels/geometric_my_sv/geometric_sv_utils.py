@@ -127,18 +127,18 @@ v_v_divide_my= jax.vmap( v_divide_my,in_axes=0)
 
 def get_b_x_weights(weights):
     weights_curr=weights[:,:,0:2] 
-    grid_b_points_x_weights_0=np.pad(weights_curr[:,:,0],((1,0),(0,0)))
-    grid_b_points_x_weights_1=np.pad(weights_curr[:,:,1],((0,1),(0,0)))
-    grid_b_points_x_weights= np.stack([grid_b_points_x_weights_0,grid_b_points_x_weights_1],axis=-1)
+    grid_b_points_x_weights_0=jnp.pad(weights_curr[:,:,0],((1,0),(0,0)))
+    grid_b_points_x_weights_1=jnp.pad(weights_curr[:,:,1],((0,1),(0,0)))
+    grid_b_points_x_weights= jnp.stack([grid_b_points_x_weights_0,grid_b_points_x_weights_1],axis=-1)
     grid_b_points_x_weights=nn.sigmoid(grid_b_points_x_weights)
     return v_v_divide_my(grid_b_points_x_weights)
 
 
 def get_b_y_weights(weights):
     weights_curr=weights[:,:,2:4] 
-    grid_b_points_y_weights_0=np.pad(weights_curr[:,:,0],((0,0),(1,0)))
-    grid_b_points_y_weights_1=np.pad(weights_curr[:,:,1],((0,0),(0,1)))
-    grid_b_points_y_weights= np.stack([grid_b_points_y_weights_0,grid_b_points_y_weights_1],axis=-1)
+    grid_b_points_y_weights_0=jnp.pad(weights_curr[:,:,0],((0,0),(1,0)))
+    grid_b_points_y_weights_1=jnp.pad(weights_curr[:,:,1],((0,0),(0,1)))
+    grid_b_points_y_weights= jnp.stack([grid_b_points_y_weights_0,grid_b_points_y_weights_1],axis=-1)
     grid_b_points_y_weights=nn.sigmoid(grid_b_points_y_weights)
     return v_v_divide_my(grid_b_points_y_weights)
 
@@ -150,12 +150,12 @@ def get_for_four_weights(weights):
         6- down_x,up_y
         7- down_x,down_y
     """
-    up_x_up_y=np.pad(weights[:,:,4],((1,0),(1,0)))
-    up_x_down_y=np.pad(weights[:,:,5],((1,0),(0,1)))
-    down_x_up_y=np.pad(weights[:,:,6],((0,1),(1,0)))
-    down_x_down_y=np.pad(weights[:,:,7],((0,1),(0,1)))
+    up_x_up_y=jnp.pad(weights[:,:,4],((1,0),(1,0)))
+    up_x_down_y=jnp.pad(weights[:,:,5],((1,0),(0,1)))
+    down_x_up_y=jnp.pad(weights[:,:,6],((0,1),(1,0)))
+    down_x_down_y=jnp.pad(weights[:,:,7],((0,1),(0,1)))
 
-    grid_c_points_weights=np.stack([up_x_up_y,up_x_down_y,down_x_up_y,down_x_down_y],axis=-1)
+    grid_c_points_weights=jnp.stack([up_x_up_y,up_x_down_y,down_x_up_y,down_x_down_y],axis=-1)
 
     return nn.softmax(grid_c_points_weights*100,axis=-1) 
 
@@ -233,6 +233,7 @@ def get_grid_points(cfg):
     half_r=r/2
     diam_x=cfg.img_size[1]+r
     diam_y=cfg.img_size[2]+r
+    
     gridd=einops.rearrange(jnp.mgrid[r:diam_x:r, r:diam_y:r],'c x y-> x y c')-half_r
     gridd_bigger=einops.rearrange(jnp.mgrid[0:diam_x+r:r,0:diam_y+r:r],'c x y-> x y c')-half_r
 

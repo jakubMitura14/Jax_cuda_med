@@ -6,11 +6,12 @@ from ml_collections import config_dict
 def get_cfg():
     cfg = config_dict.ConfigDict()
     # cfg.total_steps=8000
-    cfg.total_steps=3
-    cfg.learning_rate=0.000000000000001
+    cfg.total_steps=20000
+    cfg.learning_rate=0.000009
+    # cfg.learning_rate=0.000002
     # cfg.learning_rate=0.0000009
     cfg.convolution_channels=32
-    cfg.batch_size=100
+    cfg.batch_size=240
     cfg.batch_size_pmapped=np.max([cfg.batch_size//jax.local_device_count(),1])
     cfg.img_size = (cfg.batch_size,256,256,1)
     cfg.img_size_pmapped = (cfg.batch_size_pmapped,256,256,1)
@@ -44,8 +45,8 @@ def get_cfg():
 
     #setting how frequent the checkpoints should be performed
     cfg.divisor_checkpoint=15
-    cfg.divisor_logging=1
-    cfg.to_save_check_point=True
+    cfg.divisor_logging=5
+    cfg.to_save_check_point=False
 
     cfg.is_gsam=False
 
