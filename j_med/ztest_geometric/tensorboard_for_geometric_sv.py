@@ -96,32 +96,27 @@ def masks_with_boundaries_simple(mask_num,masks,image_to_disp,scale):
     return to_dispp_svs
 
 
-def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,control_points):
+def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,modified_control_points_coords,triangles_data_modif):
     r= cfg.r
     image_to_disp=batch_images_prim[0,:,:,:]
     # out_imageee=out_imageee[0,slicee,:,:,0]
-    control_points    
-    scale=4
-    grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points=control_points
-    grid_a_points=grid_a_points[0,slicee,:,:,:]
-    grid_b_points_x=grid_b_points_x[0,slicee,:,:,:]
-    grid_b_points_y=grid_b_points_y[0,slicee,:,:,:]
-    grid_c_points=grid_c_points[0,slicee,:,:,:]
+    modified_control_points_coords= modified_control_points_coords[0,:,:,:,:]
 
-    grid_a_points=einops.rearrange(grid_a_points,'x y c-> 1 x y c')
-    grid_b_points_x=einops.rearrange(grid_b_points_x,'x y c-> 1 x y c')
-    grid_b_points_y=einops.rearrange(grid_b_points_y,'x y c-> 1 x y c')
-    grid_c_points=einops.rearrange(grid_c_points,'x y c-> 1 x y c')
+    # grid_a_points=einops.rearrange(grid_a_points,'x y c-> 1 x y c')
+    # grid_b_points_x=einops.rearrange(grid_b_points_x,'x y c-> 1 x y c')
+    # grid_b_points_y=einops.rearrange(grid_b_points_y,'x y c-> 1 x y c')
+    # grid_c_points=einops.rearrange(grid_c_points,'x y c-> 1 x y c')
 
     # print(f"aaaa grid_a_points {grid_a_points[0].shape}  orig grid shape {cfg.orig_grid_shape}")
 
-    diam_x=cfg.img_size[1]+r
-    diam_y=cfg.img_size[2]+r
+    # diam_x=cfg.img_size[1]+r
+    # diam_y=cfg.img_size[2]+r
 
-    masks_all=analyze_all_control_points(grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points
-                                ,1,r
-                                ,r,diam_x,diam_y,r//2)
-    # print(f"mmmmasks_all {masks_all.shape}")
+    # masks_all=analyze_all_control_points(grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points
+    #                             ,1,r
+    #                             ,r,diam_x,diam_y,r//2)
+    masks_all=analyze_all_control_points(modified_control_points_coords,triangles_data_modif
+                               ,cfg.batch_size_pmapped,cfg.r,int(cfg.r//2),cfg.num_additional_points)
 
 
 
@@ -133,6 +128,7 @@ def save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,contro
     mask_1=masks_all[0,:,:,1]
     mask_2=masks_all[0,:,:,2]
     mask_3=masks_all[0,:,:,3]
+    scale=4
     to_dispp_svs_0=masks_with_boundaries_simple(0,masks_all[0,:,:,:],image_to_disp,scale)
     to_dispp_svs_1=masks_with_boundaries_simple(1,masks_all[0,:,:,:],image_to_disp,scale)
     to_dispp_svs_2=masks_with_boundaries_simple(2,masks_all[0,:,:,:],image_to_disp,scale)

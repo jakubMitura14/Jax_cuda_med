@@ -56,8 +56,8 @@ class SpixelNet_geom(nn.Module):
         self.diam_y=diam_y
 
         triangles_data=get_triangles_data()
-        triangles_data_modif=integrate_triangles.get_modified_triangles_data(self.cfg.num_additional_points,self.cfg.primary_control_points_offset)
-        self.triangles_data=triangles_data
+        triangles_data_modif=get_modified_triangles_data(self.cfg.num_additional_points,self.cfg.primary_control_points_offset)
+        self.triangles_data=jnp.array(triangles_data)
         self.triangles_data_modif=triangles_data_modif
 
         self.sh_re_consts=get_simple_sh_resh_consts(self.cfg.img_size,self.cfg.r)
@@ -68,8 +68,7 @@ class SpixelNet_geom(nn.Module):
         diam_x= self.diam_x
         diam_y= self.diam_y
         arr=analyze_all_control_points(modified_control_points_coords,self.triangles_data_modif
-                               ,cfg.batch_size_pmapped,cfg.r
-                                        ,cfg.r,diam_x,diam_y,int(cfg.r//2),cfg.num_additional_points)
+                               ,cfg.batch_size_pmapped,cfg.r,int(cfg.r//2),cfg.num_additional_points)
 
 
         reshaped_mask=list(map( lambda i: reshape_mask_to_svs(arr,shape_re_cfgs[i],i),range(4)))
@@ -77,7 +76,7 @@ class SpixelNet_geom(nn.Module):
         #making it 1 or zeros ... or at least close to it
         reshaped_mask= diff_round(diff_round(reshaped_mask))
 
-        reshaped_image=list(map( lambda i: reshape_to_svs(image,shape_re_cfgs[i]),range(4)))
+        reshaped_image=list(map( lambda i: reshape_to_svs(image,shape_re_cfgs[i],0),range(4)))
         reshaped_image= jnp.concatenate(reshaped_image,axis=1)
         loss=v_v_get_single_area_loss(reshaped_image,reshaped_mask, cfg)
         return jnp.mean(loss.flatten())
@@ -95,8 +94,10 @@ class SpixelNet_geom(nn.Module):
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels)
             ,Conv_duo_tanh(self.cfg,channels=self.cfg.weights_channels)#we do not normalize in the end and use tanh activation
         ])(jnp.concatenate([image,edge_map],axis=-1))
+        
         # conved=conved[:,0:-1,0:-1,:]
-        # print(f"conved {conved.shape} self.grid_a_points {self.grid_a_points.shape}")
+        # print(f"ccccconved {conved.shape} ")
+        conved= jnp.pad(conved,((0,0),(0,1),(0,1),(0,0)))#(120, 32, 32, 12) 
         modified_control_points_coords=batched_get_points_from_weights_all(self.grid_c_points,conved,self.cfg.r,self.cfg.num_additional_points,self.triangles_data)
         
         

@@ -135,9 +135,9 @@ def initt_from_orbax(params_new,cfg:ml_collections.config_dict.FrozenConfigDict,
   # jax.random.split(rng_2,num=1 )
   # params = model.init({'params': rng_main,'to_shuffle':rng_mean  }, input,dynamic_cfg)['params'] # initialize parameters by passing a template image #,'texture' : rng_mean
   # cosine_decay_scheduler = optax.cosine_decay_schedule(cfg.learning_rate, decay_steps=cfg.total_steps, alpha=0.95)#,exponent=1.1
-  decay_scheduler=optax.linear_schedule(cfg.learning_rate, cfg.learning_rate/10, cfg.total_steps, transition_begin=0)
+  decay_scheduler=optax.linear_schedule(cfg.learning_rate*10, cfg.learning_rate/10, cfg.total_steps, transition_begin=0)
   
-  joined_scheduler=optax.join_schedules([optax.constant_schedule(cfg.learning_rate*100),optax.constant_schedule(cfg.learning_rate)], [100])
+  joined_scheduler=optax.join_schedules([optax.constant_schedule(cfg.learning_rate*10),optax.constant_schedule(cfg.learning_rate)], [50])
 
 
 
@@ -150,8 +150,8 @@ def initt_from_orbax(params_new,cfg:ml_collections.config_dict.FrozenConfigDict,
   tx = optax.chain(
         optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
         # optax.lion(learning_rate=joined_scheduler)
-        optax.lion(learning_rate=cfg.learning_rate*200)
-        #optax.lion(learning_rate=decay_scheduler)
+        # optax.lion(learning_rate=cfg.learning_rate*200)
+        optax.lion(learning_rate=decay_scheduler)
         # optax.adafactor()
         
         )
@@ -226,6 +226,7 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
                 ,rng_loop,slicee
                 # ,params_repl, opt_repl
                 ,state
+                ,triangles_data_modif
                 ):    
   epoch_loss=[]
   dynamic_cfg=dynamic_cfgs[0]
@@ -247,7 +248,7 @@ def train_epoch(batch_images,batch_labels,batch_images_prim,curr_label,epoch,ind
     #overwriting masks each time and saving for some tests and debugging
     # save_examples_to_hdf5(masks,batch_images_prim,curr_label)
     #saving images for monitoring ...
-    mask_0=save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,control_points)
+    mask_0=save_images(batch_images_prim,slicee,cfg,epoch,file_writer,curr_label,control_points,triangles_data_modif)
     with file_writer.as_default():
         tf.summary.scalar(f"mask_0 mean", np.mean(mask_0.flatten()), step=epoch)    
 
@@ -307,7 +308,7 @@ def main_train(cfg):
   #                                   ,rng_loop,slicee,
   #                                 #  ,params_repl, opt_repl
   #                                   state)
-
+  triangles_data_modif=get_modified_triangles_data(cfg.num_additional_points,cfg.primary_control_points_offset)
 
 
   for epoch in range(1, cfg.total_steps):
@@ -320,7 +321,7 @@ def main_train(cfg):
                                          #,opt_cpu,sched_fns_cpu
                                          ,rng_loop,slicee,
                                         #  ,params_repl, opt_repl
-                                         state)
+                                         state,triangles_data_modif)
         
 
 # jax.profiler.start_trace("/workspaces/Jax_cuda_med/data/tensor_board")

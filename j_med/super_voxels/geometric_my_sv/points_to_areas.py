@@ -11,16 +11,15 @@ from itertools import permutations
 from itertools import product
 import numpy as np
 import matplotlib.pyplot as plt
-import ipympl
 import imageio.v3 as iio
 import skimage.color
 import skimage.filters
 import skimage.measure
 import os
-from shape_reshape_functions import *
+from .shape_reshape_functions import *
 from functools import partial
 import math
-from control_points_utils import *
+from .control_points_utils import *
 
 
 def get_triangle_area(p_0,p_1,p_2):

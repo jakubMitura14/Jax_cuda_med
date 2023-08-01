@@ -166,6 +166,7 @@ RUN git clone https://github.com/google-research/big_vision ${HOME}/externalRepo
 
 # RUN python3 -m  pip install git+https://github.com/deepmind/PGMax.git
 RUN python3 -m  pip install git+https://github.com/google/jaxopt
+RUN python3 -m  pip install numpy --upgrade
 
 
 

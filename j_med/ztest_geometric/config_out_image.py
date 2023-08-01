@@ -6,8 +6,8 @@ from ml_collections import config_dict
 def get_cfg():
     cfg = config_dict.ConfigDict()
     # cfg.total_steps=8000
-    cfg.total_steps=20000
-    cfg.learning_rate=0.000009
+    cfg.total_steps=800
+    cfg.learning_rate=0.0009
     # cfg.learning_rate=0.000002
     # cfg.learning_rate=0.0000009
     cfg.convolution_channels=32
@@ -24,10 +24,9 @@ def get_cfg():
     cfg.num_additional_points=2
     #control what is the index of first additional point
     cfg.primary_control_points_offset=9
+    cfg.weights_channels=6+cfg.num_additional_points*3
 
 
-
-    cfg.weights_channels=8
     cfg.epsilon=0.0000000000001
     cfg.optax_name = 'big_vision.scale_by_adafactor'
     cfg.optax = dict(beta2_cap=0.95)

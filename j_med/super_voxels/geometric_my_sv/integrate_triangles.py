@@ -11,18 +11,17 @@ from itertools import permutations
 from itertools import product
 import numpy as np
 import matplotlib.pyplot as plt
-import ipympl
 import imageio.v3 as iio
 import skimage.color
 import skimage.filters
 import skimage.measure
 import os
-from shape_reshape_functions import *
+from .shape_reshape_functions import *
 from functools import partial
 import math
-from control_points_utils import *
-from set_points_loc import *
-from points_to_areas import *
+from .control_points_utils import *
+from .set_points_loc import *
+from .points_to_areas import *
 import itertools
 
 def get_triangles_data():
@@ -35,7 +34,7 @@ def get_triangles_data():
         as in the alpha order 
     we also organize triangles in primary triangles what is very usefull for additional control points managament    
     """
-    return jnp.array([
+    return [
           [[0,8,7,3]#I
          ,[0,8,1,0]]#A
 
@@ -47,7 +46,7 @@ def get_triangles_data():
 
          ,[[0,6,5,2]#K
          ,[0,6,7,3]]]#J
-        )
+        
 def iter_zipped(orig,new_ones):
     return list(map(lambda triang: iter_zipped_inner(triang,new_ones) ,orig  ))
 

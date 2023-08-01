@@ -35,10 +35,9 @@ from flax.linen import partitioning as nn_partitioning
 from itertools import starmap
 from jax.scipy import ndimage as jndimage
 
-from set_points_loc import *
-from points_to_areas import *
-from integrate_triangles import *
-import integrate_triangles
+from .set_points_loc import *
+from .points_to_areas import *
+from .integrate_triangles import *
 
 remat = nn_partitioning.remat
 

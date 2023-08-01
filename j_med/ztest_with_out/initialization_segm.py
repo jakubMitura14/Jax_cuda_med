@@ -488,14 +488,12 @@ def get_initial_segm():
         ,flax.jax_utils.replicate(edges_with_dir) )
         example_mask=masks[0,0,:,:,:]
 
-        # print(f" mmmmmasks {example_mask.shape} example_image {example_image.shape}")
         if(i%2==0):
             with file_writer.as_default():
                 tf.summary.image(f"mask_0", masks_with_boundaries_simple(0,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
                 tf.summary.image(f"mask_1", masks_with_boundaries_simple(1,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
                 tf.summary.image(f"mask_2", masks_with_boundaries_simple(2,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
                 tf.summary.image(f"mask_3", masks_with_boundaries_simple(3,example_mask,example_image,2)[1], step=i,max_outputs=2000) 
-    # print(f" mmmmmasks {masks.shape}")
 
 get_initial_segm()
 

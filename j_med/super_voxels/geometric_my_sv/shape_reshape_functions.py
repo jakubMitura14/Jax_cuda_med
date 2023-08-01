@@ -63,4 +63,4 @@ def reshape_mask_to_svs(arr,shape_re_cfg,channel):
     """
     arr= arr[:,:,:,channel]
     arr=jnp.expand_dims(arr,axis=-1)
-    return reshape_to_svs(arr,shape_re_cfg)
+    return reshape_to_svs(arr,shape_re_cfg,channel)

@@ -347,7 +347,6 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
 
       image_to_disp=batch_images_prim[0,0,0,:,:]
 
-      # print(f"mmmmmmmm masks {masks.shape}")
       masks =masks[0,slicee,:,:,:]
       masks = jnp.round(masks)
       
@@ -464,7 +463,6 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
 
         minnn=concatenate_to_show_loss(edge_map_loc,masked_image,indexes_max_edge_loss[0])
         maxx=concatenate_to_show_loss(edge_map_loc,masked_image,indexes_min_edge_loss[0])
-        # print(f"mmmmm minnn {minnn.shape} maxx {maxx.shape}")
         min_maxx=jnp.concatenate([minnn,maxx], axis=0)
 
         to_reshape_back_x=np.floor_divide(shape_reshape_cfg.axis_len_x,shape_reshape_cfg.diameter_x)

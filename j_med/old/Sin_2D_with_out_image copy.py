@@ -417,7 +417,6 @@ def train_epoch(epoch,slicee,index,dat,state,model,cfg,dynamic_cfgs,checkPoint_f
 
       image_to_disp=batch_images_prim[0,0,:,:]
 
-      # print(f"mmmmmmmm masks {masks.shape}")
       masks =masks[0,slicee,:,:,:]
       out_imageee=out_imageee[0,slicee,:,:,0]
 

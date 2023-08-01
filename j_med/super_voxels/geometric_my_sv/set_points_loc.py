@@ -11,18 +11,17 @@ from itertools import permutations
 from itertools import product
 import numpy as np
 import matplotlib.pyplot as plt
-import ipympl
 import imageio.v3 as iio
 import skimage.color
 import skimage.filters
 import skimage.measure
 import os
-from shape_reshape_functions import *
+from .shape_reshape_functions import *
 from functools import partial
 import math
-from control_points_utils import *
-from integrate_triangles import *
-from points_to_areas import *
+from .control_points_utils import *
+from .integrate_triangles import *
+from .points_to_areas import *
 
 
 def move_in_axis(point,weights,axis,half_r ):
@@ -96,7 +95,7 @@ def add_new_points(triangles_data,modified_control_points_coords,edge_weights,nu
     modified_control_points_coords= jnp.concatenate([modified_control_points_coords,new_points],axis=0)
     return modified_control_points_coords
 
-def get_points_from_weights_p_0(grid_c_point,weights,triangles_data,half_r,num_additional_points):
+def get_points_from_weights_p_0(grid_c_point,weights,half_r):
     """  
     get points around single grid_c_point
     """
@@ -113,8 +112,8 @@ def get_points_from_weights_p_0(grid_c_point,weights,triangles_data,half_r,num_a
     return modified_control_points_coords
 
 
-v_get_points_from_weights_p_0= jax.vmap(get_points_from_weights_p_0,in_axes=(0,0,None,None,None))
-v_v_get_points_from_weights_p_0= jax.vmap(v_get_points_from_weights_p_0,in_axes=(0,0,None,None,None))
+v_get_points_from_weights_p_0= jax.vmap(get_points_from_weights_p_0,in_axes=(0,0,None))
+v_v_get_points_from_weights_p_0= jax.vmap(v_get_points_from_weights_p_0,in_axes=(0,0,None))
 
 
 
@@ -155,7 +154,8 @@ def get_points_from_weights_all(grid_c_points,weights,r,num_additional_points,tr
     weights are associated with each grid c point
     """ 
     weights= nn.sigmoid(weights)
-    modified_control_points_coords_a=v_v_get_points_from_weights_p_0(grid_c_points,weights,triangles_data,r//2,num_additional_points)
+    print(f"grid_c_points {grid_c_points.shape} weights {weights.shape}")
+    modified_control_points_coords_a=v_v_get_points_from_weights_p_0(grid_c_points,weights,num_additional_points)
     #first we get the common part between sv areas
     grid_p_x,grid_p_y= einops.rearrange(modified_control_points_coords_a,'x y t p -> t x y p')
     #the borders between sv may be interpreted both ways so what is left border for one is right for the other...
