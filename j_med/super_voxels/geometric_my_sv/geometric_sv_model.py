@@ -37,23 +37,6 @@ def get_single_area_loss(sv_area_image, sv_area_mask,cfg):
 v_get_single_area_loss = jax.vmap(get_single_area_loss,in_axes=(0,0,None))
 v_v_get_single_area_loss = jax.vmap(v_get_single_area_loss,in_axes=(0,0,None))
 
-def get_area_loss(cfg,control_points,shape_re_cfgs,image,diam_x,diam_y):
-    
-    grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points=control_points
-
-    arr=analyze_all_control_points(grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points
-                                    ,cfg.batch_size_pmapped,cfg.r
-                                    ,cfg.r,diam_x,diam_y,int(cfg.r//2))
-
-    reshaped_mask=list(map( lambda i: reshape_mask_to_svs(arr,shape_re_cfgs[i],i),range(4)))
-    reshaped_mask= jnp.concatenate(reshaped_mask,axis=1)
-    #making it 1 or zeros ... or at least close to it
-    reshaped_mask= diff_round(diff_round(reshaped_mask))
-
-    reshaped_image=list(map( lambda i: reshape_to_svs(image,shape_re_cfgs[i]),range(4)))
-    reshaped_image= jnp.concatenate(reshaped_image,axis=1)
-    loss=v_v_get_single_area_loss(reshaped_image,reshaped_mask, cfg)
-    return jnp.mean(loss.flatten())
 
 
 
@@ -61,10 +44,7 @@ class SpixelNet_geom(nn.Module):
     cfg: ml_collections.config_dict.config_dict.ConfigDict
     
     def setup(self):
-        grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points=get_grid_points(self.cfg)
-        self.grid_a_points=einops.repeat(grid_a_points,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
-        self.grid_b_points_x=einops.repeat(grid_b_points_x,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
-        self.grid_b_points_y=einops.repeat(grid_b_points_y,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
+        grid_c_points=get_grid_c_points(self.cfg)
         self.grid_c_points=einops.repeat(grid_c_points,'w h c-> b w h c',b=self.cfg.batch_size_pmapped)
 
 
@@ -75,9 +55,32 @@ class SpixelNet_geom(nn.Module):
         self.diam_x=diam_x
         self.diam_y=diam_y
 
+        triangles_data=get_triangles_data()
+        triangles_data_modif=integrate_triangles.get_modified_triangles_data(self.cfg.num_additional_points,self.cfg.primary_control_points_offset)
+        self.triangles_data=triangles_data
+        self.triangles_data_modif=triangles_data_modif
 
         self.sh_re_consts=get_simple_sh_resh_consts(self.cfg.img_size,self.cfg.r)
 
+    def get_area_loss(self,modified_control_points_coords,image):
+        cfg= self.cfg
+        shape_re_cfgs= self.sh_re_consts
+        diam_x= self.diam_x
+        diam_y= self.diam_y
+        arr=analyze_all_control_points(modified_control_points_coords,self.triangles_data_modif
+                               ,cfg.batch_size_pmapped,cfg.r
+                                        ,cfg.r,diam_x,diam_y,int(cfg.r//2),cfg.num_additional_points)
+
+
+        reshaped_mask=list(map( lambda i: reshape_mask_to_svs(arr,shape_re_cfgs[i],i),range(4)))
+        reshaped_mask= jnp.concatenate(reshaped_mask,axis=1)
+        #making it 1 or zeros ... or at least close to it
+        reshaped_mask= diff_round(diff_round(reshaped_mask))
+
+        reshaped_image=list(map( lambda i: reshape_to_svs(image,shape_re_cfgs[i]),range(4)))
+        reshaped_image= jnp.concatenate(reshaped_image,axis=1)
+        loss=v_v_get_single_area_loss(reshaped_image,reshaped_mask, cfg)
+        return jnp.mean(loss.flatten())
 
 
     @nn.compact
@@ -94,15 +97,16 @@ class SpixelNet_geom(nn.Module):
         ])(jnp.concatenate([image,edge_map],axis=-1))
         # conved=conved[:,0:-1,0:-1,:]
         # print(f"conved {conved.shape} self.grid_a_points {self.grid_a_points.shape}")
-        grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points=v_apply_weights_to_grid(self.cfg,conved,self.grid_a_points,self.grid_b_points_x,self.grid_b_points_y,self.grid_c_points)
+        modified_control_points_coords=batched_get_points_from_weights_all(self.grid_c_points,conved,self.cfg.r,self.cfg.num_additional_points,self.triangles_data)
         
-        control_points= (grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points)
+        
         # control_points= (self.grid_a_points,self.grid_b_points_x,self.grid_b_points_y,self.grid_c_points)
         # print(f"calccced grid_a_points {grid_a_points.shape}")
 
         # loss=v_control_points_edge_loss(self.cfg,edge_map,control_points)
-        loss=get_area_loss(self.cfg,control_points,self.sh_re_consts,image,self.diam_x,self.diam_y)
+        # loss=get_area_loss(self.cfg,control_points,self.sh_re_consts,image,self.diam_x,self.diam_y)
+        loss=self.get_area_loss(modified_control_points_coords,image)
 
-        return (jnp.mean(loss.flatten()),control_points)
+        return (jnp.mean(loss.flatten()),modified_control_points_coords)
 
 

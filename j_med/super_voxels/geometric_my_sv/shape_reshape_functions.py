@@ -1,3 +1,4 @@
+#based on https://github.com/yuanqqq/SIN
 from flax import linen as nn
 import numpy as np
 from typing import Any, Callable, Optional, Tuple, Type, List
@@ -45,10 +46,16 @@ def get_simple_sh_resh_consts(img_size,r):
     return res
 
 
-def reshape_to_svs(arr,shape_re_cfg):
-    res=jnp.pad(arr,((0,0),(shape_re_cfg.pad_begining_x,shape_re_cfg.pad_end_x),(shape_re_cfg.pad_begining_y,shape_re_cfg.pad_end_y) ,(0,0) ) )
-    res= einops.rearrange(res,'b (xb xa) (yb ya) c->b (xb yb) xa ya c', xa = shape_re_cfg.sv_diameter, ya=shape_re_cfg.sv_diameter)
+def reshape_to_svs(arr,shape_re_cfg,channel):
+    """ 
+    reshapes the batched array so we would have ith suitable to vmpa over single supervoxel areas
+    """
+    # print(f"cccchannel {channel} arr {arr.shape} pad_begining_x {shape_re_cfg.pad_begining_x} pad_begining_y {shape_re_cfg.pad_begining_y} pad_end_x {shape_re_cfg.pad_end_x} pad_end_y {shape_re_cfg.pad_end_y}")
+    arr= arr[:,:,:,channel]
+    res=jnp.pad(arr,((0,0),(shape_re_cfg.pad_begining_x,shape_re_cfg.pad_end_x),(shape_re_cfg.pad_begining_y,shape_re_cfg.pad_end_y)  ) )
+    res= einops.rearrange(res,'b (xb xa) (yb ya)->b (xb yb) xa ya', xa = shape_re_cfg.sv_diameter, ya=shape_re_cfg.sv_diameter)
     return res
+
 
 def reshape_mask_to_svs(arr,shape_re_cfg,channel):
     """ 
@@ -57,4 +64,3 @@ def reshape_mask_to_svs(arr,shape_re_cfg,channel):
     arr= arr[:,:,:,channel]
     arr=jnp.expand_dims(arr,axis=-1)
     return reshape_to_svs(arr,shape_re_cfg)
-

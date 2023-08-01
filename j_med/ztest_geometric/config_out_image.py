@@ -20,6 +20,13 @@ def get_cfg():
     cfg.num_dim=2
     cfg.orig_grid_shape= (cfg.img_size[1]//2**cfg.r_x_total,cfg.img_size[2]//2**cfg.r_y_total,cfg.num_dim)
     cfg.r=8
+    #controls how many additional points per primary triangle will be added
+    cfg.num_additional_points=2
+    #control what is the index of first additional point
+    cfg.primary_control_points_offset=9
+
+
+
     cfg.weights_channels=8
     cfg.epsilon=0.0000000000001
     cfg.optax_name = 'big_vision.scale_by_adafactor'
