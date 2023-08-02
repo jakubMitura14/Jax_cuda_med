@@ -154,7 +154,6 @@ def get_points_from_weights_all(grid_c_points,weights,r,num_additional_points,tr
     weights are associated with each grid c point
     """ 
     weights= nn.sigmoid(weights)
-    print(f"grid_c_points {grid_c_points.shape} weights {weights.shape}")
     modified_control_points_coords_a=v_v_get_points_from_weights_p_0(grid_c_points,weights,num_additional_points)
     #first we get the common part between sv areas
     grid_p_x,grid_p_y= einops.rearrange(modified_control_points_coords_a,'x y t p -> t x y p')

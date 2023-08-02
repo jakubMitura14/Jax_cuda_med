@@ -6,8 +6,8 @@ from ml_collections import config_dict
 def get_cfg():
     cfg = config_dict.ConfigDict()
     # cfg.total_steps=8000
-    cfg.total_steps=800
-    cfg.learning_rate=0.0009
+    cfg.total_steps=9000
+    cfg.learning_rate=0.000009
     # cfg.learning_rate=0.000002
     # cfg.learning_rate=0.0000009
     cfg.convolution_channels=32
@@ -19,15 +19,15 @@ def get_cfg():
     cfg.r_y_total=3
     cfg.num_dim=2
     cfg.orig_grid_shape= (cfg.img_size[1]//2**cfg.r_x_total,cfg.img_size[2]//2**cfg.r_y_total,cfg.num_dim)
-    cfg.r=8
+    cfg.r=16
     #controls how many additional points per primary triangle will be added
-    cfg.num_additional_points=2
+    cfg.num_additional_points=4
     #control what is the index of first additional point
     cfg.primary_control_points_offset=9
     cfg.weights_channels=6+cfg.num_additional_points*3
 
 
-    cfg.epsilon=0.0000000000001
+    cfg.epsilon=0.00000000000001
     cfg.optax_name = 'big_vision.scale_by_adafactor'
     cfg.optax = dict(beta2_cap=0.95)
 
@@ -50,9 +50,9 @@ def get_cfg():
     )
 
     #setting how frequent the checkpoints should be performed
-    cfg.divisor_checkpoint=15
-    cfg.divisor_logging=5
-    cfg.to_save_check_point=False
+    cfg.divisor_checkpoint=20
+    cfg.divisor_logging=10
+    cfg.to_save_check_point=True
 
     cfg.is_gsam=False
 

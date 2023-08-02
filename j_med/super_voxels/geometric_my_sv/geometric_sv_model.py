@@ -29,9 +29,9 @@ from .points_to_areas import *
 
 def get_single_area_loss(sv_area_image, sv_area_mask,cfg):
     masked_image= jnp.multiply(sv_area_image,sv_area_mask)
-    meann= jnp.sum(masked_image.flatten())/(jnp.sum(sv_area_mask.flatten())+cfg.epsilon)
+    meann= jnp.sum(masked_image.flatten()+cfg.epsilon)/(jnp.sum(sv_area_mask.flatten())+cfg.epsilon)
     varr= jnp.power( jnp.multiply((masked_image-meann),sv_area_mask),2)
-    varr=jnp.sum(varr.flatten())/(jnp.sum(sv_area_mask.flatten())+cfg.epsilon)
+    varr=jnp.sum(varr.flatten()+cfg.epsilon)/(jnp.sum(sv_area_mask.flatten())+cfg.epsilon)
     return varr
 
 v_get_single_area_loss = jax.vmap(get_single_area_loss,in_axes=(0,0,None))
@@ -61,6 +61,12 @@ class SpixelNet_geom(nn.Module):
         self.triangles_data_modif=triangles_data_modif
 
         self.sh_re_consts=get_simple_sh_resh_consts(self.cfg.img_size,self.cfg.r)
+        for_reg=einops.rearrange(triangles_data_modif,'(a d) p -> d a p', d=2)
+        self.for_boder_calc=jnp.array(for_reg[0,:,0:2])
+
+
+
+
 
     def get_area_loss(self,modified_control_points_coords,image):
         cfg= self.cfg
@@ -91,23 +97,24 @@ class SpixelNet_geom(nn.Module):
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
+            ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels,strides=(2,2))
+            ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels)
+            ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels)
             ,Conv_trio(self.cfg,channels=self.cfg.convolution_channels)
             ,Conv_duo_tanh(self.cfg,channels=self.cfg.weights_channels)#we do not normalize in the end and use tanh activation
         ])(jnp.concatenate([image,edge_map],axis=-1))
         
         # conved=conved[:,0:-1,0:-1,:]
         # print(f"ccccconved {conved.shape} ")
-        conved= jnp.pad(conved,((0,0),(0,1),(0,1),(0,0)))#(120, 32, 32, 12) 
+        conved= jnp.pad(conved,((0,0),(0,1),(0,1),(0,0)),mode='linear_ramp')#(120, 32, 32, 12) 
         modified_control_points_coords=batched_get_points_from_weights_all(self.grid_c_points,conved,self.cfg.r,self.cfg.num_additional_points,self.triangles_data)
-        
-        
-        # control_points= (self.grid_a_points,self.grid_b_points_x,self.grid_b_points_y,self.grid_c_points)
-        # print(f"calccced grid_a_points {grid_a_points.shape}")
 
-        # loss=v_control_points_edge_loss(self.cfg,edge_map,control_points)
-        # loss=get_area_loss(self.cfg,control_points,self.sh_re_consts,image,self.diam_x,self.diam_y)
         loss=self.get_area_loss(modified_control_points_coords,image)
+        loss=jnp.mean(loss.flatten())
+        edge_loss=v_control_points_edge_loss(edge_map,modified_control_points_coords,self.for_boder_calc)
+        edge_loss=jnp.mean(edge_loss.flatten())
 
-        return (jnp.mean(loss.flatten()),modified_control_points_coords)
+        loss=loss*edge_loss
+        return (loss,modified_control_points_coords)
 
 

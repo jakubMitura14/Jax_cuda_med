@@ -129,22 +129,43 @@ def map_coords_and_mean(edge_map,grid_points):
     mapped=jndimage.map_coordinates(edge_map, grid_points, order=1)
     return jnp.mean(mapped.flatten())
 
-def control_points_edge_loss_not_batched(cfg,edge_map,control_points):
+v_map_coords_and_mean=jax.vmap(map_coords_and_mean,in_axes=(None,0))
+
+
+def get_dist_squared(coords,modified_control_points_coords):
+    dist=jnp.power((modified_control_points_coords[coords[0],:,:,:]-modified_control_points_coords[coords[1],:,:,:]),2)
+    dist= jnp.mean(dist.flatten())
+    return dist
+
+v_get_dist_squared=jax.vmap(get_dist_squared,in_axes=(0,None))
+
+
+def control_points_edge_loss_not_batched(edge_map,modified_control_points_coords,for_boder_calc):
     """ 
     idea is to get control points - interpolate them on the edge map using map coordinates
     then we sum their values - the bigger the better - hence we negate
     the more on edge are control points the better the structure preserveing properties will be
     """
-    grid_a_points,grid_b_points_x,grid_b_points_y,grid_c_points=control_points
-    a=map_coords_and_mean(edge_map, grid_b_points_x)
-    b=map_coords_and_mean(edge_map,grid_b_points_y)
-    c=map_coords_and_mean(edge_map, grid_c_points)
+    # print(f"bbbbb modified_control_points_coords {modified_control_points_coords.shape}")
+
+    modified_control_points_coords=einops.rearrange(modified_control_points_coords,'x y t p -> t x y p')
+
+    a=map_coords_and_mean(edge_map, modified_control_points_coords[0,:,:,:])
+    b=map_coords_and_mean(edge_map, modified_control_points_coords[2,:,:,:])
+    c=map_coords_and_mean(edge_map,  modified_control_points_coords[4,:,:,:])
+    d=v_map_coords_and_mean(edge_map,  modified_control_points_coords[8:,:,:,:])
+    d= jnp.mean(d)
     # grid_b_points_x=einops.rearrange(grid_b_points_x,'x y c-> (x y) c')
     # grid_b_points_y=einops.rearrange(grid_b_points_y,'x y c-> (x y) c')
     # grid_c_points=einops.rearrange(grid_c_points,'x y c-> (x y) c')
     # grid_a_points=einops.rearrange(grid_a_points,'x y c-> (x y) c')
     # all_points=jnp.concatenate([grid_b_points_x,grid_b_points_y,grid_c_points,grid_a_points],axis=0)
     # coords=einops.rearrange(coords,'a c -> c a 1')
-    return a+b+c
+    regularization=v_get_dist_squared(for_boder_calc,modified_control_points_coords)
+    regularization= jnp.mean(regularization.flatten())
+    res=(a+b+c+d)*(-1)
 
-v_control_points_edge_loss=jax.vmap(control_points_edge_loss_not_batched,in_axes=(None,0,0)) 
+    edge_map_mean=jnp.mean(edge_map.flatten())
+    return res+((regularization*edge_map_mean)/200)
+
+v_control_points_edge_loss=jax.vmap(control_points_edge_loss_not_batched,in_axes=(0,0,None)) 

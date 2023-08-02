@@ -107,7 +107,7 @@ def initt(rng_2,cfg:ml_collections.config_dict.FrozenConfigDict,model,dynamic_cf
 
 
   tx = optax.chain(
-        optax.clip_by_global_norm(3.0),  # Clip gradients at norm 
+        optax.clip_by_global_norm(2.0),  # Clip gradients at norm 
         # optax.lion(learning_rate=joined_scheduler)
         optax.lion(learning_rate=cfg.learning_rate)
         #optax.lion(learning_rate=decay_scheduler)

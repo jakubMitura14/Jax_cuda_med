@@ -52,6 +52,8 @@ def iter_zipped(orig,new_ones):
 
 def iter_zipped_inner(triang,new_ones):
     on_border=np.append([triang[0]],new_ones)
+    on_border=np.append(on_border,[triang[1]])
+
     # on_border=[triang[0]]+new_ones
     # on_border=np.array(on_border)
     # on_border=np.flip(np.array(on_border),axis=0)
